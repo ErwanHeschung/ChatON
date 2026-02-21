@@ -1,0 +1,29 @@
+# --- System Files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- IDEs & Editors ---
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+.idea/
+*.swp
+*.swo
+
+# --- Environment & Secrets ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# --- Dependencies (Root level) ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# --- Husky ---
+.husky/_
