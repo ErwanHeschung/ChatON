@@ -1,0 +1,47 @@
+.horizontal-viewport {
+  width: 100%;
+  height: 60px;
+  margin-top: 10px;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.horizontal-item {
+  width: 50px;
+  height: 50px;
+  margin: 0 5px;
+  border-radius: var(--base-radius);
+  background-color: var(--surface-elevated);
+  overflow: hidden;
+  box-shadow: var(--shadow-elevated);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+  cursor: pointer;
+}
+
+.item-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+
+  img {
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+}
+
+.horizontal-item:hover,
+.selected {
+  box-shadow: var(--shadow-hover);
+  transform: scale(1.1) translateY(2px);
+}

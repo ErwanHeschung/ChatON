@@ -1,0 +1,23 @@
+<cdk-virtual-scroll-viewport
+  orientation="horizontal"
+  itemSize="60"
+  class="horizontal-viewport"
+  appHorizontalScroll
+>
+  <div
+    *cdkVirtualFor="let item of items()"
+    class="horizontal-item"
+    (click)="onItemClick(item)"
+    appTooltip="{{ item.name }}"
+    [class.selected]="item.id === currentSelectedItem()?.id"
+  >
+    <img
+      ngSrc="{{ item.image }}"
+      width="50"
+      height="50"
+      alt="{{ item.name }}"
+      class="item-image"
+      draggable="false"
+    />
+  </div>
+</cdk-virtual-scroll-viewport>

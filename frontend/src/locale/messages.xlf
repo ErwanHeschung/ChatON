@@ -5,8 +5,8 @@
       <trans-unit id="app-description" datatype="html">
         <source> Talk with your friends on your own private chat server, hosted on your machine. No more worries about data privacy or third-party services. </source>
         <context-group purpose="location">
-          <context context-type="sourcefile">src/app/pages/landing.page/landing.page.html</context>
-          <context context-type="linenumber">13,18</context>
+          <context context-type="sourcefile">src/app/pages/landing/landing.page.html</context>
+          <context context-type="linenumber">11,16</context>
         </context-group>
         <note priority="1" from="description">A short description of the app displayed on the landing page</note>
         <note priority="1" from="meaning">App description</note>
@@ -15,7 +15,7 @@
         <source>404</source>
         <context-group purpose="location">
           <context context-type="sourcefile">src/app/pages/not-found/not-found.html</context>
-          <context context-type="linenumber">4,6</context>
+          <context context-type="linenumber">5,8</context>
         </context-group>
         <note priority="1" from="description">Title displayed on the not found page</note>
         <note priority="1" from="meaning">Not found title</note>
@@ -24,19 +24,129 @@
         <source> Oops! The page you&apos;re looking for doesn&apos;t exist. It might have been moved or deleted. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">src/app/pages/not-found/not-found.html</context>
-          <context context-type="linenumber">7,9</context>
+          <context context-type="linenumber">11,16</context>
         </context-group>
-        <note priority="1" from="description">A short description displayed on the not found page</note>
+        <note priority="1" from="description">A short description displayed on the not found
+      page</note>
         <note priority="1" from="meaning">Not found description</note>
       </trans-unit>
       <trans-unit id="not-found-button" datatype="html">
         <source> Go to Home </source>
         <context-group purpose="location">
           <context context-type="sourcefile">src/app/pages/not-found/not-found.html</context>
-          <context context-type="linenumber">10,12</context>
+          <context context-type="linenumber">18,21</context>
         </context-group>
         <note priority="1" from="description">Text for the button that redirects to the landing page</note>
         <note priority="1" from="meaning">Not found button</note>
+      </trans-unit>
+      <trans-unit id="login-title" datatype="html">
+        <source>Login</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/login/login.html</context>
+          <context context-type="linenumber">1,3</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.username-placeholder" datatype="html">
+        <source>Choose a username</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/login/login.html</context>
+          <context context-type="linenumber">9,10</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.username-invalid-error" datatype="html">
+        <source>Username is required (min 3 characters)</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/login/login.html</context>
+          <context context-type="linenumber">15,20</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.password-label" datatype="html">
+        <source>Password</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/login/login.html</context>
+          <context context-type="linenumber">21,22</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/register/register.html</context>
+          <context context-type="linenumber">38,39</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.password-invalid-error" datatype="html">
+        <source>Password is required (min 8 characters)</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/login/login.html</context>
+          <context context-type="linenumber">25,30</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.submit-button" datatype="html">
+        <source> Login </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/login/login.html</context>
+          <context context-type="linenumber">31,34</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register-title" datatype="html">
+        <source>Create Account</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/register/register.html</context>
+          <context context-type="linenumber">1,3</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.username-placeholder" datatype="html">
+        <source>Choose a username</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/register/register.html</context>
+          <context context-type="linenumber">9,10</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.username-invalid-error" datatype="html">
+        <source>Username is required (min 3 characters)</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/register/register.html</context>
+          <context context-type="linenumber">15,20</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.email-placeholder" datatype="html">
+        <source>your@email.com</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/register/register.html</context>
+          <context context-type="linenumber">26,27</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.email-invalid-error" datatype="html">
+        <source>Please enter a valid email address</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/register/register.html</context>
+          <context context-type="linenumber">32,37</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.password-invalid-error" datatype="html">
+        <source>Password is required (min 8 characters)</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/register/register.html</context>
+          <context context-type="linenumber">42,47</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.confirm-password-label" datatype="html">
+        <source>Confirm Password</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/register/register.html</context>
+          <context context-type="linenumber">48,50</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.password-mismatch-error" datatype="html">
+        <source>Passwords do not match</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/register/register.html</context>
+          <context context-type="linenumber">56,61</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.submit-button" datatype="html">
+        <source> Register </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/components/auth/register/register.html</context>
+          <context context-type="linenumber">66,69</context>
+        </context-group>
       </trans-unit>
     </body>
   </file>

@@ -32,6 +32,9 @@
   --font-size-small: 0.875rem; /* 14px */
   --font-size-medium: 1rem; /* 16px */
   --font-size-large: 1.25rem; /* 20px */
+
+  /* --- SHADOWS --- */
+  --shadow-elevated: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 html,
@@ -127,4 +130,10 @@ body {
     font-size: 0.8rem;
     margin: 0;
   }
+}
+
+.horizontal-viewport .cdk-virtual-scroll-content-wrapper {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
 }

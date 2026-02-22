@@ -1,0 +1,22 @@
+:host {
+  display: grid;
+  height: 100vh;
+  grid-template-columns: 15rem 1fr 15rem;
+}
+
+.chat {
+  display: grid;
+  grid-template-rows: 5rem 1fr;
+}
+
+.header {
+  background: linear-gradient(to bottom, var(--surface-primary) 5%, var(--surface-base) 100%);
+}
+
+.left {
+  border-right: solid 1px var(--border-subtle);
+}
+
+.right {
+  border-left: solid 1px var(--border-subtle);
+}
