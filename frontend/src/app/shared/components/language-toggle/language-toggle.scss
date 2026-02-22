@@ -1,0 +1,9 @@
+:host {
+ display: flex;
+ gap: 0.5rem;
+}
+
+.active {
+ background-color: var(--interaction-pressed);
+ color: var(--on-action-primary);
+}

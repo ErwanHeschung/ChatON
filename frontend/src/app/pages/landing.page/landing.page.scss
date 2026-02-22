@@ -1,0 +1,46 @@
+@use 'variables' as vars;
+
+:host {
+ height: 100%;
+ width: 100%;
+}
+
+.hero-img {
+ width: 50%;
+ height: auto;
+ max-width: 800px;
+}
+
+.description {
+ margin: 2rem 2rem;
+ font-size: 1.25rem;
+ text-align: center;
+ max-width: 800px;
+}
+
+.buttons {
+ display: flex;
+ gap: 1rem;
+
+ .btn {
+  width: 10rem;
+  font-size: var(--font-size-large);
+ }
+}
+
+.language-toggle {
+ position: absolute;
+ top: 1rem;
+ right: 1rem;
+}
+
+@media (max-width: vars.$breakpoint-md) {
+ .hero-img {
+  width: 90%;
+ }
+
+ .description {
+  font-size: var(--font-size-medium);
+  padding: 0 1rem;
+ }
+}

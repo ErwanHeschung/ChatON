@@ -2,59 +2,30 @@
 <!-- Created with Inkscape (http://www.inkscape.org/) -->
 
 <svg
-   width="1100"
-   height="700"
-   viewBox="0 0 291.04165 185.20833"
+   width="1004.3861"
+   height="338.4502"
+   viewBox="0 0 265.74381 89.548279"
    version="1.1"
    id="svg1"
-   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
-   sodipodi:docname="ChatOn.svg"
-   inkscape:export-filename="ChatOn.svg"
-   inkscape:export-xdpi="96"
-   inkscape:export-ydpi="96"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:svg="http://www.w3.org/2000/svg">
-  <sodipodi:namedview
-     id="namedview1"
-     pagecolor="#ffffff"
-     bordercolor="#000000"
-     borderopacity="0.25"
-     inkscape:showpageshadow="2"
-     inkscape:pageopacity="0.0"
-     inkscape:pagecheckerboard="0"
-     inkscape:deskcolor="#d1d1d1"
-     inkscape:document-units="mm"
-     inkscape:zoom="0.52473015"
-     inkscape:cx="741.33343"
-     inkscape:cy="481.19972"
-     inkscape:window-width="1920"
-     inkscape:window-height="1051"
-     inkscape:window-x="-9"
-     inkscape:window-y="-9"
-     inkscape:window-maximized="1"
-     inkscape:current-layer="layer1" />
   <defs
-     id="defs1">
-    <rect
-       x="256.0369"
-       y="211.56734"
-       width="499.94574"
-       height="219.65271"
-       id="rect2" />
-  </defs>
+     id="defs1" />
   <g
-     inkscape:label="Layer 1"
-     inkscape:groupmode="layer"
-     id="layer1">
+     id="layer2"
+     style="display:none"
+     transform="translate(-12.648927,-47.830026)">
     <rect
-       style="display:none;fill:#000000;fill-opacity:1;stroke:#800bff;stroke-width:0.262977;stroke-linecap:round;stroke-linejoin:round"
+       style="display:inline;fill:#000000;fill-opacity:1;stroke:#800bff;stroke-width:0.262977;stroke-linecap:round;stroke-linejoin:round"
        id="rect1"
        width="290.41562"
        height="184.08479"
        x="-0.033562854"
        y="0.66160506" />
+  </g>
+  <g
+     id="layer1"
+     transform="translate(-12.648927,-47.830026)">
     <g
        id="g4"
        transform="translate(13.648928,22.830026)">
@@ -64,7 +35,6 @@
          x="132.55211"
          y="111.40612"
          id="text2"><tspan
-           sodipodi:role="line"
            id="tspan2"
            style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:50.8px;line-height:338.666px;font-family:Roboto;-inkscape-font-specification:'Roboto Bold';fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:0.264583"
            x="132.55211"
@@ -72,13 +42,11 @@
       <path
          style="fill:#ffffff;stroke-width:0.264583;stroke-linecap:round;stroke-linejoin:round"
          d="M 43.490741,74.41731 C 50.030609,68.13415 66.468033,65.05608 69.608415,67.01912 65.165973,49.627335 49.442694,24.324061 45.519671,25.013807 41.523674,25.716384 38.293963,56.57687 43.490741,74.41731 Z"
-         id="path1-5"
-         sodipodi:nodetypes="ccsc" />
+         id="path1-5" />
       <path
          style="fill:#ffffff;stroke-width:0.264583;stroke-linecap:round;stroke-linejoin:round"
          d="m 222.0175,74.41731 c -6.53986,-6.28316 -22.97729,-9.36123 -26.11767,-7.39819 4.44244,-17.391782 20.16572,-42.695062 24.08874,-42.005312 3.996,0.70258 7.22571,31.563062 2.02893,49.403502 z"
-         id="path1-5-9"
-         sodipodi:nodetypes="ccsc" />
+         id="path1-5-9" />
       <g
          id="g3"
          transform="translate(-1.8110169,4.3521875)">
@@ -89,15 +57,11 @@
         <path
            style="fill:none;stroke:#ffffff;stroke-width:1.32292;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
            d="M 44.630022,92.615509 C 34.226221,87.939247 15.501199,91.463976 1.6086712,97.055031"
-           id="path2-1"
-           inkscape:transform-center-x="-11.827194"
-           inkscape:transform-center-y="-10.514598" />
+           id="path2-1" />
         <path
            style="fill:none;stroke:#ffffff;stroke-width:1.32292;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
            d="M 43.46859,99.196711 C 32.518706,96.001933 14.459821,102.07868 1.4724769,109.53463"
-           id="path2-1-2"
-           inkscape:transform-center-x="-10.411812"
-           inkscape:transform-center-y="-11.407491" />
+           id="path2-1-2" />
       </g>
       <g
          id="g2"
@@ -109,15 +73,11 @@
         <path
            style="fill:none;stroke:#ffffff;stroke-width:1.32292;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
            d="m 218.70277,93.62289 c 10.4038,-4.676262 29.12882,-1.151533 43.02135,4.439522"
-           id="path2-1-3"
-           inkscape:transform-center-x="11.827194"
-           inkscape:transform-center-y="-10.514598" />
+           id="path2-1-3" />
         <path
            style="fill:none;stroke:#ffffff;stroke-width:1.32292;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
            d="m 219.8642,100.20409 c 10.94988,-3.194776 29.00877,2.88197 41.99611,10.33793"
-           id="path2-1-2-2"
-           inkscape:transform-center-x="10.411812"
-           inkscape:transform-center-y="-11.407491" />
+           id="path2-1-2-2" />
       </g>
     </g>
   </g>

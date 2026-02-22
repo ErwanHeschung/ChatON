@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+  <file source-language="en" datatype="plaintext" original="ng2.template">
+    <body>
+      <trans-unit id="app-description" datatype="html">
+        <source> Talk with your friends on your own private chat server, hosted on your machine.
+ No more worries about data privacy or third-party services. </source>
+        <target> Discutez avec vos amis sur votre propre serveur de chat privé, hébergé sur votre machine. Plus de soucis concernant la confidentialité des données ou les services tiers. </target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/pages/landing.page/landing.page.html</context>
+          <context context-type="linenumber">13,18</context>
+        </context-group>
+        <note priority="1" from="description">A short description of the app displayed on the landing page</note>
+        <note priority="1" from="meaning">App description</note>
+      </trans-unit>
+
+      <trans-unit id="not-found-title" datatype="html">
+        <source>404</source>
+        <target>404</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/pages/not-found/not-found.html</context>
+          <context context-type="linenumber">4,6</context>
+        </context-group>
+        <note priority="1" from="description">Title displayed on the not found page</note>
+        <note priority="1" from="meaning">Not found title</note>
+      </trans-unit>
+
+      <trans-unit id="not-found-description" datatype="html">
+        <source> Oops!
+ The page you&apos;re looking for doesn&apos;t exist. It might have been moved or deleted.
+ </source>
+        <target> Oups ! La page que vous recherchez n'existe pas. Elle a peut-être été déplacée ou supprimée. </target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/pages/not-found/not-found.html</context>
+          <context context-type="linenumber">7,9</context>
+        </context-group>
+        <note priority="1" from="description">A short description displayed on the not found page</note>
+        <note priority="1" from="meaning">Not found description</note>
+      </trans-unit>
+
+      <trans-unit id="not-found-button" datatype="html">
+        <source> Go to Home </source>
+        <target> Retour à l'accueil </target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/pages/not-found/not-found.html</context>
+          <context context-type="linenumber">10,12</context>
+        </context-group>
+        <note priority="1" from="description">Text for the button that redirects to the landing page</note>
+        <note priority="1" from="meaning">Not found button</note>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>
