@@ -5,12 +5,12 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "prepare": "npx husky",
-    "lint-staged": {
-      "frontend/src/**/*.{ts,html,scss}": [
-        "npm --prefix frontend run format" 
-      ]
-    }
+    "prepare": "npx husky"
+  },
+  "lint-staged": {
+    "frontend/src/**/*.{ts,html,scss}": [
+      "npm --prefix frontend run format" 
+    ]
   },
   "keywords": [],
   "author": "",
