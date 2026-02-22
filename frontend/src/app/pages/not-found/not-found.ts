@@ -4,9 +4,9 @@ import { NgOptimizedImage } from '@angular/common';
 import { RouterLink } from '@angular/router';
 
 @Component({
- selector: 'app-not-found',
- imports: [Public, NgOptimizedImage, RouterLink],
- templateUrl: './not-found.html',
- styleUrl: './not-found.scss',
+  selector: 'app-not-found',
+  imports: [Public, NgOptimizedImage, RouterLink],
+  templateUrl: './not-found.html',
+  styleUrl: './not-found.scss',
 })
 export class NotFound {}

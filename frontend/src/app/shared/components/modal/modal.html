@@ -1,0 +1,13 @@
+@if (modalService.isOpen()) {
+  <div
+    class="backdrop"
+    (click)="modalService.close()"
+    animate.enter="enter-animation"
+    animate.leave="leave-animation"
+  >
+    <div class="modal-container" (click)="$event.stopPropagation()">
+      <button class="btn" (click)="modalService.close()">✕</button>
+      <ng-container *ngComponentOutlet="modalService.activeComponent()" />
+    </div>
+  </div>
+}

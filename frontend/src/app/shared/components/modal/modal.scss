@@ -1,0 +1,43 @@
+@use 'variables' as vars;
+@use 'animations' as anim;
+
+.backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+
+  @include anim.animate-enter-fade(0.3s);
+  @include anim.animate-leave-fade(0.2s);
+}
+
+.modal-container {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: fit-content;
+  height: fit-content;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--surface-elevated);
+  border-radius: var(--base-radius);
+  z-index: 1000;
+}
+
+.btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+@media (max-width: vars.$breakpoint-md) {
+  .modal-container {
+    width: 90vw;
+    height: 75vh;
+  }
+}
