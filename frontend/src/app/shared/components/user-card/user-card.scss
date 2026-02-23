@@ -1,0 +1,29 @@
+:host {
+  height: 3.25rem;
+  padding: 0.5rem;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  gap: 0.5rem;
+  border-radius: var(--base-radius);
+  background-color: var(--surface-base);
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+
+  &:hover {
+    background-color: var(--surface-primary);
+  }
+
+  h3 {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: normal;
+    font-size: var(--font-size-medium);
+  }
+
+  img {
+    border-radius: 50%;
+    background-color: var(--surface-elevated);
+  }
+}

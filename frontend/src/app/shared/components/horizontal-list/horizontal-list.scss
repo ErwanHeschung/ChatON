@@ -70,6 +70,10 @@
   justify-content: center;
   position: relative;
   overflow: visible;
+  transition: background-color 0.3s ease;
+  &:hover {
+    background-color: var(--interaction-hover);
+  }
 }
 
 .switch-view::after,

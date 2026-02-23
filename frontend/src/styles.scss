@@ -47,11 +47,6 @@ body {
   color: var(--content-primary);
 }
 
-* {
-  box-sizing: border-box;
-  -webkit-tap-highlight-color: transparent;
-}
-
 .btn {
   padding: 0.75rem 1rem;
   background-color: var(--action-primary);
@@ -140,4 +135,23 @@ body {
 
 lucide-icon {
   display: flex;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  -webkit-border-radius: var(--base-radius);
+  border-radius: var(--base-radius);
+}
+
+::-webkit-scrollbar-thumb {
+  -webkit-border-radius: var(--base-radius);
+  border-radius: var(--base-radius);
+  background: var(--surface-elevated);
 }
