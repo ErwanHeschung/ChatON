@@ -7,10 +7,10 @@ import {
   Validators,
 } from '@angular/forms';
 
-interface RegisterForm {
+type RegisterForm = {
   username: FormControl<string>;
   password: FormControl<string>;
-}
+};
 
 @Component({
   selector: 'app-login',

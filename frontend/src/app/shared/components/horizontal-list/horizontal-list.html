@@ -1,5 +1,9 @@
-<div class="switch-view">
-  <lucide-icon [img]="chatIcon" size="30"></lucide-icon>
+<div class="switch-view" (click)="switch()">
+  <lucide-icon
+    [img]="switchIcon()"
+    size="30"
+    [class.is-swapping]="discussionMode() === 'DM'"
+  ></lucide-icon>
 </div>
 
 <cdk-virtual-scroll-viewport

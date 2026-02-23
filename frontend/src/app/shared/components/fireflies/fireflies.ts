@@ -8,7 +8,7 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core';
 
-interface Firefly {
+type Firefly = {
   x: number;
   y: number;
   s: number;
@@ -18,7 +18,7 @@ interface Firefly {
   rising: boolean;
   speedX: number;
   speedY: number;
-}
+};
 
 @Component({
   selector: 'app-fireflies',
