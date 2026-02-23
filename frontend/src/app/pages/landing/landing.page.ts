@@ -2,7 +2,7 @@ import { NgOptimizedImage } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { LanguageToggle } from '../../shared/components/language-toggle/language-toggle';
 import { PublicLayout } from '../../shared/layouts/public/public.layout';
-import { ModalService } from '../../shared/modal-service';
+import { ModalService } from '../../shared/services/modal-service';
 import { Register } from '../../shared/components/auth/register/register';
 import { Login } from '../../shared/components/auth/login/login';
 

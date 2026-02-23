@@ -1,6 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { ModalService } from './shared/modal-service';
+import { ModalService } from './shared/services/modal-service';
 import { Modal } from './shared/components/modal/modal';
 
 @Component({
