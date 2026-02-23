@@ -3,10 +3,11 @@ import { Component, input, signal, WritableSignal } from '@angular/core';
 import { NgOptimizedImage } from '@angular/common';
 import { TooltipDirective } from '../../directives/tooltip';
 import { HorizontalScrollDirective } from '../../directives/horizontal-scroll-directives';
+import { LucideAngularModule, MessagesSquare, Plus } from 'lucide-angular';
 
 @Component({
   selector: 'app-horizontal-list',
-  imports: [ScrollingModule, NgOptimizedImage, TooltipDirective, HorizontalScrollDirective],
+  imports: [ScrollingModule, NgOptimizedImage, TooltipDirective, HorizontalScrollDirective, LucideAngularModule],
   templateUrl: './horizontal-list.html',
   styleUrl: './horizontal-list.scss',
 })
@@ -19,6 +20,8 @@ export class HorizontalList {
     })),
   );
 
+  public readonly chatIcon = MessagesSquare;
+  public readonly addItem = Plus;
   public currentSelectedItem: WritableSignal<any> = signal(null);
 
   public onItemClick(item: any): void {
