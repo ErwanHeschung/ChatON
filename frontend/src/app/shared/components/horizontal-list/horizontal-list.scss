@@ -1,23 +1,19 @@
-:host{
+:host {
   margin-top: 10px;
   display: flex;
   justify-content: center;
-  width:100%;
+  width: 100%;
 }
 
-.switch-view, .add-item{
+.switch-view,
+.add-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  
-  lucide-icon{
-    height: 30px;
-    width: 30px
-  }
 }
 
 .horizontal-viewport {
-  width: calc(100% - 2*55px);
+  width: calc(100% - 2 * 55px);
   height: 60px;
 
   &::-webkit-scrollbar {
@@ -31,7 +27,9 @@
   overflow-y: hidden;
 }
 
-.horizontal-item, .switch-view, .add-item {
+.horizontal-item,
+.switch-view,
+.add-item {
   width: 50px;
   height: 50px;
   margin: 0 5px;
