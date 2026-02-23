@@ -35,6 +35,7 @@
 
   /* --- SHADOWS --- */
   --shadow-elevated: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-text: 0 0 0 2px color-mix(in srgb, var(--interaction-focus), transparent 80%);
 }
 
 html,
@@ -101,7 +102,7 @@ body {
     &:focus {
       outline: none;
       border-color: var(--interaction-focus);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--interaction-focus), transparent 80%);
+      box-shadow: var(--shadow-text);
     }
 
     &:-webkit-autofill,
@@ -125,6 +126,11 @@ body {
     font-size: 0.8rem;
     margin: 0;
   }
+}
+
+p {
+  margin: 0;
+  padding: 0;
 }
 
 .horizontal-viewport .cdk-virtual-scroll-content-wrapper {

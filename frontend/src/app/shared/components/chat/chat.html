@@ -1,0 +1,9 @@
+<cdk-virtual-scroll-viewport autosize class="chat-viewport">
+  <div *cdkVirtualFor="let message of messages()" class="message-item">
+    <app-chat-bubble [message]="message"></app-chat-bubble>
+  </div>
+</cdk-virtual-scroll-viewport>
+
+<div class="field">
+  <input />
+</div>

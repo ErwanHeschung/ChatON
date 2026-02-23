@@ -1,0 +1,34 @@
+:host {
+  display: flex;
+  align-items: start;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+}
+
+.message-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: 0.5rem;
+
+  .username {
+    font-size: var(--font-size-small);
+  }
+
+  .message {
+    padding: 1rem;
+    background-color: var(--surface-primary);
+    font-size: var(--font-size-medium);
+    border-radius: var(--base-radius);
+    transition: background-color 0.3s ease;
+
+    &:hover {
+      background-color: var(--interaction-hover);
+    }
+  }
+}
+
+img {
+  border-radius: 50%;
+  background-color: var(--surface-elevated);
+}
