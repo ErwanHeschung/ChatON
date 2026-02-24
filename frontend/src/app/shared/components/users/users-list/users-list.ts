@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { ScrollingModule } from '@angular/cdk/scrolling';
-import { UserShort } from '../../../models/User.model';
-import { UserCard } from '../user-card/user-card';
+import { UserShort } from '@models/User.model';
+import { UserCard } from '@components/users/user-card/user-card';
 
 @Component({
   selector: 'app-users-list',

@@ -9,7 +9,7 @@
   },
   "lint-staged": {
     "frontend/src/**/*.{ts,html,scss}": [
-      "npm --prefix frontend run lint:pattern --",
+      "npm --prefix frontend run lint",
       "npm --prefix frontend run format"
     ]
   },

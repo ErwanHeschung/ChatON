@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { Message } from '../../../models/Message.model';
+import { Message } from '@models/Message.model';
 import { NgOptimizedImage } from '@angular/common';
 
 @Component({

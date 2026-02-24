@@ -1,4 +1,5 @@
 import { ScrollingModule } from '@angular/cdk/scrolling';
+import { NgOptimizedImage } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -7,11 +8,10 @@ import {
   signal,
   WritableSignal,
 } from '@angular/core';
-import { NgOptimizedImage } from '@angular/common';
-import { TooltipDirective } from '../../directives/tooltip';
-import { HorizontalScrollDirective } from '../../directives/horizontal-scroll-directives';
 import { LucideAngularModule, MessagesSquare, Plus, Server } from 'lucide-angular';
-import { DiscussionMode } from '../../models/DiscussionMode.model';
+import { HorizontalScrollDirective } from '@directives/horizontal-scroll-directives';
+import { TooltipDirective } from '@directives/tooltip';
+import { DiscussionMode } from '@models/DiscussionMode.model';
 
 @Component({
   selector: 'app-horizontal-list',

@@ -1,7 +1,7 @@
 import { Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { Directive, ElementRef, inject, input } from '@angular/core';
-import { Tooltip } from '../components/tooltip/tooltip';
+import { Tooltip } from '@components/tooltip/tooltip';
 
 @Directive({
   selector: '[appTooltip]',

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { PublicLayout } from '../../shared/layouts/public/public.layout';
+import { PublicLayout } from '@layouts/public/public.layout';
 import { NgOptimizedImage } from '@angular/common';
 import { RouterLink } from '@angular/router';
 

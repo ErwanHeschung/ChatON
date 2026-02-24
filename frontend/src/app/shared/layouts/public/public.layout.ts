@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { FirefliesComponent } from '../../components/fireflies/fireflies';
+import { FirefliesComponent } from '@components/fireflies/fireflies';
 
 @Component({
   selector: 'app-public-layout',
