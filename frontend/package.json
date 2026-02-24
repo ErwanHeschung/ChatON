@@ -8,7 +8,8 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "format": "prettier --write \"src/**/*.{ts,html,scss,json}\"",
-    "lint": "ng lint"
+    "lint": "ng lint",
+    "lint:pattern": "ng lint --fix --lint-file-patterns"
   },
   "prettier": {
     "printWidth": 100,
