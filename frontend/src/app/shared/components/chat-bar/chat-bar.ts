@@ -1,9 +1,12 @@
 import { Component } from '@angular/core';
+import { LucideAngularModule, Smile } from "lucide-angular";
 
 @Component({
   selector: 'app-chat-bar',
-  imports: [],
+  imports: [LucideAngularModule],
   templateUrl: './chat-bar.html',
   styleUrl: './chat-bar.scss',
 })
-export class ChatBar {}
+export class ChatBar {
+  public readonly emojiIcon = Smile;
+}

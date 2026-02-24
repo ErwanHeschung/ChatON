@@ -3,6 +3,7 @@ import { ScrollingModule as ExperimentalScrollingModule } from '@angular/cdk-exp
 import { Component, input } from '@angular/core';
 import { Message, MessageStatus } from '../../models/Message.model';
 import { ChatBubble } from '../chat-bubble/chat-bubble';
+import { ChatBar } from '../chat-bar/chat-bar';
 
 const CAT_LOREM = [
   'Meow.',
@@ -17,7 +18,7 @@ const CAT_LOREM = [
 
 @Component({
   selector: 'app-chat',
-  imports: [ScrollingModule, ExperimentalScrollingModule, ChatBubble],
+  imports: [ScrollingModule, ExperimentalScrollingModule, ChatBubble, ChatBar],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
 })
