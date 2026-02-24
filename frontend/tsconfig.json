@@ -16,6 +16,15 @@
     "module": "preserve",
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "baseUrl": "./",
+    "paths": {
+      "@models/*": ["src/app/shared/models/*"],
+      "@directives/*": ["src/app/shared/directives/*"],
+      "@components/*": ["src/app/shared/components/*"],
+      "@layouts/*": ["src/app/shared/layouts/*"],
+      "@services/*": ["src/app/core/services/*"],
+      "@pages/*": ["src/app/pages/*"],
+    }
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,

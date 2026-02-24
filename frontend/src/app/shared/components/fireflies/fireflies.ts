@@ -8,7 +8,7 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core';
 
-type Firefly = {
+interface Firefly {
   x: number;
   y: number;
   s: number;
@@ -18,7 +18,7 @@ type Firefly = {
   rising: boolean;
   speedX: number;
   speedY: number;
-};
+}
 
 @Component({
   selector: 'app-fireflies',
@@ -39,7 +39,7 @@ export class FirefliesComponent implements OnInit, OnDestroy {
 
   private ctx!: CanvasRenderingContext2D;
   private readonly fireflies: Firefly[] = [];
-  private animationId: number = 0;
+  private animationId = 0;
 
   public onResize(): void {
     this.setupCanvasDimensions();

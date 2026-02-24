@@ -1,5 +1,5 @@
-export type UserShort = {
+export interface UserShort {
   id: string;
   username: string;
   profilePicture: string;
-};
+}
