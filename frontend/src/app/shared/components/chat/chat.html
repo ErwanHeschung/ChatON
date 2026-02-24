@@ -1,7 +1,7 @@
-<cdk-virtual-scroll-viewport autosize class="chat-viewport">
-  <div *cdkVirtualFor="let message of messages()" class="message-item">
+<div class="message-list">
+  @for (message of [...messages()].reverse(); track message.id) {
     <app-chat-bubble [message]="message"></app-chat-bubble>
-  </div>
-</cdk-virtual-scroll-viewport>
+  }
+</div>
 
 <app-chat-bar></app-chat-bar>

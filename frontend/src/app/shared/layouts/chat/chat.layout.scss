@@ -5,8 +5,10 @@
 }
 
 .chat {
+  height: 100%;
   display: grid;
   grid-template-rows: 5rem 1fr;
+  overflow: hidden;
 }
 
 .header {
@@ -15,8 +17,10 @@
 
 .left {
   border-right: solid 1px var(--border-subtle);
+  overflow: hidden;
 }
 
 .right {
   border-left: solid 1px var(--border-subtle);
+  overflow: hidden;
 }
