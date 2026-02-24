@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { UserShort } from '../../models/User.model';
+import { UserShort } from '../../../models/User.model';
 import { NgOptimizedImage } from '@angular/common';
 
 @Component({

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { Message, MessageStatus } from '../../models/Message.model';
+import { Message, MessageStatus } from '../../../models/Message.model';
 import { ChatBubble } from '../chat-bubble/chat-bubble';
 import { ChatBar } from '../chat-bar/chat-bar';
 
