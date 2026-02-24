@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import {
   FormControl,
   FormGroup,
@@ -19,6 +19,7 @@ type RegisterForm = {
   imports: [ReactiveFormsModule],
   templateUrl: './register.html',
   styleUrl: './register.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Register {
   private readonly fb = inject(NonNullableFormBuilder);

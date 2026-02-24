@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { UserShort } from '../../models/User.model';
 import { UserCard } from '../user-card/user-card';
@@ -8,6 +8,7 @@ import { UserCard } from '../user-card/user-card';
   imports: [ScrollingModule, UserCard],
   templateUrl: './users-list.html',
   styleUrl: './users-list.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UsersList {
   public readonly connectedUser: UserShort = {

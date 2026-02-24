@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { UserShort } from '../../models/User.model';
 import { NgOptimizedImage } from '@angular/common';
 
@@ -7,6 +7,7 @@ import { NgOptimizedImage } from '@angular/common';
   imports: [NgOptimizedImage],
   templateUrl: './user-card.html',
   styleUrl: './user-card.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UserCard {
   public readonly user = input.required<UserShort>();

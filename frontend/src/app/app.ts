@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { ModalService } from './shared/services/modal-service';
 import { Modal } from './shared/components/modal/modal';
@@ -8,6 +8,7 @@ import { Modal } from './shared/components/modal/modal';
   imports: [RouterOutlet, Modal],
   templateUrl: './app.html',
   styleUrl: './app.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class App {
   public readonly modalService: ModalService = inject(ModalService);

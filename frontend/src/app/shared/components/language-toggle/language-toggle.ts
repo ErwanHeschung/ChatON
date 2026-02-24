@@ -1,10 +1,11 @@
-import { Component, inject, LOCALE_ID } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, LOCALE_ID } from '@angular/core';
 
 @Component({
   selector: 'app-language-toggle',
   imports: [],
   templateUrl: './language-toggle.html',
   styleUrl: './language-toggle.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LanguageToggle {
   public activeLocale: string = inject(LOCALE_ID);

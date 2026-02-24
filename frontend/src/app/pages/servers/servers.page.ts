@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { ChatLayout } from '../../shared/layouts/chat/chat.layout';
 import { HorizontalList } from '../../shared/components/horizontal-list/horizontal-list';
 import { UsersList } from '../../shared/components/users-list/users-list';
@@ -9,5 +9,6 @@ import { Chat } from '../../shared/components/chat/chat';
   imports: [ChatLayout, HorizontalList, UsersList, Chat],
   templateUrl: './servers.page.html',
   styleUrl: './servers.page.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ServersPage {}

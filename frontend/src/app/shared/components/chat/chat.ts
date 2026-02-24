@@ -1,6 +1,6 @@
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { ScrollingModule as ExperimentalScrollingModule } from '@angular/cdk-experimental/scrolling';
-import { Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { Message, MessageStatus } from '../../models/Message.model';
 import { ChatBubble } from '../chat-bubble/chat-bubble';
 import { ChatBar } from '../chat-bar/chat-bar';
@@ -21,6 +21,7 @@ const CAT_LOREM = [
   imports: [ScrollingModule, ExperimentalScrollingModule, ChatBubble, ChatBar],
   templateUrl: './chat.html',
   styleUrl: './chat.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Chat {
   public readonly messages = input<Message[]>(

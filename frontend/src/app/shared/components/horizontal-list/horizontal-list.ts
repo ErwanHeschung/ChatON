@@ -1,5 +1,12 @@
 import { ScrollingModule } from '@angular/cdk/scrolling';
-import { Component, computed, input, signal, WritableSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+  signal,
+  WritableSignal,
+} from '@angular/core';
 import { NgOptimizedImage } from '@angular/common';
 import { TooltipDirective } from '../../directives/tooltip';
 import { HorizontalScrollDirective } from '../../directives/horizontal-scroll-directives';
@@ -17,6 +24,7 @@ import { DiscussionMode } from '../../models/DiscussionMode.model';
   ],
   templateUrl: './horizontal-list.html',
   styleUrl: './horizontal-list.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HorizontalList {
   readonly items = input(
