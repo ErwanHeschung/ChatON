@@ -1,1 +1,12 @@
-<p>user-banner works!</p>
+<img
+  ngSrc="https://img.freepik.com/free-photo/beautiful-mountains-landscape_23-2151151085.jpg?semt=ais_rp_progressive&w=740&q=80"
+  fill
+  priority
+  alt="user-banner"
+  class="user-banner"
+/>
+
+<div class="user-profile">
+  <img ngSrc="{{ user().profilePicture }}" alt="{{ user().username }}" width="75" height="75" />
+  <h3>{{ user().username }}</h3>
+</div>
