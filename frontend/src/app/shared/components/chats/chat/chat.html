@@ -1,5 +1,5 @@
 <div class="message-list">
-  @for (message of [...messages()].reverse(); track message.id) {
+  @for (message of [...messages()]; track message.id) {
     <app-chat-bubble [message]="message"></app-chat-bubble>
   }
 </div>

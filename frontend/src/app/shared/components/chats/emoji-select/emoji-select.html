@@ -1,0 +1,39 @@
+<div class="emoji-picker-container">
+  <div class="emoji-tabs">
+    @for (category of emojiData(); track category.name) {
+      <button
+        (click)="activeCategory.set(category.name)"
+        [class.active]="category.name === activeCategory()"
+        class="tab-btn"
+        type="button"
+        appTooltip="{{ category.name }}"
+      >
+        <img
+          ngSrc="{{ category.icon.hexcode | twemojiUrl }}"
+          class="emoji-img"
+          width="32"
+          height="32"
+          alt="{{ category.name }}"
+        />
+      </button>
+    }
+  </div>
+
+  <div class="emoji-list">
+    <cdk-virtual-scroll-viewport itemSize="48" class="emoji-viewport">
+      <div *cdkVirtualFor="let row of emojiRows()" class="emoji-row">
+        @for (emoji of row; track emoji.hexcode) {
+          <button type="button" class="emoji-btn" (click)="emojiSelect.emit(emoji)">
+            <img
+              [ngSrc]="emoji.hexcode | twemojiUrl"
+              class="emoji-img"
+              width="32"
+              height="32"
+              [alt]="emoji.label"
+            />
+          </button>
+        }
+      </div>
+    </cdk-virtual-scroll-viewport>
+  </div>
+</div>
