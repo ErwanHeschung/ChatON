@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import compactEmojis from 'emojibase-data/en/compact.json';
 import { NgOptimizedImage } from '@angular/common';
-import { TwemojiUrlPipe } from 'src/app/shared/pipes/twemoji-emoji.pipe';
+import { TwemojiUrlPipe } from '@pipes/twemoji-emoji.pipe';
 import { CompactEmoji } from 'emojibase';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { TooltipDirective } from '@directives/tooltip';
