@@ -1,5 +1,11 @@
 <app-chat-layout>
   <app-horizontal-list header></app-horizontal-list>
+
+  <div left>
+    <router-outlet name="left-sidebar"></router-outlet>
+  </div>
+
   <app-chat chat></app-chat>
+
   <app-users-list right></app-users-list>
 </app-chat-layout>

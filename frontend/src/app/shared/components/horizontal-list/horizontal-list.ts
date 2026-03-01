@@ -4,6 +4,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   signal,
   WritableSignal,
@@ -12,6 +13,8 @@ import { LucideAngularModule, MessagesSquare, Plus, Server } from 'lucide-angula
 import { HorizontalScrollDirective } from '@directives/horizontal-scroll-directives';
 import { TooltipDirective } from '@directives/tooltip';
 import { DiscussionMode } from '@models/DiscussionMode.model';
+import { Router } from '@angular/router';
+import { ROUTES } from 'src/app/app.routes';
 
 @Component({
   selector: 'app-horizontal-list',
@@ -35,6 +38,8 @@ export class HorizontalList {
     })),
   );
 
+  private readonly router = inject(Router);
+
   private readonly chatIcon = MessagesSquare;
   private readonly serverIcon = Server;
 
@@ -48,9 +53,15 @@ export class HorizontalList {
   );
 
   public switch(): void {
-    this.discussionMode.update((current) =>
-      current === DiscussionMode.SERVER ? DiscussionMode.DM : DiscussionMode.SERVER,
+    this.discussionMode.update(current =>
+      current === DiscussionMode.SERVER ? DiscussionMode.DM : DiscussionMode.SERVER
     );
+
+    const targetPath = this.discussionMode() === DiscussionMode.DM
+      ? ROUTES.DMS
+      : ROUTES.SERVERS;
+
+    this.router.navigate([ROUTES.CHAT+'/'+targetPath]);
   }
 
   public onItemClick(item: any): void {

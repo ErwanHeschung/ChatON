@@ -6,8 +6,8 @@ import { RouterLink } from '@angular/router';
 @Component({
   selector: 'app-not-found',
   imports: [PublicLayout, NgOptimizedImage, RouterLink],
-  templateUrl: './not-found.html',
-  styleUrl: './not-found.scss',
+  templateUrl: './not-found.page.html',
+  styleUrl: './not-found.page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NotFound {}
