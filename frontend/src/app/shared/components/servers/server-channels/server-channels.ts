@@ -3,7 +3,7 @@ import { UpperCasePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { Category, Channel } from '@models/Channel.model';
 import { ChevronDown, Hash, LucideAngularModule } from 'lucide-angular';
-import { ServerBanner } from "../server-banner/server-banner";
+import { ServerBanner } from "@components/servers/server-banner/server-banner";
 
 type RenderItem =
   | { type: 'category'; data: Category; expanded: boolean }
