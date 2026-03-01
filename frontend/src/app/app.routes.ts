@@ -22,7 +22,7 @@ export const routes: Routes = [
         children: [
           {
             path: '',
-            loadComponent: () => import('@components/user-banner/user-banner').then(m => m.UserBanner),
+            loadComponent: () => import('@components/servers/server-channels/server-channels').then(m => m.ServerChannels),
             outlet: 'left-sidebar'
           },
         ]
@@ -32,7 +32,7 @@ export const routes: Routes = [
         children: [
           {
             path: '',
-            loadComponent: () => import('@components/user-banner/user-banner').then(m => m.UserBanner),
+            loadComponent: () => import('@components/users/user-banner/user-banner').then(m => m.UserBanner),
             outlet: 'left-sidebar'
           },
         ]

@@ -6,6 +6,7 @@ import {
   computed,
   inject,
   input,
+  OnInit,
   signal,
   WritableSignal,
 } from '@angular/core';
@@ -29,7 +30,7 @@ import { ROUTES } from 'src/app/app.routes';
   styleUrl: './horizontal-list.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class HorizontalList {
+export class HorizontalList implements OnInit {
   readonly items = input(
     Array.from({ length: 100 }).map((_, i) => ({
       id: i,
@@ -51,6 +52,17 @@ export class HorizontalList {
   public switchIcon = computed(() =>
     this.discussionMode() === DiscussionMode.SERVER ? this.chatIcon : this.serverIcon,
   );
+
+  ngOnInit(): void {
+    const currentUrl = this.router.url;
+    const serverPrefix = `${ROUTES.CHAT}/${ROUTES.SERVERS}`;
+
+    if (currentUrl.includes(serverPrefix)) {
+      this.discussionMode.set(DiscussionMode.SERVER);
+    } else {
+      this.discussionMode.set(DiscussionMode.DM);
+    }
+  }
 
   public switch(): void {
     this.discussionMode.update(current =>

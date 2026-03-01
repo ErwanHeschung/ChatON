@@ -1,0 +1,22 @@
+<app-server-banner></app-server-banner>
+<cdk-virtual-scroll-viewport itemSize="36" class="viewport">
+  <div *cdkVirtualFor="let item of virtualItems(); trackBy: trackById" class="item-container">
+    @if (item.type === 'category') {
+      <div class="category-row" (click)="toggleCategory(item.data.id)">
+        @if (item.expanded) {}
+        <lucide-icon
+          [img]="chevronIcon"
+          size="20"
+          [class.collapsed]="!item.expanded"
+          class="chevron"
+        ></lucide-icon>
+        <span>{{ item.data.name | uppercase }}</span>
+      </div>
+    } @else {
+      <div class="channel-row">
+        <lucide-icon [img]="hashtagIcon" size="15"></lucide-icon>
+        <span>{{ item.data.name }}</span>
+      </div>
+    }
+  </div>
+</cdk-virtual-scroll-viewport>
