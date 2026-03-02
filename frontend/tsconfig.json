@@ -25,6 +25,7 @@
       "@pipes/*": ["src/app/shared/pipes/*"],
       "@services/*": ["src/app/core/services/*"],
       "@pages/*": ["src/app/pages/*"],
+      "@environments/*":["src/environments/*"]
     }
   },
   "angularCompilerOptions": {

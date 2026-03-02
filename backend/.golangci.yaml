@@ -1,0 +1,25 @@
+version: "2"
+
+run:
+  timeout: 5m
+  go: "1.25.6" 
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - revive
+    - bodyclose
+    - misspell
+
+linters-settings:
+  revive:
+    rules:
+      - name: var-naming
+        severity: warning
+        arguments:
+          - []
+          - []
