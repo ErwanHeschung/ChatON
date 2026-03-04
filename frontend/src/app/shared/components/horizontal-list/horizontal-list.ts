@@ -65,15 +65,13 @@ export class HorizontalList implements OnInit {
   }
 
   public switch(): void {
-    this.discussionMode.update(current =>
-      current === DiscussionMode.SERVER ? DiscussionMode.DM : DiscussionMode.SERVER
+    this.discussionMode.update((current) =>
+      current === DiscussionMode.SERVER ? DiscussionMode.DM : DiscussionMode.SERVER,
     );
 
-    const targetPath = this.discussionMode() === DiscussionMode.DM
-      ? ROUTES.DMS
-      : ROUTES.SERVERS;
+    const targetPath = this.discussionMode() === DiscussionMode.DM ? ROUTES.DMS : ROUTES.SERVERS;
 
-    this.router.navigate([ROUTES.CHAT+'/'+targetPath]);
+    this.router.navigate([ROUTES.CHAT + '/' + targetPath]);
   }
 
   public onItemClick(item: any): void {

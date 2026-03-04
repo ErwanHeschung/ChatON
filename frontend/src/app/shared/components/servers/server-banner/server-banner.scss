@@ -1,18 +1,18 @@
-:host{
-    border-bottom: 1px solid var(--border-subtle);
-    padding: 0.5rem;
-    gap: 0.5rem;
-    display: flex;
-    align-items: center;
-    
-    img{
-        background-color: var(--surface-elevated);
-        border-radius: 50%;
-    }
+:host {
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 0.5rem;
+  gap: 0.5rem;
+  display: flex;
+  align-items: center;
 
-    h3{
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
+  img {
+    background-color: var(--surface-elevated);
+    border-radius: 50%;
+  }
+
+  h3 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }

@@ -2,11 +2,10 @@ import { Routes } from '@angular/router';
 
 export const ROUTES = {
   PUBLIC: '/',
-  CHAT:'chat',
+  CHAT: 'chat',
   SERVERS: 'servers',
   DMS: 'dms',
 };
-
 
 export const routes: Routes = [
   {
@@ -15,30 +14,34 @@ export const routes: Routes = [
   },
   {
     path: ROUTES.CHAT,
-    loadComponent: () => import('@pages/root-chat/root-chat.page').then(m => m.RootChat),
+    loadComponent: () => import('@pages/root-chat/root-chat.page').then((m) => m.RootChat),
     children: [
       {
         path: ROUTES.SERVERS,
         children: [
           {
             path: '',
-            loadComponent: () => import('@components/servers/server-channels/server-channels').then(m => m.ServerChannels),
-            outlet: 'left-sidebar'
+            loadComponent: () =>
+              import('@components/servers/server-channels/server-channels').then(
+                (m) => m.ServerChannels,
+              ),
+            outlet: 'left-sidebar',
           },
-        ]
+        ],
       },
       {
         path: ROUTES.DMS,
         children: [
           {
             path: '',
-            loadComponent: () => import('@components/users/user-banner/user-banner').then(m => m.UserBanner),
-            outlet: 'left-sidebar'
+            loadComponent: () =>
+              import('@components/users/user-banner/user-banner').then((m) => m.UserBanner),
+            outlet: 'left-sidebar',
           },
-        ]
+        ],
       },
-      { path: '', redirectTo: ROUTES.SERVERS, pathMatch: 'full' }
-    ]
+      { path: '', redirectTo: ROUTES.SERVERS, pathMatch: 'full' },
+    ],
   },
   {
     path: '**',
