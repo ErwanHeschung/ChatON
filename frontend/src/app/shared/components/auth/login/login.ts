@@ -7,7 +7,7 @@ import {
   Validators,
 } from '@angular/forms';
 
-interface RegisterForm {
+interface LoginForm {
   username: FormControl<string>;
   password: FormControl<string>;
 }
@@ -22,7 +22,7 @@ interface RegisterForm {
 export class Login {
   private readonly fb = inject(NonNullableFormBuilder);
 
-  public readonly LoginForm: FormGroup<RegisterForm> = this.fb.group({
+  public readonly LoginForm: FormGroup<LoginForm> = this.fb.group({
     username: ['', [Validators.required, Validators.minLength(3)]],
     password: ['', [Validators.required, Validators.minLength(8)]],
   });

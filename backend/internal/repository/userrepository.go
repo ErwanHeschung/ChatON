@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/ErwanHeschung/ChatON/backend/internal/models/entity"
+	"github.com/google/uuid"
 )
 
 type UserRepository struct {
@@ -20,12 +21,35 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 	}
 }
 
-func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*entity.User, error) {
-	query := `SELECT id, username, email, password FROM users WHERE email = $1 LIMIT 1`
+func (r *UserRepository) GetByID(ctx context.Context, ID uuid.UUID) (*entity.User, error) {
+	query := `SELECT id, username, email, password FROM users WHERE id = $1 LIMIT 1`
 
 	var user entity.User
 
-	err := r.db.QueryRowContext(ctx, query, email).Scan(
+	err := r.db.QueryRowContext(ctx, query, ID).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.Password,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*entity.User, error) {
+	query := `SELECT id, username, email, password FROM users WHERE username = $1 LIMIT 1`
+
+	var user entity.User
+
+	err := r.db.QueryRowContext(ctx, query, username).Scan(
 		&user.ID,
 		&user.Username,
 		&user.Email,

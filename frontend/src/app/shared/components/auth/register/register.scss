@@ -18,9 +18,21 @@ form {
 
 .field {
   width: 15rem;
+
+  input.input-error {
+    box-shadow: var(--shadow-text-error);
+  }
 }
 
 .btn {
   margin-top: 1rem;
   width: 100%;
+}
+
+.error-logo {
+  color: var(--content-error);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
 }

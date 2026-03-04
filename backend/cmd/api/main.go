@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/ErwanHeschung/ChatON/backend/configs"
 	"github.com/ErwanHeschung/ChatON/backend/internal/configloader"
 	"github.com/ErwanHeschung/ChatON/backend/internal/handlers"
 	"github.com/ErwanHeschung/ChatON/backend/internal/repository"
@@ -41,7 +42,7 @@ func main() {
 
 	addHealthCheck(mux)
 
-	if err := http.ListenAndServe(cfg.Server.Port, mux); err != nil {
+	if err := http.ListenAndServe(cfg.Server.Port, configs.SetupCORS(cfg, mux)); err != nil {
 		log.Fatal(err)
 	}
 }

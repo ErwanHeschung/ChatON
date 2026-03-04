@@ -20,6 +20,7 @@
   --content-primary: #f8fafc; /* High emphasis text */
   --content-secondary: #94a3b8; /* Medium emphasis text */
   --content-tertiary: #475569; /* Disabled/Muted text */
+  --content-error: #ff4d4d; /* Error text */
 
   /* --- BORDERS --- */
   --border-subtle: #1e293b;
@@ -36,6 +37,7 @@
   /* --- SHADOWS --- */
   --shadow-elevated: 0 4px 6px rgba(0, 0, 0, 0.1);
   --shadow-text: 0 0 0 2px color-mix(in srgb, var(--interaction-focus), transparent 80%);
+  --shadow-text-error: 0 0 0 2px color-mix(in srgb, var(--content-error), transparent 80%);
 }
 
 html,
@@ -99,7 +101,7 @@ body {
     position: absolute;
     bottom: 0;
     left: 0;
-    color: #ff4d4d;
+    color: var(--content-error);
     font-size: 0.8rem;
     margin: 0;
   }

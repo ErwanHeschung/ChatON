@@ -99,7 +99,39 @@ func (h *UserHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
     h.setAccessTokenCookie(w, response.JWTAccessToken)
     h.setRefreshTokenCookie(w, response.RefreshToken)
 
-    w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response.UserLoginOut)
+}
+
+func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
+    cookie, err := r.Cookie("refresh_token")
+    if err != nil {
+        HandleError(w, dto.ErrUnauthorized("No refresh token provided", nil))
+        return
+    }
+	
+	err = h.service.Logout(r.Context(), cookie.Value)
+	if err != nil {
+        HandleError(w, err)
+        return
+    }
+
+    h.clearCookie(w, "access_token")
+    h.clearCookie(w, "refresh_token")
+
+    w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *UserHandler) clearCookie(w http.ResponseWriter, name string) {
+    http.SetCookie(w, &http.Cookie{
+        Name:     name,
+        Value:    "",
+        Path:     "/",
+        MaxAge:   -1,
+        HttpOnly: true,
+        Secure:   true,
+        SameSite: http.SameSiteStrictMode,
+    })
 }
 
 func (h *UserHandler) setAccessTokenCookie(w http.ResponseWriter, token string) {
@@ -119,7 +151,7 @@ func (h *UserHandler) setRefreshTokenCookie(w http.ResponseWriter, token string)
     http.SetCookie(w, &http.Cookie{
         Name:     "refresh_token",
         Value:    token,
-        Path:     "/refresh",
+        Path:     "/auth/refresh",
         HttpOnly: true,
         Secure:   true,
         SameSite: http.SameSiteStrictMode,

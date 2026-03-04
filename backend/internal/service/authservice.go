@@ -32,7 +32,7 @@ Business Logic
 */
 
 func (s *AuthService) RegisterUser(ctx context.Context, req dto.UserRegisterIn) (*dto.UserRegisterOut, error) {
-    if err := s.checkEmailUniqueness(ctx, req.Email); err != nil {
+    if err := s.checkUsernameUniqueness(ctx, req.Username); err != nil {
         return nil, err
     }
 
@@ -61,7 +61,7 @@ func (s *AuthService) RegisterUser(ctx context.Context, req dto.UserRegisterIn) 
 }
 
 func (s *AuthService) LoginUser(ctx context.Context, req dto.UserLoginIn) (*dto.UserLoginTokenOut, error) {
-	user, err := s.getUserIfPresent(ctx, req.Email);
+	user, err := s.getUserIfPresent(ctx, req.Username);
     if  err != nil {
         return nil, err
     }
@@ -72,17 +72,15 @@ func (s *AuthService) LoginUser(ctx context.Context, req dto.UserLoginIn) (*dto.
         return nil, dto.ErrUnauthorized("Invalid email or password", nil)
     }
 
-	jwtAccessToken, err := s.generateJWTAccess(user.ID,s.jwtConfig)
-	refreshToken, hash := s.generateRefreshToken()
-	s.saveRefreshTokenHash(ctx,hash,user.ID)
+	tokenPair,err := s.GenerateTokenPair(ctx, user.ID)
 
     if  err != nil {
         return nil, err
     }
 
 	return &dto.UserLoginTokenOut{
-		JWTAccessToken: jwtAccessToken,
-		RefreshToken: refreshToken,
+		JWTAccessToken: tokenPair.JWTAccessToken,
+		RefreshToken: tokenPair.RefreshToken,
 		UserLoginOut: dto.UserLoginOut{
 			ID:       user.ID,
 			Username: user.Username,
@@ -91,10 +89,11 @@ func (s *AuthService) LoginUser(ctx context.Context, req dto.UserLoginIn) (*dto.
 	}, nil
 }
 
-func (s *AuthService) RefreshAccessToken(ctx context.Context, cookieValue string) (*dto.UserTokenOut, error) {
+func (s *AuthService) RefreshAccessToken(ctx context.Context, cookieValue string) (*dto.UserLoginTokenOut, error) {
     incomingHash := s.hashToken(cookieValue)
 
     storedToken, err := s.repository.GetRefreshTokenByHash(ctx, incomingHash)
+
     if err != nil {
         return nil, dto.ErrUnauthorized("Invalid session", nil)
     }
@@ -105,16 +104,45 @@ func (s *AuthService) RefreshAccessToken(ctx context.Context, cookieValue string
     }
 
     err = s.repository.DeleteRefreshToken(ctx, incomingHash)
+
     if err != nil {
         return nil, dto.ErrUnauthorized("Session already rotated", nil)
     }
 	
 	tokenPair,err := s.GenerateTokenPair(ctx, storedToken.UserID)
+
+	if err != nil {
+        return nil, err
+    }
+
+	user,err := s.repository.GetByID(ctx, storedToken.UserID)	
+
 	if err != nil {
         return nil, err
     }
 	
-	return tokenPair, nil
+	return &dto.UserLoginTokenOut{
+		JWTAccessToken: tokenPair.JWTAccessToken,
+		RefreshToken: tokenPair.RefreshToken,
+		UserLoginOut: dto.UserLoginOut{
+			ID:       user.ID,
+			Username: user.Username,
+			Email:    user.Email,
+		},
+	}, nil
+}
+
+func (s *AuthService) Logout(ctx context.Context, cookieValue string) error {
+
+    incomingHash := s.hashToken(cookieValue)
+
+    err := s.repository.DeleteRefreshToken(ctx, incomingHash)
+	
+    if err != nil {
+        return err
+    }
+
+    return nil
 }
 
 /*
@@ -122,19 +150,19 @@ Utils
 */
 
 
-func (s *AuthService) checkEmailUniqueness(ctx context.Context, email string) error {
-    user, err := s.repository.GetByEmail(ctx, email)
+func (s *AuthService) checkUsernameUniqueness(ctx context.Context, email string) error {
+    user, err := s.repository.GetByUsername(ctx, email)
     if err != nil {
         return err
     }
     if user != nil {
-        return dto.ErrConflict("Email already registered", nil)
+        return dto.ErrConflict("Username already registered", nil)
     }
     return nil
 }
 
-func (s *AuthService) getUserIfPresent(ctx context.Context, email string) (*entity.User, error) {
-    user, err := s.repository.GetByEmail(ctx, email)
+func (s *AuthService) getUserIfPresent(ctx context.Context, username string) (*entity.User, error) {
+    user, err := s.repository.GetByUsername(ctx, username)
     if err != nil {
         return nil,err
     }

@@ -19,6 +19,7 @@ type Config struct {
 
 type ServerConfig struct {
 	Port string
+	AllowedOrigin string
 }
 
 type JWTConfig struct {
