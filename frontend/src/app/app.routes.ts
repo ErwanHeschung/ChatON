@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { guestGuard } from '@guards/guest.guard';
 
 export const ROUTES = {
   PUBLIC: '/',
@@ -11,6 +12,7 @@ export const routes: Routes = [
   {
     path: '',
     loadComponent: () => import('@pages/landing/landing.page').then((m) => m.LandingPage),
+    canActivate: [guestGuard],
   },
   {
     path: ROUTES.CHAT,

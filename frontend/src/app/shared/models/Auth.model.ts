@@ -14,3 +14,9 @@ export interface ConnectedUser {
   username: string;
   email: string;
 }
+
+export enum AuthStatus {
+  LOADING,
+  UNAUTHENTICATED,
+  AUTHENTICATED,
+}

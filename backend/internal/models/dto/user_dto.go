@@ -3,7 +3,7 @@ package dto
 import "github.com/google/uuid"
 
 type UserRegisterIn struct {
-	Username string `json:"username" validate:"required,min=5"`
+	Username string `json:"username" validate:"required,min=3"`
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8"`
 }
@@ -15,7 +15,7 @@ type UserRegisterOut struct {
 }
 
 type UserLoginIn struct {
-	Username    string `json:"email" validate:"required,email"`
+	Username    string `json:"username" validate:"required,min=3"`
 	Password string `json:"password" validate:"required,min=8"`
 }
 

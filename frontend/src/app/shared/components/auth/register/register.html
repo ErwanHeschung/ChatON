@@ -68,9 +68,10 @@
     }
   </div>
 
-  @if (serverErrorMessage()) {
-    <small class="global-error">
-      <lucide-icon [img]="errorIcon" size="15"></lucide-icon> {{ serverErrorMessage() }}
+  @if (registerForm.hasError('unknown')) {
+    <small class="error-logo">
+      <lucide-icon [img]="errorIcon" size="15"></lucide-icon>
+      Something went wrong. Please try again
     </small>
   }
 

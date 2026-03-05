@@ -6,9 +6,14 @@ import {
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms';
+import { Router } from '@angular/router';
+import { ConnectedUser } from '@models/Auth.model';
 import { AuthService } from '@services/auth.service';
 import { CircleAlert, LucideAngularModule } from 'lucide-angular';
 import { finalize } from 'rxjs';
+import { ROUTES } from 'src/app/app.routes';
+import { ConnectedUserStore } from '@stores/connected-user.store';
+import { ModalService } from '@services/modal.service';
 
 interface RegisterForm {
   username: FormControl<string>;
@@ -25,12 +30,14 @@ interface RegisterForm {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Register {
-  public serverErrorMessage = signal<string | null>(null);
   public isPending = signal<boolean>(false);
   public errorIcon = CircleAlert;
 
+  private readonly router = inject(Router);
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly authService = inject(AuthService);
+  private readonly connectedUserStore = inject(ConnectedUserStore);
+  private readonly modalService = inject(ModalService);
 
   public readonly registerForm: FormGroup<RegisterForm> = this.fb.group(
     {
@@ -55,15 +62,16 @@ export class Register {
         .register(this.registerForm.getRawValue())
         .pipe(finalize(() => this.isPending.set(false)))
         .subscribe({
-          next: (user) => {
-            console.log('Welcome aboard!', user);
+          next: (user: ConnectedUser) => {
+            this.connectedUserStore.setLoggedInUser(user);
+            this.modalService.close();
+            this.router.navigate([ROUTES.CHAT]);
           },
           error: (err) => {
             if (err.status === 409) {
-              this.serverErrorMessage.set(null);
               this.registerForm.controls.username.setErrors({ conflict: true });
             } else {
-              this.serverErrorMessage.set('Something went wrong. Please try again.');
+              this.registerForm.setErrors({ unknown: true });
             }
           },
         });

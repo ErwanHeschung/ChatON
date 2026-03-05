@@ -24,6 +24,8 @@
       "@layouts/*": ["src/app/shared/layouts/*"],
       "@pipes/*": ["src/app/shared/pipes/*"],
       "@services/*": ["src/app/core/services/*"],
+      "@guards/*": ["src/app/core/guards/*"],
+      "@stores/*": ["src/app/core/stores/*"],
       "@pages/*": ["src/app/pages/*"],
       "@environments/*":["src/environments/*"]
     }
