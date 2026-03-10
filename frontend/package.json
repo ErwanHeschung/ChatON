@@ -46,7 +46,7 @@
     "@angular/cli": "^21.2.0",
     "@angular/compiler-cli": "^21.2.0",
     "@angular/localize": "^21.2.0",
-    "angular-eslint": "21.2.0",
+    "angular-eslint": "21.3.0",
     "eslint": "^9.39.2",
     "jsdom": "^28.1.0",
     "prettier": "^3.8.1",
