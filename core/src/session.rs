@@ -233,6 +233,10 @@ impl Session {
         &self.account
     }
 
+    pub(crate) fn dir(&self) -> &Path {
+        &self.dir
+    }
+
     /// The secret key (`nsec`), for a backup or a device link.
     pub fn export_key(&self) -> String {
         match self.keys.secret_key().to_bech32() {
@@ -244,9 +248,17 @@ impl Session {
     /// Forgets the account on this device: keychain entry, account file and
     /// local history. Without another device or a backup, the account is lost.
     pub async fn logout(&self) -> Result<()> {
+        // Best effort: an instance that's down shouldn't keep me logged in.
+        drop(self.push_unregister().await);
         self.close().await;
         Identity::delete(&self.account.handle)?;
-        for file in [ACCOUNT_FILE, EVENTS_DB, "events.db-wal", "events.db-shm"] {
+        for file in [
+            ACCOUNT_FILE,
+            EVENTS_DB,
+            "events.db-wal",
+            "events.db-shm",
+            crate::push::PUSH_FILE,
+        ] {
             match std::fs::remove_file(self.dir.join(file)) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
                 _ => {}

@@ -20,6 +20,7 @@ import (
 
 	"github.com/ErwanHeschung/ChatON/server/internal/handlers"
 	"github.com/ErwanHeschung/ChatON/server/internal/models/dto"
+	"github.com/ErwanHeschung/ChatON/server/internal/nip98"
 )
 
 const ClaimPath = "/api/handle"
@@ -137,7 +138,7 @@ func (d *Directory) claim(w http.ResponseWriter, r *http.Request) {
 		handlers.HandleError(w, dto.ErrInvalidInput("Unreadable body", err))
 		return
 	}
-	pubkey, err := verifyNIP98(r, d.publicURL+ClaimPath, body, d.now())
+	pubkey, err := nip98.Verify(r, d.publicURL+ClaimPath, body, d.now())
 	if err != nil {
 		handlers.HandleError(w, dto.ErrUnauthorized("Invalid NIP-98 authorization", err))
 		return

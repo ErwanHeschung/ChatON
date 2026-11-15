@@ -12,6 +12,7 @@ pub mod event;
 pub mod identity;
 pub mod link;
 pub mod media;
+pub mod push;
 pub mod session;
 
 pub use nostr;

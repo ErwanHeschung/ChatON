@@ -28,3 +28,4 @@ go.work
 *.bolt
 relay.key
 blobs/
+vapid.key

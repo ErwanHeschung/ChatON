@@ -34,6 +34,8 @@ export interface CmdError {
     | 'refused'
     | 'too_large'
     | 'not_allowed'
+    | 'no_distributor'
+    | 'unsupported'
     | 'invalid'
     | 'keychain'
     | 'network'

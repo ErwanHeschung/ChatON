@@ -32,6 +32,32 @@
   }
 </section>
 
+@if (account.push() !== 'unsupported') {
+  <section>
+    <h3 i18n="@@push-title">Notifications</h3>
+    @switch (account.push()) {
+      @case ('on') {
+        <p class="hint" i18n="@@push.on">
+          On. Your instance wakes this phone when a message arrives; the content stays encrypted.
+        </p>
+      }
+      @case ('pending') {
+        <p class="hint" i18n="@@push.pending">Setting up…</p>
+      }
+      @case ('no_distributor') {
+        <p class="hint" i18n="@@push.no-distributor">
+          Install a UnifiedPush app, such as ntfy, to get notifications. Then try again.
+        </p>
+        <button class="btn" (click)="account.enablePush()" i18n="@@push.retry">Try again</button>
+      }
+      @default {
+        <p class="error" i18n="@@push.failed">Couldn't turn notifications on.</p>
+        <button class="btn" (click)="account.enablePush()" i18n="@@push.retry">Try again</button>
+      }
+    }
+  </section>
+}
+
 <section>
   <h3 i18n="@@link-title">Link a device</h3>
   @switch (step()) {

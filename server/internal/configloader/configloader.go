@@ -16,14 +16,16 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port           string   // SERVER_PORT, e.g. ":8080"
-	AllowedOrigin  string   // SERVER_ALLOWEDORIGIN, browser CORS (dev only, Tauri goes through core)
-	PublicURL      string   // SERVER_PUBLICURL, e.g. "https://chaton.example" (NIP-98 "u", NIP-05 relays)
-	DBPath         string   // SERVER_DBPATH, bbolt file (events + handles)
-	Name           string   // SERVER_NAME, shown in NIP-11
-	BlockedPubkeys []string // SERVER_BLOCKEDPUBKEYS, comma-separated hex keys
-	RelayKey       string   // SERVER_RELAYKEY, hex: signs group state; default relay.key next to the DB
-	BlobDir        string   // SERVER_BLOBDIR, uploaded files; default blobs/ next to the DB
+	Port             string   // SERVER_PORT, e.g. ":8080"
+	AllowedOrigin    string   // SERVER_ALLOWEDORIGIN, browser CORS (dev only, Tauri goes through core)
+	PublicURL        string   // SERVER_PUBLICURL, e.g. "https://chaton.example" (NIP-98 "u", NIP-05 relays)
+	DBPath           string   // SERVER_DBPATH, bbolt file (events + handles)
+	Name             string   // SERVER_NAME, shown in NIP-11
+	BlockedPubkeys   []string // SERVER_BLOCKEDPUBKEYS, comma-separated hex keys
+	RelayKey         string   // SERVER_RELAYKEY, hex: signs group state; default relay.key next to the DB
+	BlobDir          string   // SERVER_BLOBDIR, uploaded files; default blobs/ next to the DB
+	VAPIDKey         string   // SERVER_VAPIDKEY, base64url P-256: signs pushes; default vapid.key next to the DB
+	PushAllowPrivate bool     // SERVER_PUSHALLOWPRIVATE, dev only: push to private IPs and plain http
 }
 
 func LoadConfig() (*Config, error) {

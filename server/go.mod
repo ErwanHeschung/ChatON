@@ -4,6 +4,7 @@ go 1.26.10
 
 require (
 	fiatjaf.com/nostr v0.0.0-20261109232600-26892fc52a80
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/btcsuite/btcd/btcec/v2 v2.5.1
 	github.com/go-playground/validator/v10 v10.30.6
 	github.com/joho/godotenv v1.5.1
@@ -36,6 +37,7 @@ require (
 	github.com/go-playground/locales v0.14.2 // indirect
 	github.com/go-playground/universal-translator v0.18.2 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
+	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect

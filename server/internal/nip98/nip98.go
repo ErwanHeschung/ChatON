@@ -1,4 +1,5 @@
-package directory
+// Package nip98 checks HTTP requests signed with a Nostr event (NIP-98).
+package nip98
 
 import (
 	"crypto/sha256"
@@ -13,11 +14,11 @@ import (
 	"fiatjaf.com/nostr"
 )
 
-const nip98MaxSkew = 60 * time.Second
+const maxSkew = 60 * time.Second
 
-// verifyNIP98 checks an `Authorization: Nostr <base64 event>` header (NIP-98)
+// Verify checks an `Authorization: Nostr <base64 event>` header (NIP-98)
 // for a request to url with the given body, and returns the signer's pubkey.
-func verifyNIP98(r *http.Request, url string, body []byte, now time.Time) (nostr.PubKey, error) {
+func Verify(r *http.Request, url string, body []byte, now time.Time) (nostr.PubKey, error) {
 	b64, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Nostr ")
 	if !ok {
 		return nostr.ZeroPK, errors.New("missing Nostr authorization")
@@ -36,7 +37,7 @@ func verifyNIP98(r *http.Request, url string, body []byte, now time.Time) (nostr
 	if !ev.CheckID() || !ev.VerifySignature() {
 		return nostr.ZeroPK, errors.New("bad signature")
 	}
-	if d := now.Sub(ev.CreatedAt.Time()); d > nip98MaxSkew || d < -nip98MaxSkew {
+	if d := now.Sub(ev.CreatedAt.Time()); d > maxSkew || d < -maxSkew {
 		return nostr.ZeroPK, errors.New("expired")
 	}
 	sum := sha256.Sum256(body)

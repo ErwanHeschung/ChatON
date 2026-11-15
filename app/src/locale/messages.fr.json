@@ -122,6 +122,12 @@
     "group.invalid": "Un groupe a un nom et de 2 à 10 personnes",
     "group.unreachable": "Impossible de joindre l'instance de chaque membre",
     "group.rename": "Renommer",
-    "group.add-people": "Ajouter des personnes"
+    "group.add-people": "Ajouter des personnes",
+    "push-title": "Notifications",
+    "push.on": " Activées. Votre instance réveille ce téléphone quand un message arrive ; le contenu reste chiffré. ",
+    "push.pending": "Configuration…",
+    "push.no-distributor": " Installez une app UnifiedPush, comme ntfy, pour recevoir les notifications. Puis réessayez. ",
+    "push.retry": "Réessayer",
+    "push.failed": "Impossible d'activer les notifications."
   }
 }

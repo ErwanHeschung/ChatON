@@ -33,3 +33,7 @@ func ErrConflict(msg string, err error) *AppError {
 func ErrUnauthorized(msg string, err error) *AppError {
 	return &AppError{Code: "Unauthorized", Message: msg, Status: http.StatusUnauthorized, RawErr: err}
 }
+
+func ErrForbidden(msg string, err error) *AppError {
+	return &AppError{Code: "FORBIDDEN", Message: msg, Status: http.StatusForbidden, RawErr: err}
+}

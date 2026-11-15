@@ -23,7 +23,8 @@ Règle pour toute la feuille de route : chaque étape part d'une NIP et d'une bi
 | Messages privés (déjà E2EE) | NIP-17 + NIP-44 + NIP-59 | `nostr` (Rust) |
 | Communautés | NIP-29 (groupes hébergés par un relais) + NIP-51 (10009) | `fiatjaf.com/nostr/nip29` + règles maison |
 | Fichiers et médias | Blossom (BUD-01, 02) + NIP-17 kind 15 + NIP-92 `imeta` | `fiatjaf.com/nostr/khatru/blossom`, `nostr-blossom` (Rust), `aes-gcm` |
-| Auth HTTP (jeton LiveKit) | NIP-98 | `fiatjaf.com/nostr` |
+| Notifications push | WebPush (RFC 8030, 8291, 8292) + UnifiedPush | `webpush-go`, connecteur UnifiedPush (Kotlin), `tauri-plugin-notification` |
+| Auth HTTP (push, jeton LiveKit) | NIP-98 | `fiatjaf.com/nostr` |
 | Groupes chiffrés | NIP-17 à plusieurs destinataires ; MLS (Marmot) plus tard | `nostr` (Rust) |
 
 Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape 4**. On avance donc une partie de l'étape 7, et on évite de construire des MP en clair qu'il faudrait jeter ensuite.
@@ -119,9 +120,16 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 - Limites connues : pas de confidentialité persistante (comme les MP), membres figés, coût linéaire en nombre de membres.
 - Plus tard : MLS via Marmot quand il sera publié et stable (confidentialité persistante, membres modifiables) ; quitter ou masquer un groupe ; photo de groupe ; demandes de message des inconnus.
 
-## Étape 8 : notifications push
+## Étape 8 : notifications et push ✅
 
-- Passerelle Go : l'appareil enregistre un jeton chiffré, et la passerelle envoie des push vides pour le réveiller (APNs, FCM, UnifiedPush). L'app récupère et déchiffre en local. Le plugin mobile Tauri est écrit en Swift et en Kotlin.
+- Portée (2026-11-15) : notifications sur desktop, première version Android avec un vrai push. iOS attend un Mac (Xcode, compte développeur Apple).
+- Push Android par **UnifiedPush** : pas de compte Google, adapté à l'auto-hébergement. L'utilisateur installe un distributeur (ntfy, par exemple). Les plugins Tauri existants ne gèrent UnifiedPush que sur Linux, d'où un petit code Kotlin à nous.
+- Modèle (`spec/federation.md`, notifications push) : l'appareil enregistre son adresse WebPush sur **sa propre instance** (`/api/push`, NIP-98). Un gift wrap pour un utilisateur local déclenche un WebPush chiffré (RFC 8291) au contenu constant, signé VAPID (`SERVER_VAPIDKEY` ou `vapid.key`). Pas de push pour la copie à soi-même publiée par un de mes appareils authentifiés. Un push par adresse toutes les 10 s au plus, adresses mortes (404/410) oubliées, adresses non publiques refusées (pas de SSRF).
+- `server/internal/push` (NIP-98 déplacé dans `internal/nip98`, partagé avec l'annuaire). `core/src/push.rs` : clé VAPID, inscription, désinscription à la déconnexion.
+- Desktop : notification système pour un MP reçu quand la fenêtre n'a pas le focus (`tauri-plugin-notification`).
+- Android : projet `app/src-tauri/gen/android` versionné. Clé dans le Keystore (`android-native-keyring-store`). `PushPlugin.kt` (inscription UnifiedPush), `ChatonPushService.kt` (notification générique « Nouveaux messages », remplacée à chaque push, pas quand l'app est au premier plan). Réglages : état des notifications et lien vers ntfy.
+- **Terminé quand :** un MP reçu application fermée réveille le téléphone, et ouvrir l'app l'affiche ; écrire depuis un de mes appareils ne réveille pas les autres. Validé par `server/internal/push/push_test.go` (déchiffrement du push, copie à soi, 410, plafond, règles d'adresse), `core/tests/e2e.rs` et à la main sur un téléphone.
+- Plus tard : iOS (APNs, Mac nécessaire), repli FCM, aperçu du contenu sur Android (`core` dans le service de push), notifications des salons (mentions), sourdine par conversation.
 
 ## Étape 9 : voix et vidéo
 

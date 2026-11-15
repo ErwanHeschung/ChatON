@@ -14,6 +14,7 @@ import (
 	"github.com/ErwanHeschung/ChatON/server/internal/configloader"
 	"github.com/ErwanHeschung/ChatON/server/internal/directory"
 	"github.com/ErwanHeschung/ChatON/server/internal/media"
+	"github.com/ErwanHeschung/ChatON/server/internal/push"
 	"github.com/ErwanHeschung/ChatON/server/internal/relay"
 )
 
@@ -68,6 +69,21 @@ func main() {
 
 	mux := rl.Router() // khatru serves WebSocket + NIP-11 on "/", the rest falls through here
 	dir.Register(mux)
+
+	// Push (spec/federation.md): wakes local users' phones when a DM arrives.
+	vapid, err := push.LoadVAPIDKey(s.VAPIDKey, filepath.Join(filepath.Dir(s.DBPath), "vapid.key"))
+	if err != nil {
+		log.Fatal("Cannot load VAPID key:", err)
+	}
+	if s.PushAllowPrivate {
+		log.Println("SERVER_PUSHALLOWPRIVATE: pushes may go to private addresses (dev only)")
+	}
+	pusher, err := push.New(db.DB, dir, s.PublicURL, vapid, s.PushAllowPrivate)
+	if err != nil {
+		log.Fatal("Cannot init push:", err)
+	}
+	pusher.Bind(rl)
+	pusher.Register(mux)
 
 	// Files (spec § 10): own index store, never the relay's.
 	dataDir := filepath.Dir(s.DBPath)

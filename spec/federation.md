@@ -73,6 +73,17 @@ L'instance sert aussi les fichiers (`protocol.md` § 10), sur le même port que 
 - `/mirror` (le serveur irait chercher une URL distante), `/media` et `/report` sont désactivés.
 - Stockage : un fichier par blob dans `SERVER_BLOBDIR` (par défaut `blobs/` à côté de la base), et l'index « qui a envoyé quoi » dans `blobs.bolt`, séparé des événements du relais.
 
+### Notifications push (WebPush)
+
+L'instance réveille les téléphones de ses utilisateurs quand un MP leur arrive. Le push ne contient rien d'utile : le téléphone affiche une notification générique, puis récupère et déchiffre les messages quand on ouvre l'app. Sur Android, le push passe par **UnifiedPush** : l'utilisateur installe un distributeur (ntfy, par exemple) qui donne une adresse WebPush à l'app.
+
+- **Clé VAPID** (RFC 8292, P-256) : `SERVER_VAPIDKEY` (privée, base64url), sinon `vapid.key` (droits `0600`) créé à côté de la base, à sauvegarder avec elle. `GET /api/push` renvoie `{"vapid": "<clé publique, base64url>"}`.
+- **Inscription** : `POST /api/push` et `DELETE /api/push`, signés en NIP-98 par une clé qui a un handle ici. Corps : `{"endpoint", "p256dh", "auth"}` (clés WebPush en base64url). L'adresse doit être en `https`, faire 1000 octets au plus et pointer vers une IP publique. 10 adresses au plus par clé : la plus ancienne part.
+- **Quand** : un gift wrap (`1059`) enregistré pour un `p` local qui a des adresses. **Sauf** si la connexion qui l'a publié est authentifiée (NIP-42) avec ce même `p` : c'est la copie à soi-même d'un de mes appareils.
+- **Quoi** : un WebPush chiffré (RFC 8291, `aes128gcm`) au contenu constant `{"v":0}`, avec `Topic: chaton` (le service ne garde que le dernier), `Urgency: high` et `TTL` d'un jour. Un push par adresse toutes les 10 secondes au plus. Une réponse 404 ou 410 supprime l'adresse.
+- **Vie privée** : le service de push ne voit qu'un message chiffré et son heure, jamais l'auteur ni le contenu. L'instance savait déjà qui reçoit un gift wrap.
+- Le serveur refuse les adresses qui mènent à une IP non publique, à chaque envoi (pas de SSRF). Pour le développement seulement, `SERVER_PUSHALLOWPRIVATE=1` lève cette règle.
+
 ## 4. Migration de compte
 
 L'utilisateur garde sa clé et change d'instance :

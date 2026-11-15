@@ -95,14 +95,14 @@ Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé
 │   ├── federation.md        # .well-known, découverte, migration
 │   └── test-vectors/        # JSON partagé Rust/Go
 ├── core/                    # crate Rust `chaton-core` (lib)
-│   ├── src/{identity,event,dm,session,link,community,media}.rs
+│   ├── src/{identity,event,dm,session,link,community,media,push}.rs
 │   └── tests/{vectors,e2e}.rs  # vecteurs à l'octet près, bout en bout contre un serveur
 ├── app/                     # Tauri 2
 │   ├── src/                 # UI web (TS)
-│   └── src-tauri/           # commandes Tauri → core
+│   └── src-tauri/           # commandes Tauri → core ; gen/android versionné (Kotlin du push)
 └── server/                  # Go
     ├── cmd/server/
-    └── internal/{relay,directory,push,community,media,federation}/
+    └── internal/{relay,directory,nip98,push,community,media,federation}/
 ```
 
 ## Commandes
@@ -116,7 +116,15 @@ Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé
 #   read -rsp "Mot de passe : " PW && printf %s "$PW" | gnome-keyring-daemon --daemonize --unlock --components=secrets >/dev/null; unset PW
 # Vérifier : busctl --user call org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service ReadAlias s default
 #   → doit renvoyer …/collection/login
+# Notifications sur WSL : pas de serveur de notifications. `sudo apt install dunst libnotify-bin`, puis `dunst &` dans un
+# terminal à chaque démarrage de WSL (lancé par systemd, il ne voit pas l’écran et plante).
 cd app && npm ci && npm run tauri dev
+# Android (téléphone en débogage USB ou adb Wi-Fi ; le SDK et le NDK 28 dans ~/Android/Sdk). Le téléphone
+# joint l'instance par l'adresse LAN du PC : WSL en réseau « mirrored » ou redirection de port.
+# Notifications : installer ntfy (distributeur UnifiedPush) sur le téléphone.
+#   export NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358
+cd app && npm run tauri android dev
+cd app && npm run tauri android build -- --apk --debug --target aarch64
 # second compte sur la même machine (réutilise le serveur de dev de la première fenêtre)
 cd app && CHATON_PROFILE=bob src-tauri/target/debug/chaton-app
 cd app && npm run build && ./node_modules/.bin/eslint src
@@ -126,7 +134,9 @@ cd server && go vet ./... && go test ./...
 cd server && SERVER_PORT=:8080 SERVER_PUBLICURL=http://localhost:8080 go run ./cmd/server
 # autres variables : SERVER_DBPATH (chaton.bolt, bbolt), SERVER_NAME, SERVER_BLOCKEDPUBKEYS (hex, séparées par des virgules),
 # SERVER_RELAYKEY (hex, clé qui signe l'état des communautés ; sinon relay.key à côté de la base, à sauvegarder avec elle),
-# SERVER_BLOBDIR (fichiers envoyés, Blossom ; sinon blobs/ à côté de la base, index dans blobs.bolt)
+# SERVER_BLOBDIR (fichiers envoyés, Blossom ; sinon blobs/ à côté de la base, index dans blobs.bolt),
+# SERVER_VAPIDKEY (base64url, signe les push ; sinon vapid.key à côté de la base, à sauvegarder avec elle),
+# SERVER_PUSHALLOWPRIVATE=1 (dev seulement : push vers des adresses privées, requis par les tests e2e)
 
 # vecteurs de test (spec/test-vectors), à régénérer après tout changement de cas
 cd server && go run ./cmd/genvectors > ../spec/test-vectors/events.json
@@ -135,11 +145,11 @@ cd server && go run ./cmd/genvectors > ../spec/test-vectors/events.json
 ```bash
 # core
 cd core && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
-# bout en bout, serveur lancé sur :8099 (SERVER_PORT=:8099 SERVER_PUBLICURL=http://localhost:8099)
+# bout en bout, serveur lancé sur :8099 (SERVER_PORT=:8099 SERVER_PUBLICURL=http://localhost:8099 SERVER_PUSHALLOWPRIVATE=1)
 cd core && CHATON_TEST_SERVER=http://localhost:8099 cargo test --test e2e -- --ignored
 ```
 
-À venir : `npm run tauri android dev | ios dev` (mobile, étape 8).
+iOS (`npm run tauri ios dev`) attend un Mac.
 
 ## Conventions
 

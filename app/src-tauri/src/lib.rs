@@ -1,5 +1,7 @@
 //! Tauri shell: thin commands over `chaton_core::session`. No logic, no crypto here.
 
+mod push;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -91,9 +93,12 @@ async fn start(app: &AppHandle, state: &App, session: Session) -> Account {
     let (listener, handle) = (session.clone(), app.clone());
     tauri::async_runtime::spawn(async move {
         listener
-            .listen(move |update| {
+            .listen(|update| {
                 let _ = match update {
-                    Update::Dm { message } => handle.emit("dm", message),
+                    Update::Dm { message } => {
+                        notify(&handle, &listener, &message);
+                        handle.emit("dm", message)
+                    }
                     other => handle.emit("community", other),
                 };
             })
@@ -101,6 +106,30 @@ async fn start(app: &AppHandle, state: &App, session: Session) -> Account {
     });
     *state.session.lock().await = Some(session);
     account
+}
+
+/// Desktop: an OS notification for a message from someone else while the
+/// window isn't focused. Android shows a generic one on push instead.
+fn notify(app: &AppHandle, session: &Arc<Session>, message: &Message) {
+    let focused = app
+        .get_webview_window("main")
+        .and_then(|w| w.is_focused().ok())
+        .unwrap_or(true);
+    if cfg!(mobile) || focused || message.sender == session.account().pubkey {
+        return;
+    }
+    let body = match &message.attachment {
+        Some(file) => format!("📎 {}", file.name),
+        None if message.text.is_empty() => return, // a group rename
+        None => message.text.chars().take(200).collect(),
+    };
+    let (app, session, sender) = (app.clone(), session.clone(), message.sender);
+    tauri::async_runtime::spawn(async move {
+        use tauri_plugin_notification::NotificationExt;
+        let peer = session.peer(sender).await;
+        let title = peer.handle.map_or(peer.npub, |h| format!("@{h}"));
+        drop(app.notification().builder().title(title).body(body).show());
+    });
 }
 
 async fn session(state: &App) -> Res<Arc<Session>> {
@@ -483,8 +512,48 @@ async fn save_attachment(state: State<'_, App>, attachment: Attachment, path: Pa
     std::fs::write(path, bytes).map_err(internal)
 }
 
+/// Android: asks UnifiedPush for this device's endpoint and registers it on my
+/// instance (spec/federation.md). `no_distributor`: install ntfy (or another).
+#[tauri::command]
+async fn enable_push(app: AppHandle, state: State<'_, App>) -> Res<()> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri::plugin::mobile::PluginInvokeError;
+        let session = session(&state).await?;
+        let vapid = session.vapid_key().await?;
+        let plugin = app.state::<push::Handle<tauri::Wry>>();
+        let endpoint: chaton_core::push::Endpoint = plugin
+            .0
+            .run_mobile_plugin_async("register", serde_json::json!({ "vapid": vapid }))
+            .await
+            .map_err(|e| match e {
+                PluginInvokeError::InvokeRejected(r)
+                    if r.code.as_deref() == Some("no_distributor") =>
+                {
+                    CmdError {
+                        code: "no_distributor",
+                        message: r.message.unwrap_or_default(),
+                    }
+                }
+                other => internal(other),
+            })?;
+        session.push_register(&endpoint).await?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, state);
+        Err(CmdError {
+            code: "unsupported",
+            message: "push is for Android; desktop notifies while running".into(),
+        })
+    }
+}
+
 /// Registers the OS keychain as `keyring-core`'s default store (CLAUDE.md, Secrets).
 fn keychain() -> Result<(), keyring_core::Error> {
+    #[cfg(target_os = "android")]
+    keyring_core::set_default_store(android_native_keyring_store::Store::new()?);
     #[cfg(target_os = "linux")]
     keyring_core::set_default_store(zbus_secret_service_keyring_store::store::Store::new()?);
     #[cfg(target_os = "windows")]
@@ -502,6 +571,8 @@ pub fn run() {
     }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(push::init())
         .manage(App::default())
         .invoke_handler(tauri::generate_handler![
             current_account,
@@ -538,6 +609,7 @@ pub fn run() {
             open_attachment,
             picture,
             save_attachment,
+            enable_push,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,7 +1,7 @@
 //! End to end against a running ChatON server (step 4 "done when"):
 //!
 //! ```sh
-//! cd server && SERVER_PORT=:8099 SERVER_PUBLICURL=http://localhost:8099 go run ./cmd/server
+//! cd server && SERVER_PORT=:8099 SERVER_PUBLICURL=http://localhost:8099 SERVER_PUSHALLOWPRIVATE=1 go run ./cmd/server
 //! cd core && CHATON_TEST_SERVER=http://localhost:8099 cargo test --test e2e -- --ignored
 //! ```
 
@@ -577,8 +577,9 @@ async fn a_named_group_of_three() {
         (convs.len() == 2).then_some(convs)
     })
     .await;
-    assert_eq!(convs[0].last.text, "rien qu'à toi");
-    assert_eq!(convs[0].room.len(), 2);
+    // Same second as the rename: no defined order, find it by its room.
+    let one_to_one = convs.iter().find(|c| c.room.len() == 2).expect("1:1");
+    assert_eq!(one_to_one.last.text, "rien qu'à toi");
 
     // 11 members: refused before sending.
     let crowd: Vec<_> = (0..10)
@@ -586,4 +587,69 @@ async fn a_named_group_of_three() {
         .collect();
     let res = alice.send_dm(&crowd, "trop").await;
     assert!(matches!(res, Err(Error::Invalid(_))), "{res:?}");
+}
+
+/// A stand-in push service on 127.0.0.1: answers 201 and reports each push.
+async fn push_service() -> (String, tokio::sync::mpsc::UnboundedReceiver<()>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/up/bob", listener.local_addr().unwrap());
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        while let Ok((mut conn, _)) = listener.accept().await {
+            let mut buf = vec![0; 16 * 1024];
+            drop(conn.read(&mut buf).await);
+            drop(
+                conn.write_all(b"HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n")
+                    .await,
+            );
+            tx.send(()).ok();
+        }
+    });
+    (url, rx)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a running server, see the module docs"]
+async fn a_dm_wakes_the_other_device_by_push() {
+    use chaton_core::push::Endpoint;
+    let (server, _) = setup();
+    let alice = Session::register(&temp_dir("alice"), &server, &unique("alice"))
+        .await
+        .unwrap();
+    let bob_dir = temp_dir("bob");
+    let bob = Session::register(&bob_dir, &server, &unique("bob"))
+        .await
+        .unwrap();
+    let (pk_alice, pk_bob) = (alice.account().pubkey, bob.account().pubkey);
+
+    let vapid = bob.vapid_key().await.unwrap();
+    assert_eq!(vapid.len(), 87, "{vapid}");
+    let (url, mut pushes) = push_service().await;
+    // P-256 generator point: a valid key, the content is never read here.
+    let endpoint = Endpoint {
+        endpoint: url,
+        p256dh: "BGsX0fLhLEJH-Lzm5WOkQPJ3A32BLeszoPShOUXYmMKWT-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU".into(),
+        auth: "AAECAwQFBgcICQoLDA0ODw".into(),
+    };
+    bob.push_register(&endpoint)
+        .await
+        .expect("SERVER_PUSHALLOWPRIVATE=1 on the server?");
+
+    // Bob writes: his self copy comes from his own device, no push.
+    bob.send_dm(&[pk_alice], "salut").await.unwrap();
+    let early = tokio::time::timeout(Duration::from_millis(1500), pushes.recv()).await;
+    assert!(early.is_err(), "bob's own message woke him");
+
+    // Alice writes: bob's phone is woken.
+    alice.send_dm(&[pk_bob], "réveille-toi").await.unwrap();
+    tokio::time::timeout(Duration::from_secs(10), pushes.recv())
+        .await
+        .expect("no push")
+        .unwrap();
+
+    // Logout unregisters this device.
+    assert!(bob_dir.join("push.json").exists());
+    bob.logout().await.unwrap();
+    assert!(!bob_dir.join("push.json").exists());
 }
