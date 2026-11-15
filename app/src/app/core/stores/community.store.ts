@@ -19,6 +19,7 @@ import {
   ROLE_MODERATOR,
 } from '@models/Community.model';
 import { DmStore } from '@stores/dm.store';
+import { MediaService } from '@services/media.service';
 
 /** My communities, the open channel and its members. Permissions are checked by the relay. */
 export const CommunityStore = signalStore(
@@ -30,6 +31,7 @@ export const CommunityStore = signalStore(
     messages: [] as ChannelMessage[],
     members: [] as Member[],
     error: null as CmdError['code'] | null,
+    sendError: null as CmdError['code'] | null,
   }),
   withComputed((store) => {
     const current = computed(() => store.communities().find((c) => c.id === store.selected()));
@@ -41,7 +43,7 @@ export const CommunityStore = signalStore(
       ),
     };
   }),
-  withMethods((store, dm = inject(DmStore)) => {
+  withMethods((store, dm = inject(DmStore), media = inject(MediaService)) => {
     /** Runs a command, keeping its error code for the UI. */
     const run = async <T>(command: string, args?: Record<string, unknown>) => {
       try {
@@ -165,7 +167,38 @@ export const CommunityStore = signalStore(
           return;
         }
         const res = await run<ChannelMessage>('send_channel', { community, channel, text });
+        patchState(store, { sendError: res.ok ? null : store.error() });
         if (res.ok) receive(res.result);
+      },
+
+      async sendFile(file: File) {
+        const [community, channel] = [store.selected(), store.channel()];
+        if (!community || !channel) {
+          return;
+        }
+        try {
+          receive(
+            await media.upload<ChannelMessage>('send_channel_file', file, { community, channel }),
+          );
+          patchState(store, { sendError: null });
+        } catch (e) {
+          patchState(store, { sendError: (e as CmdError).code ?? 'internal' });
+        }
+      },
+
+      /** Admin: new community picture (public, on this community's instance). */
+      async setPicture(file: File) {
+        const community = store.selected();
+        if (!community) {
+          return;
+        }
+        try {
+          await media.upload('set_community_picture', file, { community });
+          patchState(store, { error: null });
+          await load();
+        } catch (e) {
+          patchState(store, { error: (e as CmdError).code ?? 'internal' });
+        }
       },
 
       async remove(id: string) {

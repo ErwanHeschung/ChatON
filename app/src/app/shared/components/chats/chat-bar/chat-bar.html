@@ -6,9 +6,21 @@
   (click)="isPickerOpen = !isPickerOpen"
 ></svg>
 
+<button
+  type="button"
+  class="attach"
+  (click)="picker.click()"
+  title="Attach a file"
+  i18n-title="@@chat.attach"
+>
+  <svg [lucideIcon]="attachIcon"></svg>
+</button>
+<input #picker type="file" hidden (change)="pick(picker)" />
+
 <input
   #text
   (keydown.enter)="submit(text)"
+  (paste)="paste($event)"
   placeholder="Message"
   i18n-placeholder="@@chat.message-placeholder"
   aria-label="Message"

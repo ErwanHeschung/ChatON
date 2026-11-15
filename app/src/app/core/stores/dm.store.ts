@@ -5,6 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { CmdError } from '@models/Auth.model';
 import { Conversation, DmMessage, Peer, peerLabel } from '@models/Dm.model';
 import { ConnectedUserStore } from '@stores/connected-user.store';
+import { MediaService } from '@services/media.service';
 
 /** Private conversations. Everything comes from core; nothing is decrypted here. */
 export const DmStore = signalStore(
@@ -17,9 +18,9 @@ export const DmStore = signalStore(
     searchError: null as CmdError['code'] | null,
     sendError: null as CmdError['code'] | null,
   }),
-  withMethods((store, user = inject(ConnectedUserStore)) => {
-    const resolvePeer = async (pubkey: string) => {
-      if (store.peers()[pubkey]) {
+  withMethods((store, user = inject(ConnectedUserStore), media = inject(MediaService)) => {
+    const resolvePeer = async (pubkey: string, refresh = false) => {
+      if (store.peers()[pubkey] && !refresh) {
         return;
       }
       const peer = await invoke<Peer>('peer', { pubkey });
@@ -84,6 +85,19 @@ export const DmStore = signalStore(
         }
         try {
           receive(await invoke<DmMessage>('send_dm', { pubkey, text }));
+          patchState(store, { sendError: null });
+        } catch (e) {
+          patchState(store, { sendError: (e as CmdError).code ?? 'internal' });
+        }
+      },
+
+      async sendFile(file: File) {
+        const pubkey = store.selected();
+        if (!pubkey) {
+          return;
+        }
+        try {
+          receive(await media.upload<DmMessage>('send_dm_file', file, { pubkey }));
           patchState(store, { sendError: null });
         } catch (e) {
           patchState(store, { sendError: (e as CmdError).code ?? 'internal' });

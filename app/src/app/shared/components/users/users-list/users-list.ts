@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
 import { UserCard } from '@components/users/user-card/user-card';
 import { AccountSettings } from '@components/account-settings/account-settings';
 import { Member, ROLE_ADMIN, ROLE_MODERATOR } from '@models/Community.model';
@@ -26,6 +26,7 @@ export class UsersList {
     id: this.account.user()?.npub ?? '',
     username: this.account.user() ? `@${this.account.user()?.handle}` : '',
     profilePicture: '/chatON-logo.svg',
+    picture: this.dm.peers()[this.account.user()?.pubkey ?? '']?.picture,
   }));
 
   /** Admins, then moderators, then the rest. Only in the server view. */
@@ -38,6 +39,14 @@ export class UsersList {
     return [...this.community.members()].sort((a, b) => rank(a) - rank(b));
   });
 
+  constructor() {
+    // My own profile, for my picture.
+    effect(() => {
+      const me = this.account.user()?.pubkey;
+      if (me) void this.dm.resolve(me);
+    });
+  }
+
   public openAccount(): void {
     this.modalService.open(AccountSettings);
   }
@@ -47,6 +56,7 @@ export class UsersList {
       id: member.pubkey,
       username: this.dm.label(member.pubkey),
       profilePicture: '/chatON-logo.svg',
+      picture: this.dm.peers()[member.pubkey]?.picture,
     };
   }
 

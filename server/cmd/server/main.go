@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/eventstore/boltdb"
@@ -12,6 +13,7 @@ import (
 	"github.com/ErwanHeschung/ChatON/server/internal/community"
 	"github.com/ErwanHeschung/ChatON/server/internal/configloader"
 	"github.com/ErwanHeschung/ChatON/server/internal/directory"
+	"github.com/ErwanHeschung/ChatON/server/internal/media"
 	"github.com/ErwanHeschung/ChatON/server/internal/relay"
 )
 
@@ -66,13 +68,27 @@ func main() {
 
 	mux := rl.Router() // khatru serves WebSocket + NIP-11 on "/", the rest falls through here
 	dir.Register(mux)
+
+	// Files (spec § 10): own index store, never the relay's.
+	dataDir := filepath.Dir(s.DBPath)
+	if s.BlobDir == "" {
+		s.BlobDir = filepath.Join(dataDir, "blobs")
+	}
+	index := &boltdb.BoltBackend{Path: filepath.Join(dataDir, "blobs.bolt")}
+	if err := index.Init(); err != nil {
+		log.Fatal("Cannot open the blob index:", err)
+	}
+	defer index.Close()
+	if _, err := media.New(rl, strings.TrimSuffix(s.PublicURL, "/"), dir, s.BlobDir, index); err != nil {
+		log.Fatal("Cannot start file storage:", err)
+	}
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status": "UP"}`))
 	})
 
 	log.Printf("ChatON %s on %s (db %s)", s.PublicURL, s.Port, s.DBPath)
-	if err := http.ListenAndServe(s.Port, configs.SetupCORS(cfg, rl)); err != nil {
+	if err := http.ListenAndServe(s.Port, configs.SetupCORS(cfg, media.Guard(rl))); err != nil {
 		log.Fatal(err)
 	}
 }

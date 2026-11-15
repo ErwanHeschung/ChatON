@@ -47,7 +47,7 @@ where
 ///
 /// A kind 14 rumor is never a signed `Event`: if one arrives as such, it's rejected.
 pub fn validate(event: &Event, now: Timestamp) -> std::result::Result<(), Reject> {
-    if event.kind == Kind::PrivateDirectMessage {
+    if event.kind == Kind::PrivateDirectMessage || event.kind == crate::dm::FILE_MESSAGE {
         return Err(Reject::SignedRumor);
     }
     if !event.verify_id() {

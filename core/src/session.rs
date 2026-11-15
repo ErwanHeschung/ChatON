@@ -22,10 +22,13 @@ use sha2::{Digest, Sha256};
 use crate::community::Update;
 use crate::dm::{self, Message};
 use crate::identity::Identity;
+use crate::media::{self, Attachment};
 use crate::{Error, Result, event};
 
 const ACCOUNT_FILE: &str = "account.json";
 const EVENTS_DB: &str = "events.db";
+/// Downloaded files, as downloaded (attachments stay encrypted).
+const MEDIA_DIR: &str = "media";
 pub(crate) const TIMEOUT: Duration = Duration::from_secs(10);
 /// NIP-59 backdates gift wraps up to 2 days: resync from that far before the last one.
 const GIFT_WRAP_JITTER_SECS: u64 = 2 * 24 * 3600;
@@ -46,6 +49,8 @@ pub struct Peer {
     pub handle: Option<String>,
     pub pubkey: PublicKey,
     pub npub: String,
+    /// Profile picture, only if hosted by the peer's own instance (spec § 10).
+    pub picture: Option<String>,
     #[serde(skip)]
     pub relays: Vec<RelayUrl>,
 }
@@ -245,6 +250,10 @@ impl Session {
                 _ => {}
             }
         }
+        match std::fs::remove_dir_all(self.dir.join(MEDIA_DIR)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+            _ => {}
+        }
         Ok(())
     }
 
@@ -270,7 +279,11 @@ impl Session {
                 .await
                 .ok()?;
             let profile = Metadata::from_json(&events.first()?.content).ok()?;
-            let peer = resolve(&profile.nip05?).await.ok()?;
+            let mut peer = resolve(&profile.nip05?).await.ok()?;
+            let domain = peer.handle.as_deref()?.split_once('@')?.1.to_string();
+            peer.picture = profile
+                .picture
+                .filter(|url| media::allowed(url, &[domain]).is_some());
             (peer.pubkey == pubkey).then_some(peer)
         }
         .await;
@@ -281,8 +294,105 @@ impl Session {
 
     /// Sends `text` to `to` (NIP-17) and returns the message as stored.
     pub async fn send_dm(&self, to: PublicKey, text: &str) -> Result<Message> {
+        self.deliver_dm(to, dm::wrap(&self.keys, to, text)?).await
+    }
+
+    /// Encrypts and uploads a file, then sends it to `to` (NIP-17 kind 15).
+    pub async fn send_dm_file(
+        &self,
+        to: PublicKey,
+        bytes: &[u8],
+        mime: &str,
+        name: &str,
+    ) -> Result<Message> {
+        let file = self.upload_attachment(bytes, mime, name).await?;
+        self.deliver_dm(to, dm::wrap_file(&self.keys, to, &file)?)
+            .await
+    }
+
+    /// Sets my profile picture (public, uploaded to my instance).
+    pub async fn set_profile_picture(&self, bytes: Vec<u8>, mime: &str) -> Result<()> {
+        let url = media::upload(&self.keys, &self.account.relay, bytes, mime).await?;
+        let name = self.account.handle.split('@').next().unwrap_or_default();
+        let url = Url::parse(&url).map_err(|e| Error::Invalid(e.to_string()))?;
+        let profile = Metadata::new()
+            .name(name)
+            .nip05(&self.account.handle)
+            .picture(url);
+        let ev = event::build(&self.keys, Kind::Metadata, [], &profile.as_json())?;
+        let out = self
+            .client
+            .send_event(&ev)
+            .to([self.account.relay.as_str()])
+            .await?;
+        if out.success.is_empty() {
+            return Err(Error::NotDelivered(format!("{:?}", out.failed)));
+        }
+        if let Ok(mut peers) = self.peers.lock() {
+            peers.remove(&self.account.pubkey); // next `peer` reads the new picture
+        }
+        Ok(())
+    }
+
+    /// The decrypted file. Without `explicit` (a click), only from my instance
+    /// and my communities' instances (spec § 10), else `NotAllowed`.
+    pub async fn open_attachment(&self, file: &Attachment, explicit: bool) -> Result<Vec<u8>> {
+        if !explicit && media::allowed(&file.url, &self.trusted_hosts().await?).is_none() {
+            return Err(Error::NotAllowed);
+        }
+        let cipher = self.cached_download(&file.url, &file.sha256).await?;
+        media::decrypt(file, &cipher)
+    }
+
+    /// A community or profile picture, from a trusted host only.
+    pub async fn picture(&self, url: &str) -> Result<Vec<u8>> {
+        let hash = media::allowed(url, &self.trusted_hosts().await?).ok_or(Error::NotAllowed)?;
+        self.cached_download(url, &hash).await
+    }
+
+    pub(crate) async fn upload_attachment(
+        &self,
+        bytes: &[u8],
+        mime: &str,
+        name: &str,
+    ) -> Result<Attachment> {
+        if bytes.len() > media::MAX_SIZE {
+            return Err(Error::TooLarge);
+        }
+        let (cipher, mut file) = media::encrypt(bytes, mime, name)?;
+        file.url = media::upload(
+            &self.keys,
+            &self.account.relay,
+            cipher,
+            "application/octet-stream",
+        )
+        .await?;
+        Ok(file)
+    }
+
+    /// My instance and the instances of my communities.
+    async fn trusted_hosts(&self) -> Result<Vec<String>> {
+        let mut hosts: Vec<String> = self.communities_relays().await?;
+        hosts.push(self.account.relay.clone());
+        Ok(hosts.iter().filter_map(|r| media::host(r)).collect())
+    }
+
+    /// Blobs are cached as downloaded: ciphertext for attachments.
+    async fn cached_download(&self, url: &str, sha256: &str) -> Result<Vec<u8>> {
+        let path = self.dir.join(MEDIA_DIR).join(sha256);
+        if let Ok(bytes) = std::fs::read(&path)
+            && media::sha256_hex(&bytes) == sha256
+        {
+            return Ok(bytes);
+        }
+        let bytes = media::download(url, sha256).await?;
+        std::fs::create_dir_all(self.dir.join(MEDIA_DIR))?;
+        std::fs::write(&path, &bytes)?;
+        Ok(bytes)
+    }
+
+    async fn deliver_dm(&self, to: PublicKey, [to_peer, to_self]: [Event; 2]) -> Result<Message> {
         let peer = self.peer(to).await;
-        let [to_peer, to_self] = dm::wrap(&self.keys, to, text)?;
 
         // ponytail: the peer's relays come from NIP-05 (their instance). Read their
         // 10050 list instead at step 10 (federation). Unverified peer: our own relay.
@@ -415,6 +525,7 @@ pub async fn resolve(handle: &str) -> Result<Peer> {
         handle: Some(handle),
         npub: npub(&profile.public_key),
         pubkey: profile.public_key,
+        picture: None,
         relays: profile.relays,
     })
 }
@@ -462,6 +573,7 @@ fn unverified(pubkey: PublicKey) -> Peer {
         handle: None,
         npub: npub(&pubkey),
         pubkey,
+        picture: None,
         relays: Vec::new(),
     }
 }

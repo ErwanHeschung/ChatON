@@ -97,6 +97,16 @@
     "role.unmake-moderator": "Retirer modérateur",
     "role.make-moderator": "Nommer modérateur",
     "role.remove": " Retirer ",
-    "community.refused": "L'instance a refusé. Votre compte y est-il toujours inscrit ?"
+    "community.refused": "L'instance a refusé. Votre compte y est-il toujours inscrit ?",
+    "picture-title": "Photo",
+    "picture.hint": "Publique, stockée sur votre instance.",
+    "picture.change": " Changer ma photo ",
+    "picture.done": "Photo mise à jour.",
+    "chat.too-large": "Fichier trop gros (25 Mo max)",
+    "chat.attach": "Joindre un fichier",
+    "chat.show-image": " Afficher l'image ",
+    "chat.save": "Enregistrer",
+    "chat.save-failed": "Impossible d'enregistrer le fichier",
+    "community.change-picture": " Image "
   }
 }

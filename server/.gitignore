@@ -27,3 +27,4 @@ go.work
 *.db-wal
 *.bolt
 relay.key
+blobs/

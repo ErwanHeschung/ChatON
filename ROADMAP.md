@@ -22,7 +22,8 @@ Règle pour toute la feuille de route : chaque étape part d'une NIP et d'une bi
 | Liaison d'appareils | aucune NIP : kind éphémère 24135 + SPAKE2 + NIP-44 | `spake2` (RustCrypto), `nostr` (Rust) |
 | Messages privés (déjà E2EE) | NIP-17 + NIP-44 + NIP-59 | `nostr` (Rust) |
 | Communautés | NIP-29 (groupes hébergés par un relais) + NIP-51 (10009) | `fiatjaf.com/nostr/nip29` + règles maison |
-| Auth HTTP (envois, jeton LiveKit) | NIP-98 | `fiatjaf.com/nostr` |
+| Fichiers et médias | Blossom (BUD-01, 02) + NIP-17 kind 15 + NIP-92 `imeta` | `fiatjaf.com/nostr/khatru/blossom`, `nostr-blossom` (Rust), `aes-gcm` |
+| Auth HTTP (jeton LiveKit) | NIP-98 | `fiatjaf.com/nostr` |
 | E2EE des groupes | MLS sur Nostr (NIP-EE / Marmot) | openmls |
 
 Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape 4**. On avance donc une partie de l'étape 7, et on évite de construire des MP en clair qu'il faudrait jeter ensuite.
@@ -94,11 +95,18 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 - `core/src/community.rs` : créer (avec un salon `general`), salons, invitations, rejoindre, quitter, membres, rôles, retrait, messages et suppression. L'état n'est accepté que signé par la clé NIP-11 du relais. Synchronisation à la connexion et abonnement en direct ; `listen` émet désormais un `Update` (MP, message de salon, suppression, changement de communauté).
 - App : barre des communautés réelle avec « + » (créer | rejoindre), salons et invitation dans la colonne de gauche, salon ouvert dans le chat (suppression), membres avec badges et actions d'admin à droite. Les maquettes (catégories, 100 éléments factices) sont supprimées.
 - **Terminé quand :** une communauté se crée, invite, discute dans deux salons, supprime un message, nomme un modérateur et retire un membre. Validé par `server/internal/relay/community_test.go`, `core/tests/e2e.rs` (y compris le second appareil lié qui retrouve la communauté) et à la main dans deux fenêtres.
-- Plus tard : catégories, permissions par salon, rôles personnalisés, liste de bannis (un membre retiré a seulement besoin d'une nouvelle invitation), images de communauté (6b), révocation d'invitation.
+- Plus tard : catégories, permissions par salon, rôles personnalisés, liste de bannis (un membre retiré a seulement besoin d'une nouvelle invitation), révocation d'invitation.
 
-## Étape 6b : fichiers et médias
+## Étape 6b : fichiers et médias ✅
 
-- Envoi de fichiers façon Blossom, authentifié par NIP-98 ; images des communautés et des profils, pièces jointes dans les salons.
+- Modèle (`spec/protocol.md` § 10) : Blossom (BUD-01, 02, auth kind 24242). Chacun envoie sur **sa propre instance**, 25 Mio max par fichier. **Toute pièce jointe est chiffrée par le client** (AES-256-GCM, clé et nonce neufs par fichier, dans le message) : le serveur ne garde que du chiffré, lisible par hash sans le message qui porte la clé. Dans un MP : rumeur NIP-17 kind 15. Dans un salon : kind 9 avec un tag NIP-92 `imeta`. Les photos de profil et de communauté sont publiques, en clair.
+- Pas de fuite d'IP : le client ne télécharge seul que depuis mon instance et celles de mes communautés ; ailleurs, il faut un clic. Une photo n'est affichée que si elle est sur l'instance de son propriétaire (domaine NIP-05, hôte de la communauté). La CSP de l'app n'autorise plus aucune image distante (`blob:` seulement) ; le cache local reste chiffré.
+- `server/internal/media` : `khatru/blossom` avec les fichiers dans `SERVER_BLOBDIR` (sinon `blobs/` à côté de la base) et un index à part (`blobs.bolt`, jamais dans la base du relais). Envoi réservé aux handles locaux ; `Guard` refuse un `Content-Length` absent ou trop gros avant que la bibliothèque n'alloue, et coupe `/mirror`, `/media` et `/report`.
+- Bugs de la bibliothèque, à signaler en amont : l'index (`EventStoreBlobIndexWrapper.Keep`/`Delete`) écrit pendant sa propre transaction de lecture, ce qui bloque bbolt (contourné par `blobIndex`) ; l'envoi alloue `Content-Length` octets avant `RejectUpload` ; le lecteur de `LoadBlob` n'est jamais fermé ; `/mirror` télécharge une URL distante avant toute vérification.
+- `core/src/media.rs` : chiffrement, envoi, téléchargement plafonné avec vérification des hash (`x` du chiffré, `ox` du clair). Pièces jointes dans les salons et les MP, photos de profil (kind 0) et de communauté.
+- App : trombone et collage d'image dans la barre de message, images affichées dans le fil, « Enregistrer » pour tout fichier, photos dans les cartes, la barre des communautés et leur bannière. Les octets passent par l'IPC brut de Tauri, sans JSON.
+- **Terminé quand :** une image et un PDF circulent dans un salon et dans un MP, et les photos de profil et de communauté s'affichent chez l'autre. Validé par `server/internal/media/media_test.go`, `core/tests/e2e.rs` (le serveur ne voit que du chiffré, mauvaise clé et mauvais hash refusés, hôte étranger refusé sans clic, fichier trop gros) et à la main dans deux fenêtres.
+- Plus tard : quotas par utilisateur, nettoyage des fichiers dont le message est supprimé, miniatures et dimensions, lecteur vidéo, progression de l'envoi, listes de serveurs Blossom (10063) et miroirs, téléchargement automatique entre instances (étape 10).
 
 ## Étape 7 : E2EE des groupes
 

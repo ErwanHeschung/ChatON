@@ -23,7 +23,7 @@ fn valid_vectors_reproduce_serialization_id_and_sig() {
     let aux: [u8; 32] = hex(str_of(&vs, "aux_rand")).try_into().unwrap();
     let secp = Secp256k1::new();
     let valid = vs["valid"].as_array().unwrap();
-    assert_eq!(valid.len(), 22);
+    assert_eq!(valid.len(), 24);
 
     for v in valid {
         let name = str_of(v, "name");
@@ -52,10 +52,9 @@ fn valid_vectors_reproduce_serialization_id_and_sig() {
         assert_eq!(id.to_hex(), str_of(v, "id"), "{name}: id");
 
         let Some(want_sig) = v["sig"].as_str() else {
-            assert_eq!(
-                kind,
-                Kind::PrivateDirectMessage,
-                "{name}: only rumors have no sig"
+            assert!(
+                kind == Kind::PrivateDirectMessage || kind == Kind::from(15),
+                "{name}: only rumors (14, 15) have no sig"
             );
             continue;
         };

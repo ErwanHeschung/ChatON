@@ -7,6 +7,7 @@ use chaton_core::Error;
 use chaton_core::community::{ChannelMessage, Community, Member, Update};
 use chaton_core::dm::Message;
 use chaton_core::link::{self, LinkOffer};
+use chaton_core::media::Attachment;
 use chaton_core::nostr::prelude::{EventId, PublicKey};
 use chaton_core::session::{Account, Conversation, Peer, Session};
 use serde::Serialize;
@@ -40,6 +41,8 @@ impl From<Error> for CmdError {
             Error::CodeExpired => "code_expired",
             Error::LinkRefused => "link_refused",
             Error::InvalidInvite => "invalid_invite",
+            Error::TooLarge => "too_large",
+            Error::NotAllowed => "not_allowed",
             Error::Invalid(_) | Error::Nostr(_) => "invalid",
             // The relay answered no (permissions, unknown account): not a network problem.
             Error::NotDelivered(ref reason)
@@ -354,6 +357,120 @@ async fn delete_message(
         .await?)
 }
 
+/// A file sent by the UI: raw bytes as the IPC body (no JSON), and its
+/// metadata as a query string in the `x-meta` header (`name`, `mime`, ids).
+struct Upload {
+    bytes: Vec<u8>,
+    meta: std::collections::HashMap<String, String>,
+}
+
+impl Upload {
+    fn from(request: &tauri::ipc::Request<'_>) -> Res<Self> {
+        let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+            return Err(internal("expected the file as raw bytes"));
+        };
+        let meta = request
+            .headers()
+            .get("x-meta")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        let url = tauri::Url::parse(&format!("meta:?{meta}")).map_err(internal)?;
+        Ok(Self {
+            bytes: bytes.clone(),
+            meta: url.query_pairs().into_owned().collect(),
+        })
+    }
+
+    fn get(&self, key: &str) -> Res<&str> {
+        self.meta
+            .get(key)
+            .map(String::as_str)
+            .ok_or_else(|| internal(format!("missing {key}")))
+    }
+}
+
+#[tauri::command]
+async fn send_dm_file(state: State<'_, App>, request: tauri::ipc::Request<'_>) -> Res<Message> {
+    let file = Upload::from(&request)?;
+    let to = PublicKey::from_hex(file.get("pubkey")?).map_err(internal)?;
+    Ok(session(&state)
+        .await?
+        .send_dm_file(to, &file.bytes, file.get("mime")?, file.get("name")?)
+        .await?)
+}
+
+#[tauri::command]
+async fn send_channel_file(
+    state: State<'_, App>,
+    request: tauri::ipc::Request<'_>,
+) -> Res<ChannelMessage> {
+    let file = Upload::from(&request)?;
+    Ok(session(&state)
+        .await?
+        .send_file(
+            file.get("community")?,
+            file.get("channel")?,
+            &file.bytes,
+            file.get("mime")?,
+            file.get("name")?,
+            file.get("caption").unwrap_or_default(),
+        )
+        .await?)
+}
+
+#[tauri::command]
+async fn set_profile_picture(state: State<'_, App>, request: tauri::ipc::Request<'_>) -> Res<()> {
+    let file = Upload::from(&request)?;
+    let mime = file.get("mime")?.to_string();
+    Ok(session(&state)
+        .await?
+        .set_profile_picture(file.bytes, &mime)
+        .await?)
+}
+
+#[tauri::command]
+async fn set_community_picture(state: State<'_, App>, request: tauri::ipc::Request<'_>) -> Res<()> {
+    let file = Upload::from(&request)?;
+    let (community, mime) = (
+        file.get("community")?.to_string(),
+        file.get("mime")?.to_string(),
+    );
+    Ok(session(&state)
+        .await?
+        .set_community_picture(&community, file.bytes, &mime)
+        .await?)
+}
+
+/// Decrypted bytes, as an `ArrayBuffer` for the UI. `explicit`: the user clicked.
+#[tauri::command]
+async fn open_attachment(
+    state: State<'_, App>,
+    attachment: Attachment,
+    explicit: bool,
+) -> Res<tauri::ipc::Response> {
+    let bytes = session(&state)
+        .await?
+        .open_attachment(&attachment, explicit)
+        .await?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[tauri::command]
+async fn picture(state: State<'_, App>, url: String) -> Res<tauri::ipc::Response> {
+    let bytes = session(&state).await?.picture(&url).await?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Writes the decrypted file where the user chose (dialog `save()`).
+#[tauri::command]
+async fn save_attachment(state: State<'_, App>, attachment: Attachment, path: PathBuf) -> Res<()> {
+    let bytes = session(&state)
+        .await?
+        .open_attachment(&attachment, true)
+        .await?;
+    std::fs::write(path, bytes).map_err(internal)
+}
+
 /// Registers the OS keychain as `keyring-core`'s default store (CLAUDE.md, Secrets).
 fn keychain() -> Result<(), keyring_core::Error> {
     #[cfg(target_os = "linux")]
@@ -372,6 +489,7 @@ pub fn run() {
         eprintln!("keychain unavailable: {e}");
     }
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(App::default())
         .invoke_handler(tauri::generate_handler![
             current_account,
@@ -400,6 +518,13 @@ pub fn run() {
             channel_messages,
             send_channel,
             delete_message,
+            send_dm_file,
+            send_channel_file,
+            set_profile_picture,
+            set_community_picture,
+            open_attachment,
+            picture,
+            save_attachment,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

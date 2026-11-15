@@ -55,13 +55,23 @@ Le relais d'une instance n'est pas un dépôt ouvert. Il accepte :
 
 Le kind éphémère `24135` (liaison d'appareils) est accepté de **n'importe quelle clé**, puisque le nouvel appareil n'a pas encore de compte. Il n'est jamais stocké, doit porter exactement un tag `c`, et son contenu est limité à 4 Kio. Un filtre qui le demande doit donner exactement un `#c` : on ne peut pas écouter toutes les liaisons en cours.
 
-Tout le reste est refusé : autres kinds, `14` publié nu, `created_at` à plus de 15 min dans le futur, clés bloquées (`SERVER_BLOCKEDPUBKEYS`). Un gift wrap n'est **servi qu'à son destinataire** : tout filtre qui peut correspondre à un `1059` (`kinds` vide ou contenant `1059`) exige une authentification NIP-42 (sinon `CLOSED` « `auth-required:` », et le client s'authentifie puis réessaie) et un `#p` égal à la seule clé authentifiée (sinon « `restricted:` »). Comme la règle porte sur le filtre et non sur les résultats, elle couvre aussi la diffusion en direct. Le relais n'expose pas de `COUNT`.
+Tout le reste est refusé : autres kinds, `14` ou `15` publié nu, `created_at` à plus de 15 min dans le futur, clés bloquées (`SERVER_BLOCKEDPUBKEYS`). Un gift wrap n'est **servi qu'à son destinataire** : tout filtre qui peut correspondre à un `1059` (`kinds` vide ou contenant `1059`) exige une authentification NIP-42 (sinon `CLOSED` « `auth-required:` », et le client s'authentifie puis réessaie) et un `#p` égal à la seule clé authentifiée (sinon « `restricted:` »). Comme la règle porte sur le filtre et non sur les résultats, elle couvre aussi la diffusion en direct. Le relais n'expose pas de `COUNT`.
 
 Communautés : les `39000`–`39003` ne sont acceptés que du relais lui-même, et restent lisibles par tous (un invité voit le nom avant d'entrer). Un filtre qui peut correspondre à un message ou une action de groupe (`9`, `9000`–`9022`, ou un `#h`) exige une authentification NIP-42 et un `#h` dont **chaque** groupe est une communauté (ou un salon d'une communauté) dont la clé authentifiée est membre. La diffusion en direct est vérifiée à chaque événement : un membre retiré ne reçoit plus rien sur ses abonnements déjà ouverts.
 
 ### Clé du relais
 
 Le relais signe l'état des groupes avec sa propre clé, publiée dans son document NIP-11 (`self`). Elle vient de `SERVER_RELAYKEY` (hexadécimal) ; sinon le serveur en génère une au premier démarrage, dans `relay.key` (droits `0600`) à côté de la base. La perdre oblige les clients à faire confiance à une nouvelle clé : la sauvegarder avec la base.
+
+### Fichiers (Blossom)
+
+L'instance sert aussi les fichiers (`protocol.md` § 10), sur le même port que le relais mais hors du relais : `PUT /upload`, `GET|HEAD /<sha256>`, `DELETE /<sha256>`, `GET /list/<clé>`.
+
+- **Envoi** : réservé aux clés qui ont un handle ici, 25 Mio au plus. Un membre d'une communauté venu d'une autre instance envoie ses fichiers sur la sienne.
+- **Lecture** : par empreinte, sans authentification. Les pièces jointes sont chiffrées par le client ; seules les images de profil et de communauté sont en clair, et elles sont publiques.
+- **Liste** : seulement la sienne. **Suppression** : par celui qui a envoyé.
+- `/mirror` (le serveur irait chercher une URL distante), `/media` et `/report` sont désactivés.
+- Stockage : un fichier par blob dans `SERVER_BLOBDIR` (par défaut `blobs/` à côté de la base), et l'index « qui a envoyé quoi » dans `blobs.bolt`, séparé des événements du relais.
 
 ## 4. Migration de compte
 

@@ -31,7 +31,18 @@ input {
   }
 }
 
-.emoji {
+.attach {
+  all: unset;
+  display: flex;
+  margin-left: 0.25rem;
+
+  &:focus-visible {
+    outline: 2px solid var(--content-primary);
+  }
+}
+
+.emoji,
+.attach {
   border-radius: var(--base-radius);
   transition: background-color 0.3s ease;
   padding: 0.25rem;

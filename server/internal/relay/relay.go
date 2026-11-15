@@ -100,10 +100,10 @@ func rejectAmbiguousEscapes(_ context.Context, ev nostr.Event) (bool, string) {
 	return false, ""
 }
 
-// A kind 14 is a rumor: it only ever travels inside a seal (NIP-17, spec §5).
+// Kinds 14 and 15 are rumors: they only ever travel inside a seal (NIP-17, spec §5).
 func rejectRumor(_ context.Context, ev nostr.Event) (bool, string) {
-	if ev.Kind == nostr.KindDirectMessage {
-		return true, "invalid: kind 14 must never be published, wrap it (NIP-17)"
+	if ev.Kind == nostr.KindDirectMessage || ev.Kind == nostr.KindFileMessage {
+		return true, "invalid: kinds 14 and 15 must never be published, wrap them (NIP-17)"
 	}
 	return false, ""
 }

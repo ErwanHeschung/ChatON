@@ -4,10 +4,16 @@
   }
 </div>
 
-@if (error()) {
-  <small class="error" i18n="@@chat.send-failed">Message not sent: {{ error() }}</small>
+@switch (error()) {
+  @case (null) {}
+  @case ('too_large') {
+    <small class="error" i18n="@@chat.too-large">File too large (25 MB max)</small>
+  }
+  @default {
+    <small class="error" i18n="@@chat.send-failed">Message not sent: {{ error() }}</small>
+  }
 }
 
 @if (!disabled()) {
-  <app-chat-bar (send)="send.emit($event)"></app-chat-bar>
+  <app-chat-bar (send)="send.emit($event)" (file)="file.emit($event)"></app-chat-bar>
 }

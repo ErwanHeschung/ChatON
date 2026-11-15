@@ -9,8 +9,9 @@
     chat
     [messages]="messages()"
     [disabled]="inChannel() ? false : !dm.selected()"
-    [error]="inChannel() ? null : dm.sendError()"
+    [error]="inChannel() ? community.sendError() : dm.sendError()"
     (send)="send($event)"
+    (file)="sendFile($event)"
     (remove)="remove($event)"
   ></app-chat>
 

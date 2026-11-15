@@ -1,6 +1,17 @@
 @if (store.current(); as community) {
-  <span class="initial" aria-hidden="true">{{ community.name.charAt(0).toUpperCase() }}</span>
+  @let src = community.picture ? (media.picture(community.picture) | async) : null;
+  @if (src) {
+    <img class="initial" [src]="src" alt="" />
+  } @else {
+    <span class="initial" aria-hidden="true">{{ community.name.charAt(0).toUpperCase() }}</span>
+  }
   <h3>{{ community.name }}</h3>
+  @if (store.isAdmin()) {
+    <input #picture type="file" accept="image/*" hidden (change)="setPicture(picture)" />
+    <button class="link" (click)="picture.click()" i18n="@@community.change-picture">
+      Picture
+    </button>
+  }
   @if (confirmLeave()) {
     <button class="link danger" (click)="leave()" i18n="@@community.leave-confirm">Leave?</button>
   } @else {

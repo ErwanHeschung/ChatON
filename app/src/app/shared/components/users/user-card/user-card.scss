@@ -27,3 +27,8 @@
     background-color: var(--surface-elevated);
   }
 }
+
+.picture {
+  border-radius: 50%;
+  object-fit: cover;
+}

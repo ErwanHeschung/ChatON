@@ -33,6 +33,11 @@ export class DmList implements OnInit, OnDestroy {
   }
 
   public card(pubkey: string) {
-    return { id: pubkey, username: this.dm.label(pubkey), profilePicture: '/chatON-logo.svg' };
+    return {
+      id: pubkey,
+      username: this.dm.label(pubkey),
+      profilePicture: '/chatON-logo.svg',
+      picture: this.dm.peers()[pubkey]?.picture,
+    };
   }
 }

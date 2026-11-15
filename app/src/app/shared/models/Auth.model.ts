@@ -32,6 +32,8 @@ export interface CmdError {
     | 'link_refused'
     | 'invalid_invite'
     | 'refused'
+    | 'too_large'
+    | 'not_allowed'
     | 'invalid'
     | 'keychain'
     | 'network'

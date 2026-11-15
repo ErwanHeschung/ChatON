@@ -1,4 +1,5 @@
 import { ScrollingModule } from '@angular/cdk/scrolling';
+import { AsyncPipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -18,16 +19,24 @@ import { CommunityDialog } from '@components/servers/community-dialog/community-
 import { Community } from '@models/Community.model';
 import { ModalService } from '@services/modal.service';
 import { CommunityStore } from '@stores/community.store';
+import { MediaService } from '@services/media.service';
 
 @Component({
   selector: 'app-horizontal-list',
-  imports: [ScrollingModule, TooltipDirective, HorizontalScrollDirective, LucideDynamicIcon],
+  imports: [
+    ScrollingModule,
+    TooltipDirective,
+    HorizontalScrollDirective,
+    LucideDynamicIcon,
+    AsyncPipe,
+  ],
   templateUrl: './horizontal-list.html',
   styleUrl: './horizontal-list.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HorizontalList implements OnInit {
   protected readonly store = inject(CommunityStore);
+  protected readonly media = inject(MediaService);
   private readonly router = inject(Router);
   private readonly modal = inject(ModalService);
 

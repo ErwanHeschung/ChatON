@@ -375,3 +375,130 @@ async fn a_community_with_channels_invites_and_moderation() {
     let history = laptop.channel_messages(&random.id).await.unwrap();
     assert_eq!(history.len(), 1, "{history:?}");
 }
+
+/// Polls `f` until it returns `Some`, for at most 5 s.
+async fn eventually<T, F, Fut>(what: &str, f: F) -> T
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Option<T>>,
+{
+    for _ in 0..50 {
+        if let Some(v) = f().await {
+            return v;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("never happened: {what}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a running server, see the module docs"]
+async fn files_in_channels_dms_and_pictures() {
+    use chaton_core::media::{Attachment, MAX_SIZE};
+    let (server, _) = setup();
+    let alice = Session::register(&temp_dir("alice"), &server, &unique("alice"))
+        .await
+        .unwrap();
+    let bob = Session::register(&temp_dir("bob"), &server, &unique("bob"))
+        .await
+        .unwrap();
+    let community = alice.create_community("Photos").await.unwrap();
+    let general = community.channels[0].id.clone();
+    bob.join(&alice.invite(&community.id).await.unwrap())
+        .await
+        .unwrap();
+    let file: Vec<u8> = (0..300_000u32).map(|i| (i * 7 % 251) as u8).collect();
+
+    // Channel: Alice posts an encrypted file, Bob gets the same bytes.
+    let sent = alice
+        .send_file(
+            &community.id,
+            &general,
+            &file,
+            "image/png",
+            "chat.png",
+            "regardez",
+        )
+        .await
+        .unwrap();
+    let att = sent.attachment.clone().expect("attachment");
+    assert_eq!(
+        (att.name.as_str(), att.size),
+        ("chat.png", file.len() as u64)
+    );
+    let got: Attachment = eventually("bob sees the file", || async {
+        let msgs = bob.channel_messages(&general).await.ok()?;
+        msgs.into_iter().find(|m| m.id == sent.id)?.attachment
+    })
+    .await;
+    assert_eq!(got, att);
+    assert_eq!(bob.open_attachment(&got, false).await.unwrap(), file);
+
+    // The server only has ciphertext; a wrong key or hash doesn't decrypt.
+    let stored = reqwest::get(&att.url).await.unwrap().bytes().await.unwrap();
+    assert_ne!(&stored[..], &file[..]);
+    let wrong_key = Attachment {
+        key: "00".repeat(32),
+        ..att.clone()
+    };
+    assert!(bob.open_attachment(&wrong_key, false).await.is_err());
+    let wrong_hash = Attachment {
+        sha256: "00".repeat(32),
+        ..att.clone()
+    };
+    assert!(bob.open_attachment(&wrong_hash, false).await.is_err());
+
+    // Not from my instance nor a community's: only on an explicit click.
+    let elsewhere = Attachment {
+        url: format!("https://elsewhere.example/{}", att.sha256),
+        ..att.clone()
+    };
+    let res = bob.open_attachment(&elsewhere, false).await;
+    assert!(matches!(res, Err(Error::NotAllowed)), "{res:?}");
+
+    // Too large: refused before any upload.
+    let res = alice
+        .send_file(
+            &community.id,
+            &general,
+            &vec![0; MAX_SIZE + 1],
+            "a/b",
+            "big",
+            "",
+        )
+        .await;
+    assert!(matches!(res, Err(Error::TooLarge)), "{res:?}");
+
+    // DM: kind 15, same round trip.
+    let pdf = b"%PDF-1.7 pretend".to_vec();
+    let dm = alice
+        .send_dm_file(bob.account().pubkey, &pdf, "application/pdf", "cv.pdf")
+        .await
+        .unwrap();
+    let got = eventually("bob gets the DM file", || async {
+        let msgs = bob.messages(alice.account().pubkey).await.ok()?;
+        msgs.into_iter().find(|m| m.id == dm.id)?.attachment
+    })
+    .await;
+    assert_eq!(got.name, "cv.pdf");
+    assert_eq!(bob.open_attachment(&got, false).await.unwrap(), pdf);
+
+    // Pictures: public, shown when hosted by their own instance.
+    let png = b"\x89PNG\r\n\x1a\n pretend".to_vec();
+    alice
+        .set_community_picture(&community.id, png.clone(), "image/png")
+        .await
+        .unwrap();
+    let url = eventually("bob sees the community picture", || async {
+        bob.communities().await.ok()?.into_iter().next()?.picture
+    })
+    .await;
+    assert_eq!(bob.picture(&url).await.unwrap(), png);
+    alice
+        .set_profile_picture(png.clone(), "image/png")
+        .await
+        .unwrap();
+    let alice_seen = bob.peer(alice.account().pubkey).await;
+    let url = alice_seen.picture.expect("alice's picture");
+    assert_eq!(bob.picture(&url).await.unwrap(), png);
+}

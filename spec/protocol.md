@@ -54,6 +54,7 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 | 10002 | Liste de relais (outbox) | 65 | oui | 4 |
 | 10050 | Relais préférés pour les MP | 17 | oui | 4 |
 | 14 | Message privé (« rumeur ») | 17 | **non** | 4 |
+| 15 | Fichier en message privé (« rumeur », § 10) | 17 | **non** | 6b |
 | 13 | Sceau (contenu chiffré NIP-44) | 59 | oui | 4 |
 | 1059 | Emballage (clé jetable) | 59 | oui | 4 |
 | 22242 | Authentification au relais | 42 | oui | 3 |
@@ -64,6 +65,7 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 | 9021, 9022 | Demande pour rejoindre, quitter | 29 | oui | 6 |
 | 39000–39003 | État d'un groupe : métadonnées, admins, membres, rôles. **Signés par le relais** | 29 | oui (relais) | 6 |
 | 10009 | Mes communautés (`group`) | 51 | oui | 6 |
+| 24242 | Autorisation Blossom (envoi d'un fichier, § 10) | Blossom BUD-01 | oui | 6b |
 
 **Kinds propres à ChatON** : autorisés seulement quand aucune NIP ne convient (par exemple la configuration d'un salon vocal). Ils sont **documentés ici avant tout code**, avec un vecteur. Les autres clients Nostr les ignorent.
 
@@ -83,7 +85,8 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 | 29 | Communautés et salons (§ 9) | 6 |
 | 51 | Listes : mes communautés (`10009`) ; sourdine et blocage plus tard | 6, 10 |
 | 09, 25 | Suppression d'un message privé, réactions | plus tard |
-| Blossom | Fichiers et médias | 6b |
+| 92 | Pièce jointe dans un message (`imeta`, § 10) | 6b |
+| Blossom (BUD-01, 02) | Fichiers et médias (§ 10) | 6b |
 
 Rejetées : **04** (ancien format de MP, qui fuit les métadonnées : remplacé par 17), **28** et **72** (remplacées par 29), **07** (les clés vivent dans `core`, pas dans une extension de navigateur).
 
@@ -104,7 +107,7 @@ Le sceau, signé par l'auteur, prouve au destinataire qui a écrit. Le message i
 
 **Ce n'est qu'un déni partiel, pas celui de Signal.** Un destinataire qui conserve le sceau et révèle la clé de conversation NIP-44 peut prouver à un tiers que l'auteur a bien envoyé ce contenu. Le sceau signé couvre le texte chiffré, et le MAC empêche de le faire déchiffrer en autre chose. Pour un déni complet, il faudrait des clés éphémères (type Signal ou MLS) : on y reviendra à l'étape 7.
 
-Conséquence : un kind 14 **portant une `sig` est rejeté** (vecteur `signed_rumor`), car une rumeur signée serait une preuve autonome.
+Conséquence : un kind 14 (ou 15) **portant une `sig` est rejeté** (vecteur `signed_rumor`), car une rumeur signée serait une preuve autonome.
 
 ### Limite connue : pas de confidentialité persistante
 
@@ -115,12 +118,12 @@ NIP-17/44 utilisent les clés à long terme. **Si une clé privée fuit, tous le
 Dans cet ordre, et tout échec rejette l'événement :
 
 1. JSON bien formé, champs aux bons types, hexadécimal en minuscules et de la bonne longueur.
-2. `kind == 14` et `sig` présente → rejet (`signed_rumor`).
+2. `kind` 14 ou 15 et `sig` présente → rejet (`signed_rumor`).
 3. `id` recalculé ≠ `id` reçu → rejet (`bad_id`).
-4. Signature invalide pour `pubkey` → rejet (`bad_sig`). Ne s'applique pas à un kind 14, qui n'est validé qu'à l'intérieur d'un sceau valide.
+4. Signature invalide pour `pubkey` → rejet (`bad_sig`). Ne s'applique pas à un kind 14 ou 15, qui n'est validé qu'à l'intérieur d'un sceau valide.
 5. `created_at` plus de **15 minutes** dans le futur → rejet. Constante à ajuster.
 
-Pour un kind 14 extrait d'un sceau : son `pubkey` doit être **égal** à celui du sceau, sinon c'est une usurpation et le message est rejeté.
+Pour un kind 14 ou 15 extrait d'un sceau : son `pubkey` doit être **égal** à celui du sceau, sinon c'est une usurpation et le message est rejeté.
 
 ## 7. Régénérer les vecteurs
 
@@ -212,3 +215,39 @@ Un `9002` remplace **toutes** les métadonnées du groupe (NIP-29) : le client r
 - `9` `["h", S]` + `["v","0"]`, contenu en clair, signé par l'auteur. Les communautés ne sont **pas** chiffrées de bout en bout (étape 7 pour les groupes privés).
 - Suppression : `9005` `["h", S], ["e", id]`. Le relais efface l'événement visé et diffuse le `9005` ; un client masque tout message visé par un `9005` accepté.
 
+## 10. Fichiers et médias (Blossom)
+
+Les fichiers ne passent pas par le relais. Chaque instance expose un serveur **Blossom** sur le même port (BUD-01, BUD-02) ; un message ne transporte que l'adresse du fichier et, pour une pièce jointe, sa clé.
+
+### Envoi
+
+- Toujours vers **sa propre instance** : `PUT https://<instance>/upload`, avec une autorisation `24242` signée (`["t","upload"]`, `["x", sha256]`, `["expiration", …]`). Seule une clé qui a un handle sur l'instance peut envoyer.
+- Taille maximale : **25 Mio** par fichier. Le serveur refuse un `Content-Length` absent ou trop grand avant de lire le corps.
+- Le fichier est ensuite servi par son empreinte : `GET https://<instance>/<sha256>`, sans authentification. `/mirror`, `/media` et `/report` sont désactivés.
+
+### Pièces jointes : toujours chiffrées
+
+- **AES-256-GCM**, une clé de 32 octets et un nonce de 12 octets tirés au hasard **par fichier**, en hexadécimal. Le chiffrement se fait dans `core` ; le serveur ne stocke que du texte chiffré.
+- `x` = sha256 du fichier **chiffré** (son adresse Blossom), `ox` = sha256 du fichier **en clair**. Le client vérifie `x` avant de déchiffrer et `ox` après.
+- Comme le blob est illisible sans le message, il reste lisible par empreinte sans contrôle d'accès.
+
+**En message privé** : une rumeur NIP-17 de kind **15**, scellée et emballée comme un kind 14 (§ 5). Contenu = URL du fichier. Tags : `p`, `file-type` (type MIME), `encryption-algorithm` = `aes-gcm`, `decryption-key`, `decryption-nonce`, `x`, `ox`, `size` (octets, en clair), et `name` (nom d'origine, ajout ChatON).
+
+**Dans un salon** : un `9` (`["h", S]`) avec un tag NIP-92 `imeta` ; le contenu est une légende facultative.
+
+```
+["imeta", "url https://a.fr/<x>", "m image/png", "x <x>", "ox <ox>", "size 1234",
+          "name chat.png", "encryption-algorithm aes-gcm",
+          "decryption-key <64 hex>", "decryption-nonce <24 hex>"]
+```
+
+### Images de communauté et de profil
+
+- En clair (elles sont publiques, comme les `39000` et les kind 0) : `picture` dans le `9002` de la communauté, `picture` dans le profil (kind 0).
+- Affichée seulement si l'URL est sur **sa propre instance** (l'hôte du relais de la communauté, le domaine NIP-05 de l'utilisateur), de la forme `https://<hôte>/<sha256>[.ext]`, et si les octets reçus ont cette empreinte.
+
+### Téléchargement
+
+- `core` télécharge (25 Mio au plus, empreinte vérifiée) et l'interface n'affiche que des octets rendus par `core` : la vue web ne charge jamais une URL distante.
+- Automatique seulement depuis **mon instance** et **l'instance de la communauté** ; ailleurs, il faut cliquer. Un expéditeur ne peut donc pas apprendre l'adresse IP de ses destinataires avec son propre serveur.
+- Le cache local garde le fichier **chiffré** ; il est déchiffré à la lecture.

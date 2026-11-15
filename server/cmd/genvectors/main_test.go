@@ -78,8 +78,8 @@ func TestVectorsVerify(t *testing.T) {
 		if !strings.ContainsAny(fmt.Sprint(v.Event.Content, v.Event.Tags), "\b\f") && !ev.CheckID() {
 			t.Errorf("%s: library id mismatch", v.Name)
 		}
-		if (v.Event.Kind == 14) != (v.Sig == "") {
-			t.Errorf("%s: kind 14 must have no sig, every other kind must have one", v.Name)
+		if rumor := v.Event.Kind == 14 || v.Event.Kind == 15; rumor != (v.Sig == "") {
+			t.Errorf("%s: kinds 14 and 15 must have no sig, every other kind must have one", v.Name)
 		}
 		if v.Sig != "" && !ev.VerifySignature() {
 			t.Errorf("%s: bad signature", v.Name)

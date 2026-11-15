@@ -23,6 +23,7 @@ type ServerConfig struct {
 	Name           string   // SERVER_NAME, shown in NIP-11
 	BlockedPubkeys []string // SERVER_BLOCKEDPUBKEYS, comma-separated hex keys
 	RelayKey       string   // SERVER_RELAYKEY, hex: signs group state; default relay.key next to the DB
+	BlobDir        string   // SERVER_BLOBDIR, uploaded files; default blobs/ next to the DB
 }
 
 func LoadConfig() (*Config, error) {

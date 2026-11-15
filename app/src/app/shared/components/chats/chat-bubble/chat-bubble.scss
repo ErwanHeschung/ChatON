@@ -56,3 +56,42 @@ img {
 :host:hover .delete {
   opacity: 1;
 }
+
+img.attachment {
+  max-width: min(24rem, 100%);
+  max-height: 20rem;
+  border-radius: var(--base-radius);
+}
+
+.file {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--surface-primary);
+  border-radius: var(--base-radius);
+  font-size: var(--font-size-small);
+
+  .size {
+    color: var(--content-secondary);
+  }
+
+  .error {
+    color: var(--content-error);
+  }
+}
+
+.link {
+  all: unset;
+  cursor: pointer;
+  font-size: var(--font-size-small);
+  text-decoration: underline;
+
+  &:focus-visible {
+    outline: 2px solid var(--content-primary);
+  }
+}
+
+img.avatar {
+  object-fit: cover;
+}

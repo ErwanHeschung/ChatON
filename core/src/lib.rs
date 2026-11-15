@@ -11,6 +11,7 @@ pub mod dm;
 pub mod event;
 pub mod identity;
 pub mod link;
+pub mod media;
 pub mod session;
 
 pub use nostr;
@@ -53,6 +54,10 @@ pub enum Error {
     LinkRefused,
     #[error("invalid or revoked invite")]
     InvalidInvite,
+    #[error("file too large (25 MB max)")]
+    TooLarge,
+    #[error("this file is on a server you haven't allowed")]
+    NotAllowed,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

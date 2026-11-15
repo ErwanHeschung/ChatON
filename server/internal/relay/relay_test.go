@@ -125,6 +125,7 @@ func TestWritePolicy(t *testing.T) {
 		"stranger profile":        event(stranger, nostr.KindProfileMetadata, nil, now),
 		"gift wrap to non-local":  event(ephemeral, nostr.KindGiftWrap, nostr.Tags{{"p", stranger.pk.Hex()}}, now),
 		"bare rumor (kind 14)":    event(alice, nostr.KindDirectMessage, nostr.Tags{{"p", bob.pk.Hex()}}, now),
+		"bare file rumor (15)":    event(alice, nostr.KindFileMessage, nostr.Tags{{"p", bob.pk.Hex()}}, now),
 		"text note (kind 1)":      event(alice, nostr.KindTextNote, nil, now),
 		"1 hour in the future":    event(alice, nostr.KindProfileMetadata, nil, now.Add(time.Hour)),
 		"gift wrap without p tag": event(ephemeral, nostr.KindGiftWrap, nil, now),

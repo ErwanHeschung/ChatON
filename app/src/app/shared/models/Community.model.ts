@@ -1,3 +1,5 @@
+import { Attachment } from '@models/Media.model';
+
 // Shapes returned by core (`community::*`). Keys and ids are hex.
 
 export interface Channel {
@@ -26,6 +28,7 @@ export interface ChannelMessage {
   author: string;
   text: string;
   created_at: number;
+  attachment: Attachment | null;
 }
 
 /** `community` events from core's listener. */

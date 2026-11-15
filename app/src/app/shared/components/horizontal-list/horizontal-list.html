@@ -23,8 +23,12 @@
     [attr.aria-label]="community.name"
     [class.selected]="community.id === store.selected()"
   >
-    <!-- ponytail: pictures come with media (step 6b); a remote URL here would leak the IP. -->
-    <span class="initial">{{ community.name.charAt(0).toUpperCase() }}</span>
+    @let src = community.picture ? (media.picture(community.picture) | async) : null;
+    @if (src) {
+      <img class="picture" [src]="src" alt="" />
+    } @else {
+      <span class="initial">{{ community.name.charAt(0).toUpperCase() }}</span>
+    }
   </button>
 </cdk-virtual-scroll-viewport>
 

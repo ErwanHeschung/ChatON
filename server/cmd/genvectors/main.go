@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"fiatjaf.com/nostr"
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -140,7 +141,7 @@ func sign(k keypair, e Unsigned, rumor bool) (serialized, id, sig string) {
 
 func valid(name string, k keypair, kind int, tags nostr.Tags, content string) Valid {
 	e := Unsigned{k.pk, createdAt, kind, tags, content}
-	ser, id, sig := sign(k, e, kind == 14)
+	ser, id, sig := sign(k, e, kind == 14 || kind == 15)
 	return Valid{name, k.sk, e, ser, id, sig}
 }
 
@@ -150,6 +151,10 @@ func generate() []byte {
 	const community, channel1 = "k3j9x2m8q0aa", "g7w2p5n1c4bb"
 	// Seal/gift wrap content is NIP-44 ciphertext: opaque here, NIP-44 has its own vectors.
 	const opaque = "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	// Attachment fields: fixed values, the AES-GCM itself is tested in core.
+	cipherHash, plainHash := sha256.Sum256([]byte("ciphertext")), sha256.Sum256([]byte("plaintext"))
+	fileX, fileOX := hex.EncodeToString(cipherHash[:]), hex.EncodeToString(plainHash[:])
+	fileKey, fileNonce := strings.Repeat("ab", 32), strings.Repeat("cd", 12)
 
 	vs := Vectors{Version: 0, AuxRand: hex.EncodeToString(aux[:])}
 	vs.Valid = []Valid{
@@ -172,6 +177,13 @@ func generate() []byte {
 		valid("group_chat_message", bob, 9, nostr.Tags{v0, {"h", channel1}}, "Bonjour tout le monde"),
 		valid("group_metadata", relay, 39000, nostr.Tags{v0, {"d", community}, {"name", "Les chatons"}, {"private"}, {"restricted"}, {"closed"}, {"child", channel1}}, ""),
 		valid("groups_list", bob, 10009, nostr.Tags{v0, {"group", community, "wss://chaton.example"}}, ""),
+		// files (spec § 10): DM attachment (rumor, id only) and channel attachment
+		valid("dm_file_rumor", alice, 15, nostr.Tags{v0, {"p", bob.pk}, {"file-type", "image/png"}, {"encryption-algorithm", "aes-gcm"},
+			{"decryption-key", fileKey}, {"decryption-nonce", fileNonce}, {"x", fileX}, {"ox", fileOX}, {"size", "1234"}, {"name", "chat.png"}},
+			"https://chaton.example/"+fileX),
+		valid("group_file_message", bob, 9, nostr.Tags{v0, {"h", channel1}, {"imeta", "url https://chaton.example/" + fileX, "m image/png",
+			"x " + fileX, "ox " + fileOX, "size 1234", "name chat.png", "encryption-algorithm aes-gcm",
+			"decryption-key " + fileKey, "decryption-nonce " + fileNonce}}, "Regardez !"),
 		// serialization edge cases (rumors: id only)
 		valid("escapes", alice, 14, nostr.Tags{v0}, "quote \" backslash \\ newline \n tab \t cr \r bs \b ff \f"),
 		valid("unicode_raw", alice, 14, nostr.Tags{v0}, "émoji 🎉 日本語 ñ"),

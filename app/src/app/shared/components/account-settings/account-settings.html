@@ -6,6 +6,33 @@
 }
 
 <section>
+  <h3 i18n="@@picture-title">Picture</h3>
+  <p class="hint" i18n="@@picture.hint">Public, stored on your instance.</p>
+  <input #picture type="file" accept="image/*" hidden (change)="setPicture(picture)" />
+  <button
+    class="btn"
+    [disabled]="pictureState() === 'sending'"
+    (click)="picture.click()"
+    i18n="@@picture.change"
+  >
+    Change my picture
+  </button>
+  @switch (pictureState()) {
+    @case ('idle') {}
+    @case ('sending') {}
+    @case ('done') {
+      <p i18n="@@picture.done">Picture updated.</p>
+    }
+    @case ('too_large') {
+      <p class="error" i18n="@@chat.too-large">File too large (25 MB max)</p>
+    }
+    @default {
+      <p class="error" i18n="@@form.unknown-error">Something went wrong. Please try again</p>
+    }
+  }
+</section>
+
+<section>
   <h3 i18n="@@link-title">Link a device</h3>
   @switch (step()) {
     @case ('idle') {

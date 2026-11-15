@@ -14,6 +14,7 @@ use nostr_sdk::prelude::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::media::{self, Attachment};
 use crate::session::{Session, TIMEOUT, backfill, http, is_local_host};
 use crate::{Error, Result, event, link};
 
@@ -59,8 +60,10 @@ pub struct ChannelMessage {
     pub id: EventId,
     pub channel: String,
     pub author: PublicKey,
+    /// The caption when there's an attachment.
     pub text: String,
     pub created_at: Timestamp,
+    pub attachment: Option<Attachment>,
 }
 
 /// `<host>'<community>/<code>` (spec § 9, invitations).
@@ -311,6 +314,57 @@ impl Session {
         message(&ev).ok_or_else(|| Error::Invalid("empty message".into()))
     }
 
+    /// Encrypts `bytes`, uploads them to my instance and posts them in `channel`.
+    pub async fn send_file(
+        &self,
+        community: &str,
+        channel: &str,
+        bytes: &[u8],
+        mime: &str,
+        name: &str,
+        caption: &str,
+    ) -> Result<ChannelMessage> {
+        let relay = self.relay_of(community).await?;
+        let file = self.upload_attachment(bytes, mime, name).await?;
+        let ev = self
+            .group_event(
+                &relay,
+                Kind::ChatMessage,
+                channel,
+                [file.to_imeta()?],
+                caption,
+            )
+            .await?;
+        message(&ev).ok_or_else(|| Error::Invalid("empty message".into()))
+    }
+
+    /// Admins: a public picture, uploaded to my instance (spec § 10).
+    pub async fn set_community_picture(
+        &self,
+        community: &str,
+        bytes: Vec<u8>,
+        mime: &str,
+    ) -> Result<()> {
+        let relay = self.relay_of(community).await?;
+        let url = media::upload(&self.keys, &self.account().relay, bytes, mime).await?;
+        self.fetch_state(&relay, &[community.to_string()]).await?;
+        let key = self.relay_key(&relay).await?;
+        let meta = self
+            .metadata(key, community)
+            .await?
+            .ok_or_else(|| Error::Server("community state not found".into()))?;
+        self.edit_metadata(
+            &relay,
+            community,
+            &meta.name,
+            Some(&url),
+            None,
+            &meta.children,
+        )
+        .await?;
+        self.sync_community(community, &relay).await
+    }
+
     /// My own messages; any message for admins and moderators.
     pub async fn delete_message(&self, community: &str, channel: &str, id: EventId) -> Result<()> {
         let relay = self.relay_of(community).await?;
@@ -480,11 +534,15 @@ impl Session {
                 });
             }
         }
+        // Shown only if hosted by the community's instance (spec § 10).
+        let picture = meta
+            .picture
+            .filter(|url| media::allowed(url, &[host_of(&relay)]).is_some());
         Ok(Some(Community {
             id: id.into(),
             relay,
             name: meta.name,
-            picture: meta.picture,
+            picture,
             channels,
             roles,
         }))
@@ -631,6 +689,16 @@ impl Session {
             .ok_or(Error::NotFound)
     }
 
+    /// Relays of my communities (for the auto-download rule, spec § 10).
+    pub(crate) async fn communities_relays(&self) -> Result<Vec<String>> {
+        Ok(self
+            .group_list()
+            .await?
+            .into_iter()
+            .map(|(_, relay)| relay)
+            .collect())
+    }
+
     /// My communities, `(id, relay)`, from my latest 10009.
     async fn group_list(&self) -> Result<Vec<(String, String)>> {
         Ok(self
@@ -724,6 +792,7 @@ fn message(ev: &Event) -> Option<ChannelMessage> {
         author: ev.pubkey,
         text: ev.content.clone(),
         created_at: ev.created_at,
+        attachment: ev.tags.iter().find_map(Attachment::from_imeta),
     })
 }
 

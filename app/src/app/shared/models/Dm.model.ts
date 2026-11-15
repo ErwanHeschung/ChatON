@@ -1,3 +1,5 @@
+import { Attachment } from '@models/Media.model';
+
 // Shapes returned by core (`dm::Message`, `session::{Peer, Conversation}`). Keys are hex.
 
 export interface DmMessage {
@@ -6,6 +8,7 @@ export interface DmMessage {
   receiver: string;
   text: string;
   created_at: number;
+  attachment: Attachment | null;
 }
 
 export interface Peer {
@@ -13,6 +16,8 @@ export interface Peer {
   handle: string | null;
   pubkey: string;
   npub: string;
+  /** Profile picture URL, only if hosted on the peer's own instance. */
+  picture: string | null;
 }
 
 export interface Conversation {
