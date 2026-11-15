@@ -45,11 +45,15 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 - [`spec/test-vectors/events.json`](spec/test-vectors/events.json) : 13 vecteurs valides (un par kind, plus les cas d'échappement) et 3 invalides. Signatures reproductibles (`aux_rand` nul). Générés par `server/cmd/genvectors`, vérifiés en Go et contre le vecteur officiel BIP-340 n°0.
 - **Terminé quand :** les vecteurs existent et les tests Go passent. Le test Rust de l'étape 2 doit les reproduire à l'octet près.
 
-## Étape 2 : core (Rust)
+## Étape 2 : core (Rust) ✅
 
-- Modules : `identity` (génération de clés, chiffrement et déchiffrement NIP-49), `protocol` (construction et vérification d'événements, fine couche au-dessus de `nostr`), `sync` (client relais via `nostr-sdk`), `store` (SQLite via la base sqlite de `nostr-sdk`, ou `rusqlite`).
-- Les secrets vont dans le trousseau de l'OS via le crate `keyring`.
-- **Terminé quand :** `cargo test` passe les `spec/test-vectors`, et `cargo clippy -- -D warnings` ne remonte rien.
+- Crate `chaton-core` (le nom `core` entrerait en conflit avec la bibliothèque standard de Rust), fine couche au-dessus de `nostr` 0.45 :
+  - `identity` : génération de clés, NIP-49 (`ncryptsec`), trousseau via `keyring-core` (le store de la plateforme est choisi par l'app) ;
+  - `event` : tag `v`, nettoyage des caractères de contrôle, validation dans l'ordre de la spec § 6 ;
+  - `dm` : NIP-17, avec un emballage pour le destinataire et un pour soi (multi-appareil).
+- `tests/vectors.rs` reproduit à l'octet près les 13 sérialisations et ids et les 7 signatures générés en Go : le contrat Go↔Rust tient. Le vecteur officiel NIP-49 passe aussi.
+- Client relais (`nostr-sdk`) et base SQLite (`nostr-sqlite`) **déplacés à l'étape 4**, quand les commandes Tauri en définiront le besoin.
+- **Terminé quand :** `cargo test` passe les `spec/test-vectors`, et `cargo clippy --all-targets -- -D warnings` ne remonte rien. ✅
 
 ## Étape 3 : serveur (Go)
 
@@ -60,7 +64,8 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 
 ## Étape 4 : app (Tauri 2 + Angular)
 
-- `app/src-tauri` expose des commandes qui enveloppent `core` : `register`, `login`, `search_handle`, `send_dm`, `list_dms`. Les événements remontent à l'UI via `emit`.
+- `core` : ajouter le client relais (`nostr-sdk`, outbox NIP-65, relais 10050 pour les MP) et la base locale (`nostr-sqlite`), reportés de l'étape 2.
+- `app/src-tauri` enregistre le store de trousseau de chaque plateforme (`keyring-core`) et expose des commandes qui enveloppent `core` : `register`, `login`, `search_handle`, `send_dm`, `list_dms`. Les événements remontent à l'UI via `emit`.
 - Angular les appelle par un petit `TauriService` (`invoke` de `@tauri-apps/api`). Les composants existants de connexion, inscription, chat et liste d'utilisateurs y sont rebranchés.
 - Inscription : générer la clé dans core, réserver le handle auprès de l'annuaire, publier les `kind` 0 et 10002, puis envoyer le `ncryptsec` au coffre (étape 5).
 - L'UI affiche toujours `pseudo@instance` en entier.

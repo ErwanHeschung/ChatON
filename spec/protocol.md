@@ -88,7 +88,7 @@ Rejetées : **04** (ancien format de MP, qui fuit les métadonnées : remplacé 
      └─ 14 message   NON signé
 ```
 
-- Chiffrement **NIP-44 v2** uniquement, fait **exclusivement dans `core`**. Les vecteurs officiels de NIP-44 (`nip44.vectors.json` dans le dépôt des NIP) font partie des tests de `core`. On ne les recopie pas ici.
+- Chiffrement **NIP-44 v2** uniquement, fait **exclusivement dans `core`**. `core` s'appuie sur `rust-nostr`, dont la suite de tests passe déjà les vecteurs officiels de NIP-44 (`nip44.vectors.json`). `core` teste l'aller-retour complet d'un MP et le rejet d'un sceau falsifié (`core/src/dm.rs`).
 - Le serveur ne voit que l'emballage : le destinataire (`p`), une clé d'expéditeur jetable, un horodatage légèrement aléatoire et un contenu chiffré.
 
 ### Pourquoi le message (14) n'est pas signé

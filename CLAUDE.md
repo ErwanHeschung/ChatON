@@ -94,8 +94,9 @@ Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé
 │   ├── protocol.md          # formats d'événements, signature, versions
 │   ├── federation.md        # .well-known, découverte, migration
 │   └── test-vectors/        # JSON partagé Rust/Go
-├── core/                    # crate Rust (lib)
-│   └── src/{identity,crypto,protocol,sync,store}/
+├── core/                    # crate Rust `chaton-core` (lib)
+│   ├── src/{identity,event,dm}.rs
+│   └── tests/vectors.rs     # reproduit spec/test-vectors à l'octet près
 ├── app/                     # Tauri 2
 │   ├── src/                 # UI web (TS)
 │   └── src-tauri/           # commandes Tauri → core
@@ -117,14 +118,19 @@ cd server && go vet ./... && go test ./... && go run ./cmd/server   # SERVER_POR
 cd server && go run ./cmd/genvectors > ../spec/test-vectors/events.json
 ```
 
-À venir : `cd core && cargo test` (étape 2), `npm run tauri dev | android dev | ios dev` (étape 4).
+```bash
+# core
+cd core && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+```
+
+À venir : `npm run tauri dev | android dev | ios dev` (étape 4).
 
 ## Conventions
 
 - Rust : `cargo fmt`, `cargo clippy -- -D warnings`. Pas de `unwrap()` hors des tests.
 - Go : `gofmt`, `go vet`. Erreurs enveloppées avec `%w`.
 - UI : aucune logique métier ni crypto en TypeScript. Tout passe par les commandes Tauri vers `core`.
-- Secrets : jamais en clair sur disque. Utiliser Keychain, Keystore ou le trousseau de l'OS.
+- Secrets : jamais en clair sur disque. Utiliser Keychain, Keystore ou le trousseau de l'OS. `core` passe par `keyring-core` : l'app enregistre le store de sa plateforme au démarrage (`keyring_core::set_default_store`), les tests utilisent `keyring_core::mock`.
 - Le code et les commentaires peuvent être en anglais. La doc du projet est en français.
 
 ## Feuille de route
