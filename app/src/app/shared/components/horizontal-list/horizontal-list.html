@@ -1,0 +1,31 @@
+<div class="switch-view" (click)="switch()">
+  <svg [lucideIcon]="switchIcon()" size="30" [class.is-swapping]="discussionMode() === 'DM'"></svg>
+</div>
+
+<cdk-virtual-scroll-viewport
+  orientation="horizontal"
+  itemSize="60"
+  class="horizontal-viewport"
+  appHorizontalScroll
+>
+  <div
+    *cdkVirtualFor="let item of items()"
+    class="horizontal-item"
+    (click)="onItemClick(item)"
+    appTooltip="{{ item.name }}"
+    [class.selected]="item.id === currentSelectedItem()?.id"
+  >
+    <img
+      ngSrc="{{ item.image }}"
+      width="50"
+      height="50"
+      alt="{{ item.name }}"
+      class="item-image"
+      draggable="false"
+    />
+  </div>
+</cdk-virtual-scroll-viewport>
+
+<div class="add-item">
+  <svg [lucideIcon]="addItem" size="30"></svg>
+</div>

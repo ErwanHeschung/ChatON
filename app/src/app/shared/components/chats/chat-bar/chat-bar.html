@@ -1,0 +1,19 @@
+<svg
+  class="emoji"
+  [lucideIcon]="emojiIcon"
+  cdkOverlayOrigin
+  #trigger="cdkOverlayOrigin"
+  (click)="isPickerOpen = !isPickerOpen"
+></svg>
+
+<input />
+
+<ng-template
+  cdkConnectedOverlay
+  [cdkConnectedOverlayOrigin]="trigger"
+  [cdkConnectedOverlayOpen]="isPickerOpen"
+  [cdkConnectedOverlayPush]="true"
+  (overlayOutsideClick)="isPickerOpen = false"
+>
+  <app-emoji-select></app-emoji-select>
+</ng-template>

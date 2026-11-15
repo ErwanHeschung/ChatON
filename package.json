@@ -8,9 +8,9 @@
     "prepare": "npx husky"
   },
   "lint-staged": {
-    "frontend/src/**/*.{ts,html,scss}": [
-      "npm --prefix frontend run lint",
-      "npm --prefix frontend run format"
+    "app/src/**/*.{ts,html,scss}": [
+      "npm --prefix app run lint",
+      "npm --prefix app run format"
     ]
   },
   "keywords": [],

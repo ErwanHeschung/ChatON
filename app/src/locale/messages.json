@@ -1,0 +1,23 @@
+{
+  "locale": "en",
+  "translations": {
+    "app-description": " Talk with your friends on your own private chat server, hosted on your machine. No more worries about data privacy or third-party services. ",
+    "not-found-title": "404",
+    "not-found-description": " Oops! The page you're looking for doesn't exist. It might have been moved or deleted. ",
+    "not-found-button": " Go to Home ",
+    "login-title": "Login",
+    "login.username-placeholder": "Username",
+    "login.username-invalid-error": "Username is required (min 3 characters)",
+    "register.password-label": "Password",
+    "login.password-invalid-error": "Password is required (min 8 characters)",
+    "login.submit-button": " Login ",
+    "register-title": "Create Account",
+    "register.username-placeholder": "Choose a username",
+    "register.email-placeholder": "your@email.com",
+    "register.email-invalid-error": "Please enter a valid email address",
+    "register.password-invalid-error": "Password is required (min 8 characters)",
+    "register.confirm-password-label": "Confirm Password",
+    "register.password-mismatch-error": "Passwords do not match",
+    "register.submit-button": " Register "
+  }
+}

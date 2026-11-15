@@ -1,0 +1,96 @@
+:host {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  gap: 0.5rem;
+}
+
+.horizontal-viewport {
+  width: calc(100% - 2 * 55px);
+  height: 60px;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.horizontal-item,
+.switch-view,
+.add-item {
+  width: 50px;
+  height: 50px;
+  margin: 0 5px;
+  border-radius: var(--base-radius);
+  background-color: var(--surface-elevated);
+  overflow: hidden;
+  box-shadow: var(--shadow-elevated);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+  cursor: pointer;
+}
+
+.item-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+
+  img {
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+}
+
+.horizontal-item:hover,
+.selected {
+  box-shadow: var(--shadow-hover);
+  transform: scale(1.1) translateY(2px);
+}
+
+.switch-view svg.lucide {
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.switch-view svg.lucide.is-swapping {
+  transform: rotate(180deg) scale(0.9);
+}
+
+.switch-view,
+.add-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: visible;
+  transition: background-color 0.3s ease;
+  &:hover {
+    background-color: var(--interaction-hover);
+  }
+}
+
+.switch-view::after,
+.add-item::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  height: 50%;
+  width: 1px;
+  background-color: white;
+  opacity: 0.5;
+}
+
+.switch-view::after {
+  left: 55px;
+}
+
+.add-item::after {
+  right: 55px;
+}

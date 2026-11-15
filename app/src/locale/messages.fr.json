@@ -1,0 +1,9 @@
+{
+  "locale": "fr",
+  "translations": {
+    "app-description": "Discutez avec vos amis sur votre propre serveur de chat privé, hébergé sur votre machine. Plus de soucis concernant la confidentialité des données ou les services tiers.",
+    "not-found-title": "404",
+    "not-found-description": "Oups ! La page que vous recherchez n'existe pas. Elle a peut-être été déplacée ou supprimée.",
+    "not-found-button": "Retour à l'accueil"
+  }
+}
