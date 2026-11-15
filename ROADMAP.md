@@ -38,12 +38,12 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 - `spec/` et `core/` sont créés aux étapes 1 et 2.
 - **Terminé quand :** `cd app && npm run build` et `cd server && go vet ./... && go build ./...` passent.
 
-## Étape 1 : spec v0
+## Étape 1 : spec v0 ✅
 
-- `spec/protocol.md` décrit la forme d'événement NIP-01, le tag de version et la liste des `kind` utilisés (0 profil, 10002 liste de relais, 14/1059 MP, 9xxx/39xxx NIP-29). Il indique aussi quelles NIP on suit et où on s'en écarte.
-- `spec/federation.md` décrit `.well-known/nostr.json` (NIP-05), la découverte des relais (NIP-65) et la migration via un nouvel événement de liste de relais.
-- `spec/test-vectors/events.json` contient des cas `{privkey, event (non signé), serialized, id, sig}`, un par `kind`. Les signatures Schnorr utilisent un aléa auxiliaire fixe (permis par BIP-340), ce qui rend les vecteurs déterministes.
-- **Terminé quand :** les vecteurs existent et les tests des étapes 2 et 3 les chargent.
+- [`spec/protocol.md`](spec/protocol.md) : format NIP-01, règles de sérialisation, tag de version (sauf sceau et emballage), kinds et NIP utilisés, MP NIP-17 (déni partiel, pas de confidentialité persistante), validation à la réception.
+- [`spec/federation.md`](spec/federation.md) : `.well-known/nostr.json` (NIP-05), réservation de handle via NIP-98, relais NIP-65 et 10050, migration.
+- [`spec/test-vectors/events.json`](spec/test-vectors/events.json) : 13 vecteurs valides (un par kind, plus les cas d'échappement) et 3 invalides. Signatures reproductibles (`aux_rand` nul). Générés par `server/cmd/genvectors`, vérifiés en Go et contre le vecteur officiel BIP-340 n°0.
+- **Terminé quand :** les vecteurs existent et les tests Go passent. Le test Rust de l'étape 2 doit les reproduire à l'octet près.
 
 ## Étape 2 : core (Rust)
 

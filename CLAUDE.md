@@ -14,7 +14,7 @@ Une messagerie communautaire **façon Discord** (serveurs/communautés, salons t
 ### Principes non négociables
 
 1. **L'identité est une paire de clés.** Le compte appartient à l'utilisateur, pas à une instance.
-2. **Tout est signé.** Chaque événement (message, action, changement de rôle) est signé par son auteur. Un serveur ne peut rien falsifier.
+2. **Tout est signé.** Chaque événement qui transite (message, action, changement de rôle) est signé par son auteur. Un serveur ne peut rien falsifier. Seule exception : le message intérieur d'un MP (kind 14) n'est pas signé lui-même, il est authentifié par le sceau signé qui l'enveloppe (NIP-17, voir `spec/protocol.md` § 5).
 3. **Les messages privés sont chiffrés de bout en bout.** Le serveur ne déchiffre jamais rien. Tout le chiffrement se fait côté client.
 4. **Aucun serveur n'est indispensable.** Si une instance disparaît, les utilisateurs migrent ailleurs avec leur identité.
 5. **La fédération est prévue dès le départ**, même si on commence avec une seule instance.
@@ -112,6 +112,9 @@ cd app && npm ci && npm run build && npm start
 
 # server
 cd server && go vet ./... && go test ./... && go run ./cmd/server   # SERVER_PORT=:8080
+
+# vecteurs de test (spec/test-vectors), à régénérer après tout changement de cas
+cd server && go run ./cmd/genvectors > ../spec/test-vectors/events.json
 ```
 
 À venir : `cd core && cargo test` (étape 2), `npm run tauri dev | android dev | ios dev` (étape 4).
