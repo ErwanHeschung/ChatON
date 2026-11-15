@@ -1,4 +1,6 @@
-<app-user-card [user]="connectedUser()"></app-user-card>
+<button class="me" (click)="openAccount()" i18n-title="@@account-title" title="Account">
+  <app-user-card [user]="connectedUser()"></app-user-card>
+</button>
 
 <cdk-virtual-scroll-viewport itemSize="55" class="users-viewport">
   <div *cdkVirtualFor="let user of users()" class="users">

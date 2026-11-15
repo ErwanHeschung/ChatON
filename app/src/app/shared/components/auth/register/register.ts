@@ -10,8 +10,8 @@ import {
 import { Router } from '@angular/router';
 import { CmdError, ConnectedUser } from '@models/Auth.model';
 import { AuthService } from '@services/auth.service';
-import { LucideCircleAlert, LucideDynamicIcon } from '@lucide/angular';
-import { finalize } from 'rxjs';
+import { LucideCircleExclamationPoint, LucideDynamicIcon } from '@lucide/angular';
+import { finalize, switchMap, tap } from 'rxjs';
 import { ROUTES } from '@app/app.routes';
 import { ConnectedUserStore } from '@stores/connected-user.store';
 import { ModalService } from '@services/modal.service';
@@ -30,12 +30,15 @@ const INSTANCE_PATTERN = /^https?:\/\/[^\s/]+\/?$/;
   selector: 'app-register',
   imports: [ReactiveFormsModule, LucideDynamicIcon],
   templateUrl: './register.html',
-  styleUrl: './register.scss',
+  styleUrl: '../login/login.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Register {
   public isPending = signal<boolean>(false);
-  public errorIcon = LucideCircleAlert;
+  /** Set once registered: the secret key to back up before going on. */
+  public readonly nsec = signal<string | null>(null);
+  public readonly copied = signal<boolean>(false);
+  public errorIcon = LucideCircleExclamationPoint;
 
   private readonly router = inject(Router);
   private readonly fb = inject(NonNullableFormBuilder);
@@ -70,13 +73,13 @@ export class Register {
     this.isPending.set(true);
     this.authService
       .register(this.registerForm.getRawValue())
-      .pipe(finalize(() => this.isPending.set(false)))
+      .pipe(
+        tap((user: ConnectedUser) => this.connectedUserStore.setLoggedInUser(user)),
+        switchMap(() => this.authService.exportKey()),
+        finalize(() => this.isPending.set(false)),
+      )
       .subscribe({
-        next: (user: ConnectedUser) => {
-          this.connectedUserStore.setLoggedInUser(user);
-          this.modalService.close();
-          this.router.navigate([ROUTES.CHAT, ROUTES.DMS]);
-        },
+        next: (nsec: string) => this.nsec.set(nsec),
         error: (err: CmdError) => {
           const { name, instance } = this.registerForm.controls;
           switch (err.code) {
@@ -97,5 +100,15 @@ export class Register {
           }
         },
       });
+  }
+
+  public copy(): void {
+    navigator.clipboard.writeText(this.nsec() ?? '').then(() => this.copied.set(true));
+  }
+
+  /** No vault: losing every device without this key loses the account. */
+  public saved(): void {
+    this.modalService.close();
+    this.router.navigate([ROUTES.CHAT, ROUTES.DMS]);
   }
 }

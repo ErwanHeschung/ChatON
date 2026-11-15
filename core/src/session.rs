@@ -4,14 +4,14 @@
 //! Only encrypted gift wraps are stored on disk; messages are decrypted on read.
 
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
 use nostr::nips::nip05::{Nip05Address, Nip05Profile};
 use nostr::nips::nip98::{HttpData, HttpMethod, Sha256Hash};
 use nostr_sdk::prelude::{
-    Client, ClientNotification, Filter, Keys, Kind, Metadata, PublicKey, RelayUrl,
+    Client, ClientNotification, Event, Filter, Keys, Kind, Metadata, PublicKey, RelayUrl,
     SignerAuthenticator, StreamExt, Tag, Timestamp, ToBech32, Url,
 };
 use nostr_sqlite::prelude::NostrSqlite;
@@ -56,6 +56,7 @@ pub struct Conversation {
 }
 
 pub struct Session {
+    dir: PathBuf,
     keys: Keys,
     account: Account,
     client: Client,
@@ -114,7 +115,7 @@ impl Session {
     }
 
     /// Imports an existing key for `handle`. The directory must map the handle to it.
-    pub async fn login(dir: &Path, handle: &str, nsec: &str) -> Result<Self> {
+    pub async fn import_key(dir: &Path, handle: &str, nsec: &str) -> Result<Self> {
         let identity = Identity::from_nsec(nsec)?;
         let peer = resolve(handle).await?;
         if peer.pubkey != identity.public_key() {
@@ -164,15 +165,25 @@ impl Session {
         client.connect().and_wait(TIMEOUT).await;
 
         // Gift wraps addressed to me, since the last one we have (minus NIP-59 jitter).
+        // Fetched pages are saved by nostr-sdk; the subscription then keeps us live.
         let mut filter = Filter::new().kind(Kind::GiftWrap).pubkey(keys.public_key());
         let stored = client.database().query(filter.clone().limit(1)).await?;
         if let Some(last) = stored.iter().map(|e| e.created_at).max() {
             let since = last.as_secs().saturating_sub(GIFT_WRAP_JITTER_SECS);
             filter = filter.since(Timestamp::from_secs(since));
         }
+        backfill(filter.clone(), |f| {
+            let client = &client;
+            async move {
+                let events = client.fetch_events(f).timeout(TIMEOUT).await?;
+                Ok(events.into_iter().collect())
+            }
+        })
+        .await?;
         client.subscribe(filter).await?;
 
         Ok(Self {
+            dir: dir.to_path_buf(),
             keys,
             account,
             client,
@@ -204,6 +215,28 @@ impl Session {
 
     pub fn account(&self) -> &Account {
         &self.account
+    }
+
+    /// The secret key (`nsec`), for a backup or a device link.
+    pub fn export_key(&self) -> String {
+        match self.keys.secret_key().to_bech32() {
+            Ok(nsec) => nsec,
+            Err(never) => match never {},
+        }
+    }
+
+    /// Forgets the account on this device: keychain entry, account file and
+    /// local history. Without another device or a backup, the account is lost.
+    pub async fn logout(&self) -> Result<()> {
+        self.close().await;
+        Identity::delete(&self.account.handle)?;
+        for file in [ACCOUNT_FILE, EVENTS_DB, "events.db-wal", "events.db-shm"] {
+            match std::fs::remove_file(self.dir.join(file)) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
     /// Looks up `pseudo@instance` and remembers the result.
@@ -327,6 +360,31 @@ impl Session {
     }
 }
 
+/// Pages back through `filter` with `until`: the relay caps each answer (100
+/// events for khatru's SQLite store). Stops on a page with nothing new.
+// ponytail: more than a page of events in the same second would loop on that
+// second; gift wrap timestamps are randomized (NIP-59), so it doesn't happen.
+// Plain closure returning a future, not `AsyncFn`: keeps callers `Send` (Tauri).
+async fn backfill<Fut>(filter: Filter, fetch: impl Fn(Filter) -> Fut) -> Result<usize>
+where
+    Fut: Future<Output = Result<Vec<Event>>>,
+{
+    let mut seen = std::collections::HashSet::new();
+    let mut until = Timestamp::now();
+    loop {
+        let page = fetch(filter.clone().until(until)).await?;
+        let Some(oldest) = page.iter().map(|e| e.created_at).min() else {
+            return Ok(seen.len());
+        };
+        let before = seen.len();
+        seen.extend(page.iter().map(|e| e.id));
+        if seen.len() == before {
+            return Ok(seen.len());
+        }
+        until = oldest;
+    }
+}
+
 /// Resolves `pseudo@instance` through the instance directory (NIP-05).
 pub async fn resolve(handle: &str) -> Result<Peer> {
     let handle = handle.trim().trim_start_matches('@').to_lowercase();
@@ -412,6 +470,7 @@ fn http() -> reqwest::Client {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nostr::event::FinalizeEvent;
 
     #[test]
     fn groups_conversations_by_peer_latest_first() {
@@ -439,6 +498,32 @@ mod tests {
         assert_eq!(convs[0].peer, bob.public_key());
         assert_eq!(convs[0].last.text, "3 to bob");
         assert_eq!(convs[1].peer, carol.public_key());
+    }
+
+    #[tokio::test]
+    async fn backfill_pages_past_the_relay_cap() {
+        let keys = Keys::generate();
+        let all: Vec<Event> = (0..250)
+            .map(|i| {
+                nostr_sdk::prelude::EventBuilder::new(Kind::TextNote, i.to_string())
+                    .custom_created_at(Timestamp::from_secs(1_000 + i / 2)) // 2 per second
+                    .finalize(&keys)
+                    .unwrap()
+            })
+            .collect();
+        // A relay that answers newest first, at most 100 events.
+        let fetch = |f: Filter| {
+            let until = f.until.unwrap();
+            let mut page: Vec<Event> = all
+                .iter()
+                .filter(|e| e.created_at <= until)
+                .cloned()
+                .collect();
+            page.sort_by_key(|e| std::cmp::Reverse(e.created_at));
+            page.truncate(100);
+            std::future::ready(Ok(page))
+        };
+        assert_eq!(backfill(Filter::new(), fetch).await.unwrap(), 250);
     }
 
     #[test]

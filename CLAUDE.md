@@ -9,7 +9,7 @@ Une messagerie communautaire **façon Discord** (serveurs/communautés, salons t
 - **auto-hébergeable** : n'importe qui peut lancer une instance sur un petit VPS ou un Raspberry Pi ;
 - **décentralisée et fédérée** : les instances communiquent entre elles ;
 - **infra minimale** : les serveurs sont des *aides remplaçables*, pas des autorités ;
-- **confort Discord** : inscription e-mail/mot de passe, recherche `@pseudo`, multi-appareil, notifications, historique.
+- **confort Discord** : inscription en un clic, recherche `@pseudo`, multi-appareil (liaison par code), notifications, historique.
 
 ### Principes non négociables
 
@@ -25,7 +25,7 @@ Une messagerie communautaire **façon Discord** (serveurs/communautés, salons t
 |---|---|---|
 | `core/` | Rust (crate lib) | Toute la logique client : identité, clés, signatures, chiffrement (openmls), protocole, sync, stockage local (SQLite) |
 | `app/` | Tauri 2 + UI web (TypeScript) | Client unique : Windows, macOS, Linux, iOS, Android |
-| `server/` | Go | Relais, annuaire, coffre de clés, passerelle push, hôte de communauté |
+| `server/` | Go | Relais, annuaire, passerelle push, hôte de communauté |
 | Voix/vidéo | LiveKit (SFU, Go), déployé à côté du serveur | Salons vocaux au-delà de 5 ou 6 personnes |
 | `spec/` | Markdown + vecteurs de test | Spécification du protocole, **source de vérité** entre Rust et Go |
 
@@ -43,7 +43,7 @@ Une messagerie communautaire **façon Discord** (serveurs/communautés, salons t
 └──────────────┬───────────────┘
                │ protocole (WebSocket/HTTPS)
 ┌──────────────▼───────────────┐
-│ server (Go)                  │  relais, annuaire, coffre, push, communautés
+│ server (Go)                  │  relais, annuaire, push, communautés
 └──────────────────────────────┘
         ⇅ fédération avec d'autres instances
 ```
@@ -54,7 +54,7 @@ Une messagerie communautaire **façon Discord** (serveurs/communautés, salons t
 2. **Amorçage** : point d'entrée pour découvrir le réseau.
 3. **Relais NAT** : sert de pont quand une connexion directe est impossible (phase P2P ultérieure).
 4. **Annuaire** : `pseudo@instance → clé publique + relais`, exposé via `/.well-known/`.
-5. **Coffre** : stocke la clé privée **chiffrée par le mot de passe** de l'utilisateur (connexion classique, multi-appareil, récupération).
+5. **Liaison d'appareils** : transporte, sans les stocker, les messages éphémères qui lient un nouvel appareil (PAKE, `spec/protocol.md` § 8). Le serveur ne stocke **jamais** la clé privée, même chiffrée.
 6. **Hôte de communauté** : historique, application des permissions et des bans, fichiers et médias, intégration LiveKit.
 7. **Passerelle push** : envoie des notifications **vides ou chiffrées** via APNs, FCM et UnifiedPush. Le téléphone se réveille, récupère et déchiffre localement.
 
@@ -65,7 +65,7 @@ Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé
 - **Identité** = clé publique (ed25519 ou secp256k1, voir les décisions ouvertes). Elle est permanente.
 - **Nom affiché** : libre, non unique.
 - **Handle** : `pseudo@instance`, unique *par instance*, attribué par l'annuaire de l'instance. Un domaine perso est possible en option, après vérification via `.well-known`.
-- **Récupération** : clé privée chiffrée par mot de passe (dans l'esprit de NIP-49) et stockée dans le coffre. Plus tard, éventuellement : identité avec clé de rotation (dans l'esprit de `did:plc`).
+- **Multi-appareil et récupération** : un nouvel appareil reçoit la clé d'un appareil déjà connecté (code court + SPAKE2), et l'utilisateur exporte sa clé (`nsec`) pour la garder en lieu sûr. Pas de coffre. Plus tard, éventuellement : identité avec clé de rotation (dans l'esprit de `did:plc`).
 - L'UI doit **toujours** distinguer clairement `erwan@a.fr` de `erwan@b.fr`, pour éviter les usurpations.
 
 ## Fédération et modération
@@ -95,14 +95,14 @@ Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé
 │   ├── federation.md        # .well-known, découverte, migration
 │   └── test-vectors/        # JSON partagé Rust/Go
 ├── core/                    # crate Rust `chaton-core` (lib)
-│   ├── src/{identity,event,dm,session}.rs
+│   ├── src/{identity,event,dm,session,link}.rs
 │   └── tests/{vectors,e2e}.rs  # vecteurs à l'octet près, bout en bout contre un serveur
 ├── app/                     # Tauri 2
 │   ├── src/                 # UI web (TS)
 │   └── src-tauri/           # commandes Tauri → core
 └── server/                  # Go
     ├── cmd/server/
-    └── internal/{relay,directory,vault,push,community,federation}/
+    └── internal/{relay,directory,push,community,federation}/
 ```
 
 ## Commandes
@@ -155,7 +155,7 @@ Le détail par étape est dans [`ROADMAP.md`](ROADMAP.md).
 2. **core** : génération et stockage des clés, signature/vérification, client relais WebSocket, base SQLite.
 3. **server** : relais (stockage et diffusion d'événements signés), annuaire, `.well-known`.
 4. **app** : inscription, connexion, recherche `@pseudo`, messages privés.
-5. Coffre (clé chiffrée par mot de passe) et multi-appareil.
+5. Multi-appareil : liaison d'appareils et export de la clé (pas de coffre).
 6. Communautés : salons, rôles et permissions (événements signés), modération.
 7. Chiffrement de bout en bout : messages privés, puis groupes (openmls).
 8. Notifications push (plugin Tauri Swift/Kotlin + passerelle Go).
@@ -172,8 +172,9 @@ Tranchées le 2026-11-15 :
 - [x] Sérialisation : celle de NIP-01 (`sha256([0,pubkey,created_at,kind,tags,content])`).
 - [x] Framework UI web : Angular (existant), dans Tauri 2.
 - [x] Desktop : Tauri uniquement. GPUI seulement si une raison concrète apparaît.
-- [x] Attribution des handles : premier arrivé, premier servi, un handle par clé (e-mail éventuellement à l'étape 5).
+- [x] Attribution des handles : premier arrivé, premier servi, un handle par clé. Pas d'e-mail.
 - [x] Écriture sur le relais : utilisateurs locaux + MP qui leur sont adressés.
+- [x] **Pas de coffre de clés** : un mot de passe fuité donnerait la clé pour toujours (une clé ne se révoque pas), et l'opérateur pourrait attaquer hors ligne les mots de passe faibles. Multi-appareil par liaison d'appareils, sauvegarde par export de la clé. Perdre tous ses appareils sans export = perdre le compte.
 
 Demande avant de trancher l'une de ces questions :
 

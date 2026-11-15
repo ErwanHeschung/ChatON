@@ -98,6 +98,7 @@ func valid(name string, k keypair, kind int, tags nostr.Tags, content string) Va
 
 func generate() []byte {
 	payload := sha256.Sum256([]byte(`{"name":"alice"}`))
+	channel := sha256.Sum256([]byte("chaton-link-v0|alice@chaton.example|K7F4"))
 	// Seal/gift wrap content is NIP-44 ciphertext: opaque here, NIP-44 has its own vectors.
 	const opaque = "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
@@ -110,6 +111,8 @@ func generate() []byte {
 		valid("seal", alice, 13, nostr.Tags{}, opaque),
 		valid("gift_wrap", ephem, 1059, nostr.Tags{{"p", bob.pk}}, opaque),
 		valid("relay_auth", alice, 22242, nostr.Tags{v0, {"relay", "wss://relay.chaton.example"}, {"challenge", "c0ffee"}}, ""),
+		// device linking (spec § 8): ephemeral, signed by a throwaway key, channel = sha256 hex
+		valid("device_link", ephem, 24135, nostr.Tags{v0, {"c", hex.EncodeToString(channel[:])}}, `{"type":"pake","msg":"AAAA"}`),
 		valid("http_auth", alice, 27235, nostr.Tags{v0, {"u", "https://chaton.example/api/handle"}, {"method", "POST"}, {"payload", hex.EncodeToString(payload[:])}}, ""),
 		// serialization edge cases (rumors: id only)
 		valid("escapes", alice, 14, nostr.Tags{v0}, "quote \" backslash \\ newline \n tab \t cr \r bs \b ff \f"),

@@ -1,83 +1,100 @@
-<h2 i18n="@@register-title">Create Account</h2>
-
-<form [formGroup]="registerForm" (ngSubmit)="onSubmit()">
-  <div class="field">
-    <label for="instance" i18n="@@register.instance-label">Instance</label>
-    <input
-      id="instance"
-      formControlName="instance"
-      placeholder="https://chaton.example"
-      autocomplete="url"
-      spellcheck="false"
-      [class.input-error]="registerForm.controls.instance.hasError('unreachable')"
-    />
-    @if (registerForm.controls.instance.touched && registerForm.controls.instance.invalid) {
-      <small class="error error-logo">
-        <svg [lucideIcon]="errorIcon" size="15"></svg>
-        @if (registerForm.controls.instance.hasError('unreachable')) {
-          <ng-container i18n="@@register.instance-unreachable"
-            >Couldn't reach this instance</ng-container
-          >
-        } @else {
-          <ng-container i18n="@@register.instance-invalid"
-            >Enter an address like https://chaton.example</ng-container
-          >
-        }
-      </small>
+@if (nsec(); as nsec) {
+  <h2 i18n="@@backup-title">Save your secret key</h2>
+  <p class="hint" i18n="@@backup.why">
+    Your account lives only on your devices: no server keeps your key. If you lose this device
+    without another one or this key, your account is lost. Keep it in a password manager.
+  </p>
+  <code class="secret">{{ nsec }}</code>
+  <button type="button" class="btn" (click)="copy()">
+    @if (copied()) {
+      <ng-container i18n="@@backup.copied">Copied</ng-container>
+    } @else {
+      <ng-container i18n="@@backup.copy">Copy</ng-container>
     }
-  </div>
-
-  <div class="field">
-    <label for="name" i18n="@@register.name-label">Username</label>
-    <input
-      id="name"
-      formControlName="name"
-      placeholder="Choose a username"
-      i18n-placeholder="@@register.username-placeholder"
-      autocomplete="username"
-      spellcheck="false"
-      [class.input-error]="registerForm.controls.name.hasError('conflict')"
-    />
-    @if (registerForm.controls.name.touched && registerForm.controls.name.invalid) {
-      <small class="error error-logo">
-        <svg [lucideIcon]="errorIcon" size="15"></svg>
-        @if (registerForm.controls.name.hasError('conflict')) {
-          <ng-container i18n="@@register.name-taken">This username is already taken</ng-container>
-        } @else {
-          <ng-container i18n="@@register.name-invalid"
-            >3 to 32 characters: letters, digits, . _ -</ng-container
-          >
-        }
-      </small>
-    }
-    @if (preview()) {
-      <small class="hint" i18n="@@register.handle-preview">Your address: {{ preview() }}</small>
-    }
-  </div>
-
-  @if (registerForm.hasError('keychain')) {
-    <small class="error-logo">
-      <svg [lucideIcon]="errorIcon" size="15"></svg>
-      <ng-container i18n="@@register.keychain-error"
-        >Your system keychain is unavailable, so your key can't be saved</ng-container
-      >
-    </small>
-  }
-  @if (registerForm.hasError('unknown')) {
-    <small class="error-logo">
-      <svg [lucideIcon]="errorIcon" size="15"></svg>
-      <ng-container i18n="@@form.unknown-error"
-        >Something went wrong. Please try again</ng-container
-      >
-    </small>
-  }
-
-  <button
-    type="submit"
-    class="btn"
-    [disabled]="registerForm.invalid || isPending()"
-    i18n="@@register.submit-button"
-  >
-    Register
   </button>
-</form>
+  <button type="button" class="btn" (click)="saved()" i18n="@@backup.saved">I saved it</button>
+} @else {
+  <h2 i18n="@@register-title">Create Account</h2>
+
+  <form [formGroup]="registerForm" (ngSubmit)="onSubmit()">
+    <div class="field">
+      <label for="instance" i18n="@@register.instance-label">Instance</label>
+      <input
+        id="instance"
+        formControlName="instance"
+        placeholder="https://chaton.example"
+        autocomplete="url"
+        spellcheck="false"
+        [class.input-error]="registerForm.controls.instance.hasError('unreachable')"
+      />
+      @if (registerForm.controls.instance.touched && registerForm.controls.instance.invalid) {
+        <small class="error error-logo">
+          <svg [lucideIcon]="errorIcon" size="15"></svg>
+          @if (registerForm.controls.instance.hasError('unreachable')) {
+            <ng-container i18n="@@register.instance-unreachable"
+              >Couldn't reach this instance</ng-container
+            >
+          } @else {
+            <ng-container i18n="@@register.instance-invalid"
+              >Enter an address like https://chaton.example</ng-container
+            >
+          }
+        </small>
+      }
+    </div>
+
+    <div class="field">
+      <label for="name" i18n="@@register.name-label">Username</label>
+      <input
+        id="name"
+        formControlName="name"
+        placeholder="Choose a username"
+        i18n-placeholder="@@register.username-placeholder"
+        autocomplete="username"
+        spellcheck="false"
+        [class.input-error]="registerForm.controls.name.hasError('conflict')"
+      />
+      @if (registerForm.controls.name.touched && registerForm.controls.name.invalid) {
+        <small class="error error-logo">
+          <svg [lucideIcon]="errorIcon" size="15"></svg>
+          @if (registerForm.controls.name.hasError('conflict')) {
+            <ng-container i18n="@@register.name-taken">This username is already taken</ng-container>
+          } @else {
+            <ng-container i18n="@@register.name-invalid"
+              >3 to 32 characters: letters, digits, . _ -</ng-container
+            >
+          }
+        </small>
+      }
+      @if (preview()) {
+        <small class="hint" i18n="@@register.handle-preview">Your address: {{ preview() }}</small>
+      }
+    </div>
+
+    @if (registerForm.hasError('keychain')) {
+      <small class="error-logo">
+        <svg [lucideIcon]="errorIcon" size="15"></svg>
+        <ng-container i18n="@@register.keychain-error"
+          >Your system keychain is unavailable, so your key can't be saved</ng-container
+        >
+      </small>
+    }
+    @if (registerForm.hasError('unknown')) {
+      <small class="error-logo">
+        <svg [lucideIcon]="errorIcon" size="15"></svg>
+        <ng-container i18n="@@form.unknown-error"
+          >Something went wrong. Please try again</ng-container
+        >
+      </small>
+    }
+
+    <button
+      type="submit"
+      class="btn"
+      [disabled]="registerForm.invalid || isPending()"
+      i18n="@@register.submit-button"
+    >
+      Register
+    </button>
+  </form>
+}

@@ -1,0 +1,77 @@
+<h2 i18n="@@link-join-title">Sign in with another device</h2>
+
+<p class="hint" i18n="@@link-join.how">
+  On a device where you're signed in, open your account and choose “Link a device”.
+</p>
+
+<form [formGroup]="form" (ngSubmit)="onSubmit()">
+  <div class="field">
+    <label for="handle" i18n="@@login.handle-label">Handle</label>
+    <input
+      id="handle"
+      formControlName="handle"
+      placeholder="@pseudo@instance"
+      autocomplete="username"
+      spellcheck="false"
+    />
+    @if (form.controls.handle.touched && form.controls.handle.invalid) {
+      <small class="error error-logo">
+        <svg [lucideIcon]="errorIcon" size="15"></svg>
+        <ng-container i18n="@@login.handle-invalid"
+          >Enter your full handle, like pseudo@instance</ng-container
+        >
+      </small>
+    }
+  </div>
+
+  <div class="field">
+    <label for="code" i18n="@@link-join.code-label">Code</label>
+    <input
+      id="code"
+      formControlName="code"
+      placeholder="XXXX-XXX-XXX"
+      autocomplete="off"
+      spellcheck="false"
+    />
+  </div>
+
+  @if (form.errors; as errors) {
+    <small class="error-logo">
+      <svg [lucideIcon]="errorIcon" size="15"></svg>
+      @if (errors['not_found']) {
+        <ng-container i18n="@@login.handle-not-found">No one with this handle</ng-container>
+      } @else if (errors['wrong_code']) {
+        <ng-container i18n="@@link.wrong-code"
+          >Wrong code. Ask the other device for a new one</ng-container
+        >
+      } @else if (errors['code_expired']) {
+        <ng-container i18n="@@link.code-expired"
+          >No device shows this code. Check it, or ask for a new one</ng-container
+        >
+      } @else if (errors['link_refused']) {
+        <ng-container i18n="@@link.refused">The other device refused</ng-container>
+      } @else if (errors['keychain']) {
+        <ng-container i18n="@@register.keychain-error"
+          >Your system keychain is unavailable, so your key can't be saved</ng-container
+        >
+      } @else {
+        <ng-container i18n="@@form.unknown-error"
+          >Something went wrong. Please try again</ng-container
+        >
+      }
+    </small>
+  }
+
+  @if (isPending()) {
+    <small class="hint" i18n="@@link-join.waiting">Confirm on your other device…</small>
+  }
+
+  <button
+    type="submit"
+    class="btn"
+    [disabled]="form.invalid || isPending()"
+    i18n="@@link-join.submit-button"
+  >
+    Sign in
+  </button>
+</form>

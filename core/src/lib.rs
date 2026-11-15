@@ -9,6 +9,7 @@
 pub mod dm;
 pub mod event;
 pub mod identity;
+pub mod link;
 pub mod session;
 
 pub use nostr;
@@ -43,6 +44,12 @@ pub enum Error {
     KeyMismatch,
     #[error("no relay accepted the event: {0}")]
     NotDelivered(String),
+    #[error("wrong link code")]
+    WrongCode,
+    #[error("link code expired, or no device is showing it")]
+    CodeExpired,
+    #[error("the other device refused the link")]
+    LinkRefused,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

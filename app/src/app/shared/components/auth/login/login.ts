@@ -9,7 +9,7 @@ import {
 import { Router } from '@angular/router';
 import { CmdError, ConnectedUser } from '@models/Auth.model';
 import { AuthService } from '@services/auth.service';
-import { LucideCircleAlert, LucideDynamicIcon } from '@lucide/angular';
+import { LucideCircleExclamationPoint, LucideDynamicIcon } from '@lucide/angular';
 import { finalize } from 'rxjs';
 import { ROUTES } from '@app/app.routes';
 import { ConnectedUserStore } from '@stores/connected-user.store';
@@ -20,10 +20,7 @@ interface LoginForm {
   nsec: FormControl<string>;
 }
 
-/**
- * Step 4: imports an existing key for a handle (checked against the directory).
- * Email + password login comes with the vault (step 5).
- */
+/** Imports a saved secret key for a handle (checked against the directory). */
 @Component({
   selector: 'app-login',
   imports: [ReactiveFormsModule, LucideDynamicIcon],
@@ -39,7 +36,7 @@ export class Login {
   private readonly modalService = inject(ModalService);
 
   public isPending = signal<boolean>(false);
-  public errorIcon = LucideCircleAlert;
+  public errorIcon = LucideCircleExclamationPoint;
 
   public readonly loginForm: FormGroup<LoginForm> = this.fb.group({
     handle: ['', [Validators.required, Validators.pattern(/^@?[^@\s]+@[^@\s]+$/)]],
@@ -53,7 +50,7 @@ export class Login {
     }
     this.isPending.set(true);
     this.authService
-      .login(this.loginForm.getRawValue())
+      .importKey(this.loginForm.getRawValue())
       .pipe(finalize(() => this.isPending.set(false)))
       .subscribe({
         next: (user: ConnectedUser) => {

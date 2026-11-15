@@ -35,7 +35,7 @@ Content-Type: application/json
 - L'événement NIP-98 porte les tags `u` (URL exacte), `method` (`POST`), `payload` (sha256 hex du corps) et `v`. Vecteur : `http_auth`.
 - Le serveur vérifie l'événement (signature, `created_at` à ±60 s, `u`, `method`, `payload`), puis associe `name` à la `pubkey` de l'événement.
 - Réponses : `201` réservé, `409` pseudo déjà pris **ou clé ayant déjà un handle**, `400` pseudo invalide, `401` authentification invalide.
-- Politique : **premier arrivé, premier servi**, un seul handle par clé. Une vérification par e-mail pourra venir avec le coffre (étape 5).
+- Politique : **premier arrivé, premier servi**, un seul handle par clé. Pas d'e-mail ni de coffre (§ 5).
 - Un pseudo inconnu renvoie `200` avec `{"names":{},"relays":{}}`.
 - Pas encore d'abandon ni de transfert de handle : il faudra une requête signée de libération.
 
@@ -52,6 +52,8 @@ Le relais d'une instance n'est pas un dépôt ouvert. Il accepte :
 - de la part d'une clé **qui a un handle ici** : son profil (`0`) et ses listes de relais (`10002`, `10050`) ;
 - de la part de **n'importe qui**, y compris d'une autre instance : un gift wrap (`1059`) dont le tag `p` désigne un utilisateur local.
 
+Le kind éphémère `24135` (liaison d'appareils) est accepté de **n'importe quelle clé**, puisque le nouvel appareil n'a pas encore de compte. Il n'est jamais stocké, doit porter exactement un tag `c`, et son contenu est limité à 4 Kio. Un filtre qui le demande doit donner exactement un `#c` : on ne peut pas écouter toutes les liaisons en cours.
+
 Tout le reste est refusé : autres kinds, `14` publié nu, `created_at` à plus de 15 min dans le futur, clés bloquées (`SERVER_BLOCKEDPUBKEYS`). Un gift wrap n'est **servi qu'à son destinataire** : tout filtre qui peut correspondre à un `1059` (`kinds` vide ou contenant `1059`) exige une authentification NIP-42 (sinon `CLOSED` « `auth-required:` », et le client s'authentifie puis réessaie) et un `#p` égal à la seule clé authentifiée (sinon « `restricted:` »). Comme la règle porte sur le filtre et non sur les résultats, elle couvre aussi la diffusion en direct. Le relais n'expose pas de `COUNT`. Les kinds NIP-29 arrivent à l'étape 6.
 
 ## 4. Migration de compte
@@ -65,9 +67,11 @@ L'utilisateur garde sa clé et change d'instance :
 
 Rien d'autre ne change : ses contacts le suivent par sa clé, et le handle n'est qu'un affichage.
 
-## 5. Coffre (étape 5)
+## 5. Multi-appareil, sans coffre
 
-La clé privée est stockée **chiffrée par le mot de passe** de l'utilisateur au format NIP-49 (`ncryptsec`), et récupérée via un appel authentifié NIP-98. Le serveur ne voit jamais le mot de passe ni la clé en clair. Détails à l'étape 5.
+Le serveur ne stocke **aucune** clé privée, même chiffrée. Un nouvel appareil reçoit la clé d'un appareil déjà connecté par la liaison d'appareils (`protocol.md` § 8), à travers le relais. La sauvegarde, c'est l'export de la clé par l'utilisateur. Raison : avec un coffre protégé par mot de passe, un mot de passe fuité donne la clé pour toujours (une clé ne se révoque pas), et l'opérateur peut attaquer hors ligne les mots de passe faibles.
+
+L'historique d'un nouvel appareil vient du relais : le client pagine (`until`) ses gift wraps, car le relais limite chaque requête à 100 événements.
 
 ## 6. Règles d'instance (étape 10)
 

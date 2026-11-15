@@ -56,7 +56,8 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 | 13 | Sceau (contenu chiffré NIP-44) | 59 | oui | 4 |
 | 1059 | Emballage (clé jetable) | 59 | oui | 4 |
 | 22242 | Authentification au relais | 42 | oui | 3 |
-| 27235 | Authentification HTTP (annuaire, coffre, envois) | 98 | oui | 3 |
+| 27235 | Authentification HTTP (annuaire, envois) | 98 | oui | 3 |
+| **24135** | **Liaison d'appareils** (éphémère, propre à ChatON, § 8) | — | oui (clé jetable) | 5 |
 | 9, 9000–9022, 39000–39003 | Communautés | 29 | oui | 6, *réservé, pas de vecteurs* |
 
 **Kinds propres à ChatON** : autorisés seulement quand aucune NIP ne convient (par exemple la configuration d'un salon vocal). Ils sont **documentés ici avant tout code**, avec un vecteur. Les autres clients Nostr les ignorent.
@@ -73,7 +74,7 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 | 17, 44, 59 | Messages privés chiffrés | 4 |
 | 19 | Encodages `npub`, `nprofile`… (affichage seulement) | 4 |
 | 65 | Liste de relais | 4 |
-| 49 | Clé privée chiffrée par mot de passe (coffre) | 5 |
+| 49 | Clé privée chiffrée par mot de passe (export chiffré, plus tard) | — |
 | 09, 25, 29 | Suppression, réactions, communautés | 6 |
 | Blossom | Fichiers et médias | 6 |
 | 51 | Listes (sourdine, blocage) | 10 |
@@ -123,3 +124,39 @@ go test ./cmd/genvectors/   # vérifie le fichier commité et le vecteur officie
 ```
 
 Ajouter un kind = ajouter un cas dans `server/cmd/genvectors/main.go`, régénérer, commiter le JSON.
+
+## 8. Liaison d'appareils (kind 24135)
+
+Il n'y a **pas de coffre** : le serveur ne détient jamais la clé privée, même chiffrée (voir `CLAUDE.md`, décisions). Un nouvel appareil **B** reçoit la clé d'un appareil **A** déjà connecté, à travers le relais, protégée par un code court et un PAKE. Aucune NIP ne couvre ce besoin, d'où un kind propre à ChatON.
+
+### Le code
+
+- 10 caractères en base32 de Crockford (`0123456789ABCDEFGHJKMNPQRSTVWXYZ`), affichés `XXXX-XXX-XXX`. Les 4 premiers forment le **canal** (20 bits), les 6 derniers le **secret** (30 bits).
+- Saisie tolérante : majuscules, tirets et espaces ignorés, `I`/`L` → `1`, `O` → `0`.
+- Généré par A, valable **5 minutes** et pour **une seule tentative** : après un échange PAKE, réussi ou non, il est brûlé.
+
+### Échange
+
+Tous les messages sont des événements **éphémères** de kind `24135` (le relais ne les stocke pas), signés par une **clé jetable** propre à chaque côté, avec les tags `["v","0"]` et `["c", <canal>]`, où `<canal> = hex(sha256("chaton-link-v0|" + handle + "|" + canal du code))`. Le contenu est un objet JSON `{"type": …}`.
+
+| # | De | `type` | Champ | Contenu |
+|---|---|---|---|---|
+| 1 | B | `pake` | `msg` | message SPAKE2 de B, base64 |
+| 2 | A | `pake` | `msg` | message SPAKE2 de A, base64 |
+| 3 | B | `hello` | `data` | nom de l'appareil, chiffré avec `K` |
+| 4 | A | `key` | `data` | clé privée (`nsec`), chiffrée avec `K`, après confirmation de l'utilisateur sur A |
+| 4 | A | `refused` | — | l'utilisateur a refusé |
+| 4 | A | `failed` | — | `hello` indéchiffrable : mauvais code |
+| 5 | B | `done` | `data` | `"ok"`, chiffré avec `K` |
+
+- **SPAKE2** sur Ed25519 (crate RustCrypto `spake2`) : mot de passe = le secret du code (6 caractères), identités `"chaton-link-v0|A|" + handle` et `"chaton-link-v0|B|" + handle`. La sortie (32 octets) est la clé `K`.
+- **Chiffrement** : NIP-44 v2, avec `K` utilisée directement comme clé de conversation.
+- **Ordre** : un événement éphémère n'est livré qu'aux abonnés présents. A s'abonne au canal dès qu'il affiche le code ; B s'abonne **avant** de publier, puis parle en premier. A répond au premier message sans action de l'utilisateur : si B n'a pas de réponse en 10 secondes, aucun appareil n'affiche ce code (expiré ou faux). L'abonnement de B compte comme un auditeur, le relais ne signale donc pas de diffusion « dans le vide ».
+- A n'accepte que la **première** clé jetable de B qui se présente ; chaque côté ignore ses propres événements.
+- B vérifie que la clé reçue correspond à la clé publique que l'annuaire associe au handle (NIP-05) avant de l'enregistrer.
+
+### Ce que ça protège
+
+- Le relais (et quiconque enregistre le trafic) ne voit que des messages SPAKE2 et des données chiffrées. Il **ne peut pas tester des codes hors ligne** : un mauvais code ne donne qu'une tentative en ligne, et le code est ensuite brûlé.
+- Un code volé (par-dessus l'épaule) ne suffit pas : **A demande confirmation** en affichant le nom de l'appareil qui se lie.
+- Limite : si toutes les sessions d'un utilisateur sont perdues sans **export de la clé**, le compte est perdu. L'interface pousse cet export juste après l'inscription.

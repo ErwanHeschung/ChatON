@@ -19,12 +19,20 @@ import (
 // MaxFuture matches core's MAX_FUTURE_SECS (spec §6).
 const MaxFuture = 15 * time.Minute
 
-// Kinds stored by this relay (spec §3). NIP-29 kinds come at step 6.
-var storedKinds = []uint16{
+// KindDeviceLink carries device linking messages (spec protocol § 8). Ephemeral:
+// khatru broadcasts it to current listeners and never stores it.
+const KindDeviceLink = 24135
+
+// MaxLinkContent bounds a device linking message (SPAKE2 message or encrypted key).
+const MaxLinkContent = 4096
+
+// Kinds accepted by this relay (spec §3). NIP-29 kinds come at step 6.
+var acceptedKinds = []uint16{
 	uint16(nostr.KindProfileMetadata),
 	uint16(nostr.KindRelayListMetadata),
 	uint16(nostr.KindDMRelayList),
 	uint16(nostr.KindGiftWrap),
+	KindDeviceLink,
 }
 
 type Config struct {
@@ -57,13 +65,13 @@ func New(cfg Config, db *sqlite3.SQLite3Backend, dir Directory) *khatru.Relay {
 	rl.RejectEvent = append(rl.RejectEvent,
 		policies.PreventTimestampsInTheFuture(MaxFuture),
 		rejectRumor,
-		policies.RestrictToSpecifiedKinds(false, storedKinds...),
+		policies.RestrictToSpecifiedKinds(false, acceptedKinds...),
 		blocked(cfg.BlockedPubkeys),
 		writePolicy(dir),
 		// ponytail: fixed limits per IP, make them configurable once real traffic shows the need.
 		policies.EventIPRateLimiter(20, time.Minute, 60),
 	)
-	rl.RejectFilter = append(rl.RejectFilter, giftWrapsOnlyForRecipient)
+	rl.RejectFilter = append(rl.RejectFilter, giftWrapsOnlyForRecipient, oneLinkChannel)
 	rl.RejectConnection = append(rl.RejectConnection, policies.ConnectionRateLimiter(10, time.Minute, 30))
 	return rl
 }
@@ -87,6 +95,16 @@ func blocked(pubkeys []string) func(context.Context, *nostr.Event) (bool, string
 
 func writePolicy(dir Directory) func(context.Context, *nostr.Event) (bool, string) {
 	return func(_ context.Context, ev *nostr.Event) (bool, string) {
+		// From any key: the new device has no account yet (spec protocol § 8).
+		if ev.Kind == KindDeviceLink {
+			if len(ev.Content) > MaxLinkContent {
+				return true, "invalid: device link message too large"
+			}
+			if len(tagValues(ev, "c")) != 1 {
+				return true, "invalid: device link message needs exactly one c tag"
+			}
+			return false, ""
+		}
 		if ev.Kind == nostr.KindGiftWrap {
 			if !dir.IsLocal(recipient(ev)) {
 				return true, "restricted: recipient is not a user of this instance"
@@ -115,6 +133,25 @@ func giftWrapsOnlyForRecipient(ctx context.Context, f nostr.Filter) (bool, strin
 		return true, "restricted: you can only ask for gift wraps addressed to you"
 	}
 	return false, ""
+}
+
+// oneLinkChannel: asking for device link messages needs exactly one channel,
+// so nobody can listen to every linking in progress.
+func oneLinkChannel(_ context.Context, f nostr.Filter) (bool, string) {
+	if slices.Contains(f.Kinds, KindDeviceLink) && len(f.Tags["c"]) != 1 {
+		return true, "restricted: ask for exactly one device link channel (#c)"
+	}
+	return false, ""
+}
+
+func tagValues(ev *nostr.Event, name string) []string {
+	var values []string
+	for _, t := range ev.Tags {
+		if len(t) > 1 && t[0] == name {
+			values = append(values, t[1])
+		}
+	}
+	return values
 }
 
 func recipient(ev *nostr.Event) string {

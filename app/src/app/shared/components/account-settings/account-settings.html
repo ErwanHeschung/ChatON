@@ -1,0 +1,83 @@
+<h2 i18n="@@account-title">Account</h2>
+
+@if (account.user(); as user) {
+  <p class="handle">&#64;{{ user.handle }}</p>
+  <code class="npub">{{ user.npub }}</code>
+}
+
+<section>
+  <h3 i18n="@@link-title">Link a device</h3>
+  @switch (step()) {
+    @case ('idle') {
+      <p class="hint" i18n="@@link.how">
+        On the new device, choose “Sign in with another device” and type your handle and the code
+        shown here.
+      </p>
+      <button class="btn" (click)="offer()" i18n="@@link.show-code">Show a code</button>
+    }
+    @case ('code') {
+      <p class="code">{{ code() }}</p>
+      <p class="hint" i18n="@@link.code-valid">Valid for 5 minutes, for one attempt.</p>
+    }
+    @case ('confirm') {
+      <p i18n="@@link.confirm">Give access to your account to “{{ device() }}”?</p>
+      <div class="row">
+        <button class="btn" (click)="answer(true)" i18n="@@link.accept">Link</button>
+        <button class="btn" (click)="answer(false)" i18n="@@link.refuse">Refuse</button>
+      </div>
+    }
+    @case ('done') {
+      <p i18n="@@link.done">“{{ device() }}” is now signed in.</p>
+    }
+    @case ('failed') {
+      <p class="error">
+        @switch (error()) {
+          @case ('wrong_code') {
+            <ng-container i18n="@@link.wrong-code-a"
+              >The other device typed a wrong code</ng-container
+            >
+          }
+          @case ('code_expired') {
+            <ng-container i18n="@@link.expired">The code expired</ng-container>
+          }
+          @case ('link_refused') {
+            <ng-container i18n="@@link.refused-a">You refused the link</ng-container>
+          }
+          @default {
+            <ng-container i18n="@@form.unknown-error"
+              >Something went wrong. Please try again</ng-container
+            >
+          }
+        }
+      </p>
+      <button class="btn" (click)="offer()" i18n="@@link.new-code">New code</button>
+    }
+  }
+</section>
+
+<section>
+  <h3 i18n="@@backup-section">Secret key</h3>
+  <p class="hint" i18n="@@backup.warning">
+    Anyone with this key controls your account. Only show it to save it somewhere safe.
+  </p>
+  @if (nsec(); as nsec) {
+    <code class="npub">{{ nsec }}</code>
+  } @else {
+    <button class="btn" (click)="showKey()" i18n="@@backup.show">Show my secret key</button>
+  }
+</section>
+
+<section>
+  @if (confirmLogout()) {
+    <p class="error" i18n="@@logout.warning">
+      This removes your account from this device. Without another signed-in device or your saved
+      secret key, it's lost for good.
+    </p>
+    <div class="row">
+      <button class="btn danger" (click)="logout()" i18n="@@logout.confirm">Log out</button>
+      <button class="btn" (click)="confirmLogout.set(false)" i18n="@@logout.cancel">Cancel</button>
+    </div>
+  } @else {
+    <button class="btn" (click)="confirmLogout.set(true)" i18n="@@logout.button">Log out</button>
+  }
+</section>

@@ -174,3 +174,59 @@ func TestGiftWrapsOnlyServedToRecipient(t *testing.T) {
 		t.Errorf("anonymous profile query closed: %q", closed)
 	}
 }
+
+func TestDeviceLinkMessages(t *testing.T) {
+	alice, newDevice := newUser(), newUser() // newDevice: throwaway key, no handle
+	url := startRelay(t, alice)
+	channel := nostr.Tags{{"c", "0f0f"}}
+	onChannel := nostr.Filter{Kinds: []int{KindDeviceLink}, Tags: nostr.TagMap{"c": {"0f0f"}}}
+
+	// Device A listens on the channel; the new device (no account) talks on it.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	sub, err := connect(t, url, nil).Subscribe(ctx, nostr.Filters{onChannel})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-sub.EndOfStoredEvents
+	link := event(newDevice, KindDeviceLink, channel, time.Now())
+	if err := publish(t, connect(t, url, nil), link); err != nil {
+		t.Fatalf("link message from a key without handle rejected: %v", err)
+	}
+	select {
+	case got := <-sub.Events:
+		if got.ID != link.ID {
+			t.Fatalf("got %s, want %s", got.ID, link.ID)
+		}
+	case <-ctx.Done():
+		t.Fatal("listener got nothing")
+	}
+
+	// Ephemeral: a later subscriber finds nothing stored.
+	if evs, closed := query(t, connect(t, url, nil), onChannel); len(evs) != 0 || closed != "" {
+		t.Errorf("stored link messages: %d, closed %q", len(evs), closed)
+	}
+
+	r := connect(t, url, nil)
+	big := event(newDevice, KindDeviceLink, channel, time.Now())
+	big.Content = strings.Repeat("x", MaxLinkContent+1)
+	_ = big.Sign(newDevice.sk)
+	for name, ev := range map[string]nostr.Event{
+		"no c tag":   event(newDevice, KindDeviceLink, nil, time.Now()),
+		"two c tags": event(newDevice, KindDeviceLink, nostr.Tags{{"c", "a"}, {"c", "b"}}, time.Now()),
+		"too large":  big,
+	} {
+		if err := publish(t, r, ev); err == nil {
+			t.Errorf("%s: accepted, want rejected", name)
+		}
+	}
+
+	for name, f := range map[string]nostr.Filter{
+		"no #c":      {Kinds: []int{KindDeviceLink}},
+		"several #c": {Kinds: []int{KindDeviceLink}, Tags: nostr.TagMap{"c": {"a", "b"}}},
+	} {
+		if _, closed := query(t, connect(t, url, nil), f); !strings.HasPrefix(closed, "restricted:") {
+			t.Errorf("%s: closed %q, want restricted", name, closed)
+		}
+	}
+}

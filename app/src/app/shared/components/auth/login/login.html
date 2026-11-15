@@ -1,4 +1,4 @@
-<h2 i18n="@@login-title">Login</h2>
+<h2 i18n="@@login-title">Import a key</h2>
 
 <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
   <div class="field">
@@ -65,6 +65,6 @@
     [disabled]="loginForm.invalid || isPending()"
     i18n="@@login.submit-button"
   >
-    Login
+    Sign in
   </button>
 </form>
