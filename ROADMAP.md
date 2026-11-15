@@ -9,20 +9,20 @@ ChatON partait d'une UI web Angular 21 et d'une petite API Go avec des comptes J
 - **On garde Angular** comme UI dans Tauri 2. Il ne fait qu'afficher et appeler `invoke()`.
 - Refonte **sur place** : `frontend/` → `app/` et `backend/` → `server/` via `git mv`.
 
-Règle pour toute la feuille de route : chaque étape part d'une NIP et d'une bibliothèque existantes, et le code maison ne comble que les manques. Bibliothèques : **rust-nostr** (`nostr`, `nostr-sdk`), plus **khatru** et **go-nostr** côté Go.
+Règle pour toute la feuille de route : chaque étape part d'une NIP et d'une bibliothèque existantes, et le code maison ne comble que les manques. Bibliothèques : **rust-nostr** (`nostr`, `nostr-sdk`), plus **`fiatjaf.com/nostr`** côté Go (khatru, eventstore et nip29 réunis ; il remplace go-nostr et khatru depuis l'étape 6).
 
 ## Correspondance étapes ↔ NIP
 
 | Étape | Standard réutilisé | Bibliothèque réutilisée |
 |---|---|---|
-| Événements, signature | NIP-01 | `nostr` (Rust), `go-nostr` |
+| Événements, signature | NIP-01 | `nostr` (Rust), `fiatjaf.com/nostr` |
 | Annuaire, `.well-known` | NIP-05 | ~20 lignes de Go |
 | Liste de relais, migration | NIP-65 | gossip de `nostr-sdk` |
 | Authentification au relais | NIP-42 | intégré à khatru |
 | Liaison d'appareils | aucune NIP : kind éphémère 24135 + SPAKE2 + NIP-44 | `spake2` (RustCrypto), `nostr` (Rust) |
 | Messages privés (déjà E2EE) | NIP-17 + NIP-44 + NIP-59 | `nostr` (Rust) |
-| Communautés | NIP-29 (groupes hébergés par un relais) | khatru + relay29 |
-| Auth HTTP (envois, jeton LiveKit) | NIP-98 | go-nostr |
+| Communautés | NIP-29 (groupes hébergés par un relais) + NIP-51 (10009) | `fiatjaf.com/nostr/nip29` + règles maison |
+| Auth HTTP (envois, jeton LiveKit) | NIP-98 | `fiatjaf.com/nostr` |
 | E2EE des groupes | MLS sur Nostr (NIP-EE / Marmot) | openmls |
 
 Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape 4**. On avance donc une partie de l'étape 7, et on évite de construire des MP en clair qu'il faudrait jeter ensuite.
@@ -85,12 +85,20 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 - Plus tard : rotation de clé (dans l'esprit de `did:plc`), la vraie réponse à une clé volée ; QR code du lien sur mobile (étape 8) ; cache local des messages en clair, chiffré au repos, si l'historique devient lent.
 - **Terminé quand :** un second appareil se lie par handle + code, retrouve tout l'historique, et ses messages apparaissent en direct sur le premier. Validé par `core/tests/e2e.rs` (y compris code erroné, code expiré, déconnexion puis import de la clé).
 
-## Étape 6 : communautés
+## Étape 6 : communautés ✅
 
-- D'abord, migrer le serveur de `nbd-wtf/go-nostr`, `fiatjaf/khatru` et `fiatjaf/eventstore` (archivés ou en maintenance depuis 2025) vers le module unifié `fiatjaf.com/nostr`. Il n'a pas de backend SQLite : les événements passent en bbolt ou LMDB (pur Go, fin de cgo), et la table des handles a besoin de son propre stockage. Vérifier qu'il existe des versions taguées avant de migrer.
-- Groupes NIP-29 hébergés par l'instance (relay29 sur khatru). Les salons sont des groupes ou des sous-groupes. Rôles, permissions et bans sont des événements de modération signés.
-- Fichiers et médias via un envoi façon Blossom ou NIP-96, authentifié par NIP-98.
-- Brancher les composants existants `server-channels` et `server-banner`.
+- Migration du serveur vers `fiatjaf.com/nostr` (successeur de go-nostr, khatru et eventstore), épinglé sur un commit faute de version taguée. Stockage en **bbolt** (pur Go, plus de cgo, build Raspberry Pi simple) : événements et handles dans le même fichier (`chaton.bolt`). Les bases SQLite de dev ne sont pas migrées. relay29 n'est pas utilisé (abandonné, ancienne pile, pas de sous-groupes).
+- Bug de la bibliothèque : elle n'échappe pas U+0008 ni U+000C en calculant l'id (NIP-01 l'exige). Contournement : le relais refuse ces caractères, `core` les retire, `genvectors` a son propre sérialiseur (`spec/protocol.md` § 1). À signaler en amont.
+- Modèle (`spec/protocol.md` § 9) : une communauté est un groupe NIP-29 `private`, `closed` et `restricted` ; ses salons sont des sous-groupes (`parent`/`child`). Membres et rôles (`admin`, `moderator`) sont ceux de la communauté. Entrée sur invitation seulement (`<hôte>'<communauté>/<CODE>`), pas d'annuaire public. Mes communautés sont dans ma liste 10009 (NIP-51), que tous mes appareils lisent.
+- `server/internal/community` : applique les permissions, publie l'état (39000–39003) signé par **la clé du relais** (`SERVER_RELAYKEY`, sinon `relay.key` créé à côté de la base, annoncé en NIP-11 `self`), et le recharge au démarrage. Lecture réservée aux membres authentifiés, y compris la diffusion en direct (un membre retiré ne reçoit plus rien).
+- `core/src/community.rs` : créer (avec un salon `general`), salons, invitations, rejoindre, quitter, membres, rôles, retrait, messages et suppression. L'état n'est accepté que signé par la clé NIP-11 du relais. Synchronisation à la connexion et abonnement en direct ; `listen` émet désormais un `Update` (MP, message de salon, suppression, changement de communauté).
+- App : barre des communautés réelle avec « + » (créer | rejoindre), salons et invitation dans la colonne de gauche, salon ouvert dans le chat (suppression), membres avec badges et actions d'admin à droite. Les maquettes (catégories, 100 éléments factices) sont supprimées.
+- **Terminé quand :** une communauté se crée, invite, discute dans deux salons, supprime un message, nomme un modérateur et retire un membre. Validé par `server/internal/relay/community_test.go`, `core/tests/e2e.rs` (y compris le second appareil lié qui retrouve la communauté) et à la main dans deux fenêtres.
+- Plus tard : catégories, permissions par salon, rôles personnalisés, liste de bannis (un membre retiré a seulement besoin d'une nouvelle invitation), images de communauté (6b), révocation d'invitation.
+
+## Étape 6b : fichiers et médias
+
+- Envoi de fichiers façon Blossom, authentifié par NIP-98 ; images des communautés et des profils, pièces jointes dans les salons.
 
 ## Étape 7 : E2EE des groupes
 
@@ -106,7 +114,7 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 
 ## Étape 10 : fédération
 
-- Fichier de règles de l'instance (`rules.yaml`), reporté de l'étape 3 : mode liste noire ou liste blanche, clés et instances bloquées, limites de débit configurables. Appliqué dans les hooks `RejectEvent` de khatru.
+- Fichier de règles de l'instance (`rules.yaml`), reporté de l'étape 3 : mode liste noire ou liste blanche, clés et instances bloquées, limites de débit configurables. Appliqué dans le hook `OnEvent` de khatru.
 - Outbox model via NIP-65 : le client lit sur les relais de ses contacts, et NIP-05 résout les handles d'autres instances. Le blocage se fait à trois niveaux (règles d'instance, modération de communauté, listes de mise en sourdine NIP-51 côté utilisateur). Les messages d'inconnus arrivent dans « demandes de message ». Migrer, c'est publier une nouvelle liste de relais 10002.
 
 ## Étape 11 : (plus tard) P2P direct

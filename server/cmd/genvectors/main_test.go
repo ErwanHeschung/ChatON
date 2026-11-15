@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 
+	"fiatjaf.com/nostr"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
-	"github.com/nbd-wtf/go-nostr"
 )
 
 const vectorsPath = "../../../spec/test-vectors/events.json"
@@ -50,32 +52,45 @@ func TestVectorsVerify(t *testing.T) {
 		t.Fatal(err)
 	}
 	toEvent := func(id string, u Unsigned, sig string) nostr.Event {
-		return nostr.Event{ID: id, PubKey: u.PubKey, CreatedAt: nostr.Timestamp(u.CreatedAt), Kind: u.Kind, Tags: u.Tags, Content: u.Content, Sig: sig}
+		ev := nostr.Event{
+			ID:        nostr.MustIDFromHex(id),
+			PubKey:    nostr.MustPubKeyFromHex(u.PubKey),
+			CreatedAt: nostr.Timestamp(u.CreatedAt),
+			Kind:      nostr.Kind(u.Kind),
+			Tags:      u.Tags,
+			Content:   u.Content,
+		}
+		if sig != "" {
+			if _, err := hex.Decode(ev.Sig[:], []byte(sig)); err != nil {
+				t.Fatalf("sig %q: %v", sig, err)
+			}
+		}
+		return ev
 	}
 
 	for _, v := range vs.Valid {
 		ev := toEvent(v.ID, v.Event, v.Sig)
-		if got := string(ev.Serialize()); got != v.Serialized {
+		if got := string(serialize(v.Event)); got != v.Serialized {
 			t.Errorf("%s: serialized mismatch\n got %s\nwant %s", v.Name, got, v.Serialized)
 		}
-		if !ev.CheckID() {
-			t.Errorf("%s: id mismatch", v.Name)
+		// The library must agree with the spec, except on U+0008/U+000C: the relay
+		// rejects those (relay.rejectAmbiguousEscapes), so its deviation never matters.
+		if !strings.ContainsAny(fmt.Sprint(v.Event.Content, v.Event.Tags), "\b\f") && !ev.CheckID() {
+			t.Errorf("%s: library id mismatch", v.Name)
 		}
 		if (v.Event.Kind == 14) != (v.Sig == "") {
 			t.Errorf("%s: kind 14 must have no sig, every other kind must have one", v.Name)
 		}
-		if v.Sig != "" {
-			if ok, err := ev.CheckSignature(); !ok {
-				t.Errorf("%s: bad signature: %v", v.Name, err)
-			}
+		if v.Sig != "" && !ev.VerifySignature() {
+			t.Errorf("%s: bad signature", v.Name)
 		}
 	}
 
 	for _, v := range vs.Invalid {
 		ev := toEvent(v.Event.ID, v.Event.Unsigned, v.Event.Sig)
 		var reason string
-		switch ok, _ := ev.CheckSignature(); {
-		case ev.Kind == 14 && ev.Sig != "":
+		switch ok := ev.VerifySignature(); {
+		case ev.Kind == 14 && v.Event.Sig != "":
 			reason = "signed_rumor"
 		case !ev.CheckID():
 			reason = "bad_id"

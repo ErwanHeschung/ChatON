@@ -6,6 +6,7 @@
 //! Secrets go through `keyring-core`'s default store: the app must call
 //! `keyring_core::set_default_store` with its platform store at startup.
 
+pub mod community;
 pub mod dm;
 pub mod event;
 pub mod identity;
@@ -50,6 +51,8 @@ pub enum Error {
     CodeExpired,
     #[error("the other device refused the link")]
     LinkRefused,
+    #[error("invalid or revoked invite")]
+    InvalidInvite,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

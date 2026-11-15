@@ -24,7 +24,7 @@ use crate::session::{Session, resolve};
 use crate::{Error, Result, event};
 
 pub const KIND: u16 = 24135;
-const ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ"; // Crockford base32
+pub(crate) const ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ"; // Crockford base32
 const CODE_LEN: usize = 10;
 const CHANNEL_LEN: usize = 4;
 const TTL: Duration = Duration::from_secs(5 * 60);
@@ -33,20 +33,23 @@ const REPLY_TIMEOUT: Duration = Duration::from_secs(10);
 const PREFIX: &str = "chaton-link-v0";
 
 /// A link code: `channel` (4 chars) picks the relay channel, `secret` (6 chars) is the SPAKE2 password.
+/// `len` random characters of `alphabet`.
+pub(crate) fn random(alphabet: &[u8; 32], len: usize) -> Result<String> {
+    let mut bytes = vec![0u8; len];
+    getrandom::fill(&mut bytes).map_err(|e| Error::Invalid(e.to_string()))?;
+    // 256 is a multiple of 32: `& 31` keeps every char uniform.
+    Ok(bytes
+        .iter()
+        .map(|b| alphabet[(b & 31) as usize] as char)
+        .collect())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Code(String);
 
 impl Code {
     fn generate() -> Result<Self> {
-        let mut bytes = [0u8; CODE_LEN];
-        getrandom::fill(&mut bytes).map_err(|e| Error::Invalid(e.to_string()))?;
-        // 256 is a multiple of 32: `& 31` keeps every char uniform.
-        Ok(Self(
-            bytes
-                .iter()
-                .map(|b| ALPHABET[(b & 31) as usize] as char)
-                .collect(),
-        ))
+        Ok(Self(random(ALPHABET, CODE_LEN)?))
     }
 
     /// Tolerant input: case, dashes and spaces ignored, I/L → 1, O → 0.

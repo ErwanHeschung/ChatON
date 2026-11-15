@@ -10,6 +10,7 @@ use std::sync::{Arc, Once};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chaton_core::Error;
+use chaton_core::community::Update;
 use chaton_core::link::{self, LinkOffer};
 use chaton_core::nostr::prelude::ToBech32;
 use chaton_core::session::Session;
@@ -36,6 +37,13 @@ fn setup() -> (String, String) {
     (server, host)
 }
 
+/// Forwards the DMs of a `listen` to `tx`.
+fn dms(tx: &tokio::sync::mpsc::UnboundedSender<chaton_core::dm::Message>, update: Update) {
+    if let Update::Dm { message } = update {
+        drop(tx.send(message));
+    }
+}
+
 fn temp_dir(name: &str) -> PathBuf {
     std::env::temp_dir().join(unique(&format!("chaton-e2e-{name}-")))
 }
@@ -59,7 +67,7 @@ async fn two_users_find_each_other_and_exchange_dms() {
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let listener = bob.clone();
-    tokio::spawn(async move { listener.listen(move |m| drop(tx.send(m))).await });
+    tokio::spawn(async move { listener.listen(move |u| dms(&tx, u)).await });
 
     // Alice finds @bob and writes to him.
     let peer = alice.search(&format!("@{bob_name}@{host}")).await.unwrap();
@@ -165,7 +173,7 @@ async fn a_second_device_links_with_a_code() {
     // What the laptop sends shows up live on device A (its self copy).
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let listener = alice.clone();
-    tokio::spawn(async move { listener.listen(move |m| drop(tx.send(m))).await });
+    tokio::spawn(async move { listener.listen(move |u| dms(&tx, u)).await });
     tokio::time::sleep(Duration::from_millis(1100)).await;
     laptop
         .send_dm(bob.account().pubkey, "from my laptop")
@@ -201,4 +209,169 @@ async fn a_second_device_links_with_a_code() {
         .await
         .unwrap();
     assert_eq!(back.account().npub, alice.account().npub);
+}
+
+/// Waits for an update matching `pred`, skipping the others.
+async fn next_matching(
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<Update>,
+    what: &str,
+    pred: impl Fn(&Update) -> bool,
+) -> Update {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let update = rx.recv().await.expect("listener stopped");
+            if pred(&update) {
+                return update;
+            }
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("no update: {what}"))
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a running server, see the module docs"]
+async fn a_community_with_channels_invites_and_moderation() {
+    let (server, host) = setup();
+    let register = |name: &'static str| {
+        let server = server.clone();
+        async move {
+            Arc::new(
+                Session::register(&temp_dir(name), &server, &unique(name))
+                    .await
+                    .unwrap(),
+            )
+        }
+    };
+    let (alice, bob, carol) = (
+        register("alice").await,
+        register("bob").await,
+        register("carol").await,
+    );
+
+    // Alice listens from the start, like the app.
+    let (tx, mut alice_rx) = tokio::sync::mpsc::unbounded_channel();
+    let listener = alice.clone();
+    tokio::spawn(async move { listener.listen(move |u| drop(tx.send(u))).await });
+
+    // Alice creates a community: she's admin, it comes with #general; she adds #random.
+    let community = alice.create_community("Les chats").await.unwrap();
+    assert_eq!(community.name, "Les chats");
+    assert_eq!(community.roles, ["admin"]);
+    let names = |c: &chaton_core::community::Community| -> Vec<String> {
+        c.channels.iter().map(|ch| ch.name.clone()).collect()
+    };
+    assert_eq!(names(&community), ["general"]);
+    let random = alice.create_channel(&community.id, "random").await.unwrap();
+    let general = community.channels[0].clone();
+
+    // Bob can't join without the right code; with the invite he sees both channels.
+    let invite = alice.invite(&community.id).await.unwrap();
+    assert!(
+        invite.starts_with(&format!("{host}'{}/", community.id)),
+        "{invite}"
+    );
+    let wrong = format!("{host}'{}/00000000", community.id);
+    let res = bob.join(&wrong).await;
+    assert!(matches!(res, Err(Error::InvalidInvite)), "{:?}", res.err());
+    let joined = bob.join(&invite).await.unwrap();
+    assert_eq!(names(&joined), ["general", "random"]);
+    assert!(joined.roles.is_empty());
+    carol.join(&invite).await.unwrap();
+
+    // Live chat: Bob writes in #random, Alice (listening since the start) gets it.
+    let hello = bob
+        .send(&community.id, &random.id, "salut tout le monde")
+        .await
+        .unwrap();
+    let got = next_matching(&mut alice_rx, "bob's message", |u| {
+        matches!(u, Update::ChannelMessage { .. })
+    })
+    .await;
+    let Update::ChannelMessage { message } = got else {
+        unreachable!()
+    };
+    assert_eq!(
+        (message.id, message.text.as_str()),
+        (hello.id, "salut tout le monde")
+    );
+    assert_eq!(message.author, bob.account().pubkey);
+
+    // Bob can't delete Alice's message; once moderator he can.
+    let alices = alice
+        .send(&community.id, &general.id, "règle n°1")
+        .await
+        .unwrap();
+    let res = bob
+        .delete_message(&community.id, &general.id, alices.id)
+        .await;
+    assert!(matches!(res, Err(Error::NotDelivered(_))), "{res:?}");
+    alice
+        .set_roles(&community.id, bob.account().pubkey, &["moderator"])
+        .await
+        .unwrap();
+    let members = alice.members(&community.id).await.unwrap();
+    let role = |pk| {
+        members
+            .iter()
+            .find(|m| m.pubkey == pk)
+            .map(|m| m.roles.clone())
+    };
+    assert_eq!(
+        role(bob.account().pubkey),
+        Some(vec!["moderator".to_string()])
+    );
+    assert_eq!(role(carol.account().pubkey), Some(vec![]));
+    bob.delete_message(&community.id, &general.id, alices.id)
+        .await
+        .unwrap();
+    next_matching(
+        &mut alice_rx,
+        "deletion",
+        |u| matches!(u, Update::Deleted { ids, .. } if ids.contains(&alices.id)),
+    )
+    .await;
+    let general_msgs = alice.channel_messages(&general.id).await.unwrap();
+    assert!(general_msgs.is_empty(), "{general_msgs:?}");
+    let random_msgs = alice.channel_messages(&random.id).await.unwrap();
+    assert_eq!(random_msgs.len(), 1);
+
+    // Alice removes Carol: her posts are refused, the community leaves her list.
+    alice
+        .remove_member(&community.id, carol.account().pubkey)
+        .await
+        .unwrap();
+    let res = carol
+        .send(&community.id, &general.id, "toujours là ?")
+        .await;
+    assert!(matches!(res, Err(Error::NotDelivered(_))), "{res:?}");
+    let mut left = false;
+    for _ in 0..50 {
+        left = carol.communities().await.unwrap().is_empty();
+        if left {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(left, "carol still lists the community");
+
+    // Alice's linked laptop finds the community through her list (10009).
+    let offer = LinkOffer::new(&alice).await.unwrap();
+    let code = offer.code();
+    let a_side = tokio::spawn(offer.run(|_| async { true }));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let laptop = link::join(
+        &temp_dir("alice-laptop"),
+        &alice.account().handle,
+        &code,
+        "laptop",
+    )
+    .await
+    .unwrap();
+    a_side.await.unwrap().unwrap();
+    let on_laptop = laptop.communities().await.unwrap();
+    assert_eq!(on_laptop.len(), 1, "{on_laptop:?}");
+    assert_eq!(names(&on_laptop[0]), ["general", "random"]);
+    let history = laptop.channel_messages(&random.id).await.unwrap();
+    assert_eq!(history.len(), 1, "{history:?}");
 }

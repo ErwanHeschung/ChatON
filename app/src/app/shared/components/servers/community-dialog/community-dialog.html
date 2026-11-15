@@ -1,0 +1,50 @@
+<section>
+  <h2 i18n="@@community.create-title">Create a community</h2>
+  <form (submit)="$event.preventDefault(); submit('create', name)">
+    <input
+      #name
+      maxlength="100"
+      placeholder="Name"
+      i18n-placeholder="@@community.name-placeholder"
+      aria-label="Community name"
+      i18n-aria-label="@@community.name-label"
+    />
+    <button class="btn" [disabled]="busy()" i18n="@@community.create">Create</button>
+  </form>
+</section>
+
+<section>
+  <h2 i18n="@@community.join-title">Join with an invite</h2>
+  <form (submit)="$event.preventDefault(); submit('join', invite)">
+    <input
+      #invite
+      placeholder="instance'community/CODE"
+      aria-label="Invite"
+      i18n-aria-label="@@community.invite-label"
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <button class="btn" [disabled]="busy()" i18n="@@community.join">Join</button>
+  </form>
+</section>
+
+@switch (store.error()) {
+  @case (null) {}
+  @case ('invalid_invite') {
+    <p class="error" i18n="@@community.invalid-invite">This invite is wrong or was revoked</p>
+  }
+  @case ('invalid') {
+    <p class="error" i18n="@@community.invalid">This doesn't look like an invite</p>
+  }
+  @case ('refused') {
+    <p class="error" i18n="@@community.refused">
+      The instance refused. Is your account still registered on it?
+    </p>
+  }
+  @case ('network') {
+    <p class="error" i18n="@@community.unreachable">Couldn't reach this instance</p>
+  }
+  @default {
+    <p class="error" i18n="@@form.unknown-error">Something went wrong. Please try again</p>
+  }
+}

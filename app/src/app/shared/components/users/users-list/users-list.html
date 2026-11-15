@@ -2,8 +2,31 @@
   <app-user-card [user]="connectedUser()"></app-user-card>
 </button>
 
-<cdk-virtual-scroll-viewport itemSize="55" class="users-viewport">
-  <div *cdkVirtualFor="let user of users()" class="users">
-    <app-user-card [user]="user"></app-user-card>
-  </div>
-</cdk-virtual-scroll-viewport>
+<ul class="members">
+  @for (member of members(); track member.pubkey) {
+    <li class="member">
+      <app-user-card [user]="card(member)"></app-user-card>
+      <div class="meta">
+        @if (isAdmin(member)) {
+          <span class="badge" i18n="@@role.admin">admin</span>
+        } @else if (isModerator(member)) {
+          <span class="badge" i18n="@@role.moderator">moderator</span>
+        }
+        @if (community.isAdmin() && !isMe(member) && !isAdmin(member)) {
+          <button class="action" (click)="toggleModerator(member)">
+            @if (isModerator(member)) {
+              <ng-container i18n="@@role.unmake-moderator">Remove moderator</ng-container>
+            } @else {
+              <ng-container i18n="@@role.make-moderator">Make moderator</ng-container>
+            }
+          </button>
+        }
+        @if (canRemove(member)) {
+          <button class="action danger" (click)="remove(member)" i18n="@@role.remove">
+            Remove
+          </button>
+        }
+      </div>
+    </li>
+  }
+</ul>

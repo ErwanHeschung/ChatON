@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -13,9 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"fiatjaf.com/nostr"
 	"github.com/go-playground/validator/v10"
-	"github.com/jmoiron/sqlx"
-	"github.com/mattn/go-sqlite3"
+	"go.etcd.io/bbolt"
 
 	"github.com/ErwanHeschung/ChatON/server/internal/handlers"
 	"github.com/ErwanHeschung/ChatON/server/internal/models/dto"
@@ -25,21 +26,33 @@ const ClaimPath = "/api/handle"
 
 var nameRe = regexp.MustCompile(`^[a-z0-9._-]{3,32}$`) // also rules out "_" (NIP-05 instance key)
 
+// Two buckets in the relay's bbolt file, written together: name → pubkey, pubkey → name.
+var (
+	byName   = []byte("handles")
+	byPubKey = []byte("handlesByPubkey")
+)
+
+var errTaken = errors.New("name taken, or this key already has a handle")
+
 type Directory struct {
-	db        *sqlx.DB
+	db        *bbolt.DB
 	publicURL string // https://chaton.example
 	relayURL  string // wss://chaton.example
 	validate  *validator.Validate
 	now       func() time.Time
 }
 
-func New(db *sqlx.DB, publicURL string) (*Directory, error) {
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS handles (
-		name TEXT PRIMARY KEY,
-		pubkey TEXT NOT NULL UNIQUE,
-		created_at INTEGER NOT NULL)`)
+func New(db *bbolt.DB, publicURL string) (*Directory, error) {
+	err := db.Update(func(tx *bbolt.Tx) error {
+		for _, b := range [][]byte{byName, byPubKey} {
+			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("directory buckets: %w", err)
 	}
 	publicURL = strings.TrimSuffix(publicURL, "/")
 	relayURL := "ws" + strings.TrimPrefix(publicURL, "http") // http→ws, https→wss
@@ -47,14 +60,45 @@ func New(db *sqlx.DB, publicURL string) (*Directory, error) {
 }
 
 // IsLocal reports whether pubkey holds a handle on this instance. Fails closed.
-func (d *Directory) IsLocal(pubkey string) bool {
-	var n int
-	if err := d.db.Get(&n, `SELECT count(*) FROM handles WHERE pubkey = ?`, pubkey); err != nil {
+func (d *Directory) IsLocal(pubkey nostr.PubKey) bool {
+	local := false
+	err := d.db.View(func(tx *bbolt.Tx) error {
+		local = tx.Bucket(byPubKey).Get(pubkey[:]) != nil
+		return nil
+	})
+	if err != nil {
 		log.Printf("directory: IsLocal: %v", err)
-		return false
 	}
-	return n > 0
+	return local && err == nil
 }
+
+// lookup returns the key holding name, if any.
+func (d *Directory) lookup(name string) (pubkey nostr.PubKey, found bool) {
+	_ = d.db.View(func(tx *bbolt.Tx) error {
+		if v := tx.Bucket(byName).Get([]byte(name)); len(v) == 32 {
+			pubkey, found = nostr.PubKey(v), true
+		}
+		return nil
+	})
+	return pubkey, found
+}
+
+// put claims name for pubkey: first come, first served, one handle per key.
+func (d *Directory) put(name string, pubkey nostr.PubKey) error {
+	return d.db.Update(func(tx *bbolt.Tx) error {
+		names, keys := tx.Bucket(byName), tx.Bucket(byPubKey)
+		if names.Get([]byte(name)) != nil || keys.Get(pubkey[:]) != nil {
+			return errTaken
+		}
+		if err := names.Put([]byte(name), pubkey[:]); err != nil {
+			return err
+		}
+		return keys.Put(pubkey[:], []byte(name))
+	})
+}
+
+// RelayURL is this instance's relay, wss://host (ws:// for http).
+func (d *Directory) RelayURL() string { return d.relayURL }
 
 func (d *Directory) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/nostr.json", d.nostrJSON)
@@ -69,11 +113,9 @@ type nip05Response struct {
 func (d *Directory) nostrJSON(w http.ResponseWriter, r *http.Request) {
 	name := strings.ToLower(r.URL.Query().Get("name"))
 	resp := nip05Response{Names: map[string]string{}, Relays: map[string][]string{}}
-	var pubkey string
-	err := d.db.Get(&pubkey, `SELECT pubkey FROM handles WHERE name = ?`, name)
-	if err == nil {
-		resp.Names[name] = pubkey
-		resp.Relays[pubkey] = []string{d.relayURL}
+	if pubkey, ok := d.lookup(name); ok {
+		resp.Names[name] = pubkey.Hex()
+		resp.Relays[pubkey.Hex()] = []string{d.relayURL}
 	}
 	w.Header().Set("Access-Control-Allow-Origin", "*") // required by NIP-05
 	w.Header().Set("Content-Type", "application/json")
@@ -112,9 +154,8 @@ func (d *Directory) claim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = d.db.Exec(`INSERT INTO handles (name, pubkey, created_at) VALUES (?, ?, ?)`, name, pubkey, d.now().Unix())
-	var sqlErr sqlite3.Error
-	if errors.As(err, &sqlErr) && sqlErr.Code == sqlite3.ErrConstraint {
+	err = d.put(name, pubkey)
+	if errors.Is(err, errTaken) {
 		handlers.HandleError(w, dto.ErrConflict("Name taken, or this key already has a handle", err))
 		return
 	}
@@ -125,5 +166,5 @@ func (d *Directory) claim(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(claimResponse{name, pubkey})
+	_ = json.NewEncoder(w).Encode(claimResponse{name, pubkey.Hex()})
 }

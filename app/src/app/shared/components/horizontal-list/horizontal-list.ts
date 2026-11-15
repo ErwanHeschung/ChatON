@@ -1,11 +1,9 @@
 import { ScrollingModule } from '@angular/cdk/scrolling';
-import { NgOptimizedImage } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
   computed,
   inject,
-  input,
   OnInit,
   signal,
   WritableSignal,
@@ -16,37 +14,28 @@ import { TooltipDirective } from '@directives/tooltip';
 import { DiscussionMode } from '@models/DiscussionMode.model';
 import { Router } from '@angular/router';
 import { ROUTES } from '@app/app.routes';
+import { CommunityDialog } from '@components/servers/community-dialog/community-dialog';
+import { Community } from '@models/Community.model';
+import { ModalService } from '@services/modal.service';
+import { CommunityStore } from '@stores/community.store';
 
 @Component({
   selector: 'app-horizontal-list',
-  imports: [
-    ScrollingModule,
-    NgOptimizedImage,
-    TooltipDirective,
-    HorizontalScrollDirective,
-    LucideDynamicIcon,
-  ],
+  imports: [ScrollingModule, TooltipDirective, HorizontalScrollDirective, LucideDynamicIcon],
   templateUrl: './horizontal-list.html',
   styleUrl: './horizontal-list.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HorizontalList implements OnInit {
-  readonly items = input(
-    Array.from({ length: 100 }).map((_, i) => ({
-      id: i,
-      name: `Item ${i + 1}`,
-      image: `/chatON-logo.svg`,
-    })),
-  );
-
+  protected readonly store = inject(CommunityStore);
   private readonly router = inject(Router);
+  private readonly modal = inject(ModalService);
 
   private readonly chatIcon = LucideMessagesSquare;
   private readonly serverIcon = LucideServer;
 
   public readonly addItem = LucidePlus;
 
-  public currentSelectedItem: WritableSignal<any> = signal(null);
   public discussionMode: WritableSignal<DiscussionMode> = signal(DiscussionMode.SERVER);
 
   public switchIcon = computed(() =>
@@ -54,28 +43,34 @@ export class HorizontalList implements OnInit {
   );
 
   ngOnInit(): void {
-    const currentUrl = this.router.url;
     const serverPrefix = `${ROUTES.CHAT}/${ROUTES.SERVERS}`;
-
-    if (currentUrl.includes(serverPrefix)) {
-      this.discussionMode.set(DiscussionMode.SERVER);
-    } else {
-      this.discussionMode.set(DiscussionMode.DM);
-    }
+    this.discussionMode.set(
+      this.router.url.includes(serverPrefix) ? DiscussionMode.SERVER : DiscussionMode.DM,
+    );
+    this.store.load().catch(() => undefined);
   }
 
   public switch(): void {
     this.discussionMode.update((current) =>
       current === DiscussionMode.SERVER ? DiscussionMode.DM : DiscussionMode.SERVER,
     );
-
     const targetPath = this.discussionMode() === DiscussionMode.DM ? ROUTES.DMS : ROUTES.SERVERS;
-
-    this.router.navigate([ROUTES.CHAT + '/' + targetPath]);
+    void this.router.navigate([ROUTES.CHAT, targetPath]);
   }
 
-  public onItemClick(item: any): void {
-    console.log('Clicked item:', item);
-    this.currentSelectedItem.set(item);
+  /** Opens a community, switching to the server view if needed. */
+  public open(id: string): void {
+    void this.store.select(id);
+    if (this.discussionMode() !== DiscussionMode.SERVER) {
+      this.switch();
+    }
+  }
+
+  public add(): void {
+    this.modal.open(CommunityDialog);
+  }
+
+  public trackById(_index: number, community: Community): string {
+    return community.id;
   }
 }

@@ -1,6 +1,12 @@
-<div class="switch-view" (click)="switch()">
+<button
+  type="button"
+  class="switch-view"
+  (click)="switch()"
+  i18n-title="@@switch-view"
+  title="Switch between communities and private messages"
+>
   <svg [lucideIcon]="switchIcon()" size="30" [class.is-swapping]="discussionMode() === 'DM'"></svg>
-</div>
+</button>
 
 <cdk-virtual-scroll-viewport
   orientation="horizontal"
@@ -8,24 +14,26 @@
   class="horizontal-viewport"
   appHorizontalScroll
 >
-  <div
-    *cdkVirtualFor="let item of items()"
+  <button
+    *cdkVirtualFor="let community of store.communities(); trackBy: trackById"
+    type="button"
     class="horizontal-item"
-    (click)="onItemClick(item)"
-    appTooltip="{{ item.name }}"
-    [class.selected]="item.id === currentSelectedItem()?.id"
+    (click)="open(community.id)"
+    appTooltip="{{ community.name }}"
+    [attr.aria-label]="community.name"
+    [class.selected]="community.id === store.selected()"
   >
-    <img
-      ngSrc="{{ item.image }}"
-      width="50"
-      height="50"
-      alt="{{ item.name }}"
-      class="item-image"
-      draggable="false"
-    />
-  </div>
+    <!-- ponytail: pictures come with media (step 6b); a remote URL here would leak the IP. -->
+    <span class="initial">{{ community.name.charAt(0).toUpperCase() }}</span>
+  </button>
 </cdk-virtual-scroll-viewport>
 
-<div class="add-item">
+<button
+  type="button"
+  class="add-item"
+  (click)="add()"
+  i18n-title="@@community.add"
+  title="Create or join a community"
+>
   <svg [lucideIcon]="addItem" size="30"></svg>
-</div>
+</button>

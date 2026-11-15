@@ -8,9 +8,10 @@
   <app-chat
     chat
     [messages]="messages()"
-    [disabled]="!dm.selected()"
-    [error]="dm.sendError()"
-    (send)="dm.send($event)"
+    [disabled]="inChannel() ? false : !dm.selected()"
+    [error]="inChannel() ? null : dm.sendError()"
+    (send)="send($event)"
+    (remove)="remove($event)"
   ></app-chat>
 
   <app-users-list right></app-users-list>

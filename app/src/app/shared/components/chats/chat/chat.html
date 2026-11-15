@@ -1,6 +1,6 @@
 <div class="message-list">
   @for (message of messages(); track message.id) {
-    <app-chat-bubble [message]="message"></app-chat-bubble>
+    <app-chat-bubble [message]="message" (remove)="remove.emit(message.id)"></app-chat-bubble>
   }
 </div>
 

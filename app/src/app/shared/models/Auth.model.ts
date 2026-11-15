@@ -30,6 +30,8 @@ export interface CmdError {
     | 'wrong_code'
     | 'code_expired'
     | 'link_refused'
+    | 'invalid_invite'
+    | 'refused'
     | 'invalid'
     | 'keychain'
     | 'network'

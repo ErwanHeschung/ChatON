@@ -19,13 +19,14 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::community::Update;
 use crate::dm::{self, Message};
 use crate::identity::Identity;
 use crate::{Error, Result, event};
 
 const ACCOUNT_FILE: &str = "account.json";
 const EVENTS_DB: &str = "events.db";
-const TIMEOUT: Duration = Duration::from_secs(10);
+pub(crate) const TIMEOUT: Duration = Duration::from_secs(10);
 /// NIP-59 backdates gift wraps up to 2 days: resync from that far before the last one.
 const GIFT_WRAP_JITTER_SECS: u64 = 2 * 24 * 3600;
 
@@ -57,10 +58,14 @@ pub struct Conversation {
 
 pub struct Session {
     dir: PathBuf,
-    keys: Keys,
+    pub(crate) keys: Keys,
     account: Account,
-    client: Client,
+    pub(crate) client: Client,
     peers: Mutex<HashMap<PublicKey, Peer>>,
+    /// NIP-11 `self` key per community relay (see `community`).
+    pub(crate) relay_keys: Mutex<HashMap<String, PublicKey>>,
+    /// Serializes `community::resubscribe` (close, then open the same id).
+    pub(crate) resubscribing: tokio::sync::Mutex<()>,
 }
 
 impl Session {
@@ -182,13 +187,17 @@ impl Session {
         .await?;
         client.subscribe(filter).await?;
 
-        Ok(Self {
+        let session = Self {
             dir: dir.to_path_buf(),
             keys,
             account,
             client,
             peers: Mutex::new(HashMap::new()),
-        })
+            relay_keys: Mutex::new(HashMap::new()),
+            resubscribing: tokio::sync::Mutex::new(()),
+        };
+        session.sync_communities().await?;
+        Ok(session)
     }
 
     async fn publish_profile(&self, name: &str) -> Result<()> {
@@ -332,15 +341,20 @@ impl Session {
         Ok(all)
     }
 
-    /// Calls `on_message` for each new DM received, until the session closes.
-    pub async fn listen(&self, on_message: impl Fn(Message)) {
+    /// Calls `on_update` for each new DM, channel message or community change
+    /// received, until the session closes.
+    pub async fn listen(&self, on_update: impl Fn(Update)) {
         let mut notifications = self.client.notifications();
         while let Some(notification) = notifications.next().await {
-            if let ClientNotification::Event { event, .. } = notification
-                && event.kind == Kind::GiftWrap
-                && let Ok(message) = dm::unwrap(&self.keys, &event)
-            {
-                on_message(message);
+            let ClientNotification::Event { event, .. } = notification else {
+                continue;
+            };
+            if event.kind == Kind::GiftWrap {
+                if let Ok(message) = dm::unwrap(&self.keys, &event) {
+                    on_update(Update::Dm { message });
+                }
+            } else if let Some(update) = self.community_update(&event).await {
+                on_update(update);
             }
         }
     }
@@ -365,7 +379,7 @@ impl Session {
 // ponytail: more than a page of events in the same second would loop on that
 // second; gift wrap timestamps are randomized (NIP-59), so it doesn't happen.
 // Plain closure returning a future, not `AsyncFn`: keeps callers `Send` (Tauri).
-async fn backfill<Fut>(filter: Filter, fetch: impl Fn(Filter) -> Fut) -> Result<usize>
+pub(crate) async fn backfill<Fut>(filter: Filter, fetch: impl Fn(Filter) -> Fut) -> Result<usize>
 where
     Fut: Future<Output = Result<Vec<Event>>>,
 {
@@ -407,8 +421,7 @@ pub async fn resolve(handle: &str) -> Result<Peer> {
 
 /// NIP-05 is HTTPS only; plain HTTP is allowed for a local dev instance.
 fn nip05_url(address: &Nip05Address) -> String {
-    let host = address.domain().split(':').next().unwrap_or_default();
-    let scheme = if host == "localhost" || host == "127.0.0.1" {
+    let scheme = if is_local_host(address.domain()) {
         "http"
     } else {
         "https"
@@ -460,7 +473,12 @@ fn npub(pubkey: &PublicKey) -> String {
     }
 }
 
-fn http() -> reqwest::Client {
+/// `localhost` or `127.0.0.1`, with or without a port: plain HTTP/WS allowed (dev).
+pub(crate) fn is_local_host(host: &str) -> bool {
+    matches!(host.split(':').next(), Some("localhost" | "127.0.0.1"))
+}
+
+pub(crate) fn http() -> reqwest::Client {
     reqwest::Client::builder()
         .timeout(TIMEOUT)
         .build()

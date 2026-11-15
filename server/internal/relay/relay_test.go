@@ -5,40 +5,56 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/fiatjaf/eventstore/sqlite3"
-	"github.com/nbd-wtf/go-nostr"
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/eventstore/boltdb"
+
+	"github.com/ErwanHeschung/ChatON/server/internal/community"
 )
 
-type fakeDir map[string]bool
+type fakeDir map[nostr.PubKey]bool
 
-func (d fakeDir) IsLocal(pk string) bool { return d[pk] }
+func (d fakeDir) IsLocal(pk nostr.PubKey) bool { return d[pk] }
 
-type user struct{ sk, pk string }
+type user struct {
+	sk nostr.SecretKey
+	pk nostr.PubKey
+}
 
 func newUser() user {
-	sk := nostr.GeneratePrivateKey()
-	pk, _ := nostr.GetPublicKey(sk)
-	return user{sk, pk}
+	sk := nostr.Generate()
+	return user{sk, sk.Public()}
 }
 
 // startRelay runs a relay where the given users hold a handle.
 func startRelay(t *testing.T, locals ...user) string {
 	t.Helper()
-	db := &sqlite3.SQLite3Backend{DatabaseURL: filepath.Join(t.TempDir(), "r.db")}
+	url, _ := serve(t, filepath.Join(t.TempDir(), "r.bolt"), nostr.Generate(), locals...)
+	return url
+}
+
+// serve runs a relay on the bbolt file at path; stop closes it so it can be reopened.
+func serve(t *testing.T, path string, key nostr.SecretKey, locals ...user) (url string, stop func()) {
+	t.Helper()
+	db := &boltdb.BoltBackend{Path: path}
 	if err := db.Init(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(db.Close)
 	dir := fakeDir{}
 	for _, u := range locals {
 		dir[u.pk] = true
 	}
-	srv := httptest.NewServer(New(Config{Name: "test"}, db, dir))
-	t.Cleanup(srv.Close)
-	return "ws" + strings.TrimPrefix(srv.URL, "http")
+	groups, err := community.New(key, "ws://test", db, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(New(Config{Name: "test"}, db, dir, groups))
+	stop = sync.OnceFunc(func() { srv.Close(); db.Close() })
+	t.Cleanup(stop)
+	return "ws" + strings.TrimPrefix(srv.URL, "http"), stop
 }
 
 // connect opens a connection, authenticated as u (NIP-42) unless u is nil.
@@ -46,7 +62,7 @@ func connect(t *testing.T, url string, u *user) *nostr.Relay {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	r, err := nostr.RelayConnect(ctx, url)
+	r, err := nostr.RelayConnect(ctx, url, nostr.RelayOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +72,7 @@ func connect(t *testing.T, url string, u *user) *nostr.Relay {
 	}
 	// The challenge arrives right after connecting: retry until it's there.
 	for {
-		err = r.Auth(ctx, func(ev *nostr.Event) error { return ev.Sign(u.sk) })
+		err = r.Auth(ctx, func(_ context.Context, ev *nostr.Event) error { return ev.Sign(u.sk) })
 		if err == nil {
 			return r
 		}
@@ -67,7 +83,7 @@ func connect(t *testing.T, url string, u *user) *nostr.Relay {
 	}
 }
 
-func event(u user, kind int, tags nostr.Tags, at time.Time) nostr.Event {
+func event(u user, kind nostr.Kind, tags nostr.Tags, at time.Time) nostr.Event {
 	ev := nostr.Event{Kind: kind, Tags: tags, CreatedAt: nostr.Timestamp(at.Unix()), Content: "x"}
 	_ = ev.Sign(u.sk)
 	return ev
@@ -90,7 +106,7 @@ func TestWritePolicy(t *testing.T) {
 		"local profile":           event(alice, nostr.KindProfileMetadata, nil, now),
 		"local relay list":        event(alice, nostr.KindRelayListMetadata, nostr.Tags{{"r", "wss://x"}}, now),
 		"local DM relay list":     event(bob, nostr.KindDMRelayList, nostr.Tags{{"relay", "wss://x"}}, now),
-		"gift wrap to local user": event(ephemeral, nostr.KindGiftWrap, nostr.Tags{{"p", bob.pk}}, now.Add(-24*time.Hour)),
+		"gift wrap to local user": event(ephemeral, nostr.KindGiftWrap, nostr.Tags{{"p", bob.pk.Hex()}}, now.Add(-24*time.Hour)),
 	}
 	for name, ev := range accepted {
 		if err := publish(t, r, ev); err != nil {
@@ -98,10 +114,17 @@ func TestWritePolicy(t *testing.T) {
 		}
 	}
 
+	backspace := event(alice, nostr.KindProfileMetadata, nil, now)
+	backspace.Content = "a\bb"
+	_ = backspace.Sign(alice.sk)
+	formFeed := event(alice, nostr.KindProfileMetadata, nostr.Tags{{"name", "a\fb"}}, now)
+
 	rejected := map[string]nostr.Event{
+		"U+0008 in content":       backspace,
+		"U+000C in a tag":         formFeed,
 		"stranger profile":        event(stranger, nostr.KindProfileMetadata, nil, now),
-		"gift wrap to non-local":  event(ephemeral, nostr.KindGiftWrap, nostr.Tags{{"p", stranger.pk}}, now),
-		"bare rumor (kind 14)":    event(alice, nostr.KindDirectMessage, nostr.Tags{{"p", bob.pk}}, now),
+		"gift wrap to non-local":  event(ephemeral, nostr.KindGiftWrap, nostr.Tags{{"p", stranger.pk.Hex()}}, now),
+		"bare rumor (kind 14)":    event(alice, nostr.KindDirectMessage, nostr.Tags{{"p", bob.pk.Hex()}}, now),
 		"text note (kind 1)":      event(alice, nostr.KindTextNote, nil, now),
 		"1 hour in the future":    event(alice, nostr.KindProfileMetadata, nil, now.Add(time.Hour)),
 		"gift wrap without p tag": event(ephemeral, nostr.KindGiftWrap, nil, now),
@@ -114,11 +137,11 @@ func TestWritePolicy(t *testing.T) {
 }
 
 // query subscribes with filter and returns the stored events, or the CLOSED reason.
-func query(t *testing.T, r *nostr.Relay, filter nostr.Filter) (evs []*nostr.Event, closed string) {
+func query(t *testing.T, r *nostr.Relay, filter nostr.Filter) (evs []nostr.Event, closed string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	sub, err := r.Subscribe(ctx, nostr.Filters{filter})
+	sub, err := r.Subscribe(ctx, filter, nostr.SubscriptionOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,11 +163,11 @@ func query(t *testing.T, r *nostr.Relay, filter nostr.Filter) (evs []*nostr.Even
 func TestGiftWrapsOnlyServedToRecipient(t *testing.T) {
 	bob, carol, ephemeral := newUser(), newUser(), newUser()
 	url := startRelay(t, bob, carol)
-	gift := event(ephemeral, nostr.KindGiftWrap, nostr.Tags{{"p", bob.pk}}, time.Now())
+	gift := event(ephemeral, nostr.KindGiftWrap, nostr.Tags{{"p", bob.pk.Hex()}}, time.Now())
 	if err := publish(t, connect(t, url, nil), gift); err != nil {
 		t.Fatal(err)
 	}
-	forBob := nostr.Filter{Kinds: []int{nostr.KindGiftWrap}, Tags: nostr.TagMap{"p": {bob.pk}}}
+	forBob := nostr.Filter{Kinds: []nostr.Kind{nostr.KindGiftWrap}, Tags: nostr.TagMap{"p": {bob.pk.Hex()}}}
 
 	if evs, closed := query(t, connect(t, url, &bob), forBob); len(evs) != 1 || closed != "" {
 		t.Errorf("bob: got %d events, closed %q; want 1", len(evs), closed)
@@ -158,9 +181,9 @@ func TestGiftWrapsOnlyServedToRecipient(t *testing.T) {
 	}{
 		{"anonymous", nil, forBob, "auth-required:"},
 		{"carol asks for bob's", &carol, forBob, "restricted:"},
-		{"carol, no #p", &carol, nostr.Filter{Kinds: []int{nostr.KindGiftWrap}}, "restricted:"},
-		{"carol, no kinds", &carol, nostr.Filter{Tags: nostr.TagMap{"p": {bob.pk}}}, "restricted:"},
-		{"carol, bob and herself", &carol, nostr.Filter{Kinds: []int{nostr.KindGiftWrap}, Tags: nostr.TagMap{"p": {carol.pk, bob.pk}}}, "restricted:"},
+		{"carol, no #p", &carol, nostr.Filter{Kinds: []nostr.Kind{nostr.KindGiftWrap}}, "restricted:"},
+		{"carol, no kinds", &carol, nostr.Filter{Tags: nostr.TagMap{"p": {bob.pk.Hex()}}}, "restricted:"},
+		{"carol, bob and herself", &carol, nostr.Filter{Kinds: []nostr.Kind{nostr.KindGiftWrap}, Tags: nostr.TagMap{"p": {carol.pk.Hex(), bob.pk.Hex()}}}, "restricted:"},
 	}
 	for _, c := range cases {
 		evs, closed := query(t, connect(t, url, c.u), c.filter)
@@ -170,7 +193,7 @@ func TestGiftWrapsOnlyServedToRecipient(t *testing.T) {
 	}
 
 	// Profiles stay public, no auth needed.
-	if _, closed := query(t, connect(t, url, nil), nostr.Filter{Kinds: []int{nostr.KindProfileMetadata}}); closed != "" {
+	if _, closed := query(t, connect(t, url, nil), nostr.Filter{Kinds: []nostr.Kind{nostr.KindProfileMetadata}}); closed != "" {
 		t.Errorf("anonymous profile query closed: %q", closed)
 	}
 }
@@ -179,12 +202,12 @@ func TestDeviceLinkMessages(t *testing.T) {
 	alice, newDevice := newUser(), newUser() // newDevice: throwaway key, no handle
 	url := startRelay(t, alice)
 	channel := nostr.Tags{{"c", "0f0f"}}
-	onChannel := nostr.Filter{Kinds: []int{KindDeviceLink}, Tags: nostr.TagMap{"c": {"0f0f"}}}
+	onChannel := nostr.Filter{Kinds: []nostr.Kind{KindDeviceLink}, Tags: nostr.TagMap{"c": {"0f0f"}}}
 
 	// Device A listens on the channel; the new device (no account) talks on it.
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	sub, err := connect(t, url, nil).Subscribe(ctx, nostr.Filters{onChannel})
+	sub, err := connect(t, url, nil).Subscribe(ctx, onChannel, nostr.SubscriptionOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,8 +245,8 @@ func TestDeviceLinkMessages(t *testing.T) {
 	}
 
 	for name, f := range map[string]nostr.Filter{
-		"no #c":      {Kinds: []int{KindDeviceLink}},
-		"several #c": {Kinds: []int{KindDeviceLink}, Tags: nostr.TagMap{"c": {"a", "b"}}},
+		"no #c":      {Kinds: []nostr.Kind{KindDeviceLink}},
+		"several #c": {Kinds: []nostr.Kind{KindDeviceLink}, Tags: nostr.TagMap{"c": {"a", "b"}}},
 	} {
 		if _, closed := query(t, connect(t, url, nil), f); !strings.HasPrefix(closed, "restricted:") {
 			t.Errorf("%s: closed %q, want restricted", name, closed)

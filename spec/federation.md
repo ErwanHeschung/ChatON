@@ -50,11 +50,18 @@ Content-Type: application/json
 Le relais d'une instance n'est pas un dépôt ouvert. Il accepte :
 
 - de la part d'une clé **qui a un handle ici** : son profil (`0`) et ses listes de relais (`10002`, `10050`) ;
-- de la part de **n'importe qui**, y compris d'une autre instance : un gift wrap (`1059`) dont le tag `p` désigne un utilisateur local.
+- de la part d'une clé **qui a un handle ici** : sa liste de communautés (`10009`) et la création d'une communauté (`9007` sans parent) ;
+- de la part de **n'importe qui**, y compris d'une autre instance : un gift wrap (`1059`) dont le tag `p` désigne un utilisateur local, et les événements de communauté (`9`, `9000`–`9022`) que les permissions de `protocol.md` § 9 autorisent : un membre de n'importe quelle instance peut écrire.
 
 Le kind éphémère `24135` (liaison d'appareils) est accepté de **n'importe quelle clé**, puisque le nouvel appareil n'a pas encore de compte. Il n'est jamais stocké, doit porter exactement un tag `c`, et son contenu est limité à 4 Kio. Un filtre qui le demande doit donner exactement un `#c` : on ne peut pas écouter toutes les liaisons en cours.
 
-Tout le reste est refusé : autres kinds, `14` publié nu, `created_at` à plus de 15 min dans le futur, clés bloquées (`SERVER_BLOCKEDPUBKEYS`). Un gift wrap n'est **servi qu'à son destinataire** : tout filtre qui peut correspondre à un `1059` (`kinds` vide ou contenant `1059`) exige une authentification NIP-42 (sinon `CLOSED` « `auth-required:` », et le client s'authentifie puis réessaie) et un `#p` égal à la seule clé authentifiée (sinon « `restricted:` »). Comme la règle porte sur le filtre et non sur les résultats, elle couvre aussi la diffusion en direct. Le relais n'expose pas de `COUNT`. Les kinds NIP-29 arrivent à l'étape 6.
+Tout le reste est refusé : autres kinds, `14` publié nu, `created_at` à plus de 15 min dans le futur, clés bloquées (`SERVER_BLOCKEDPUBKEYS`). Un gift wrap n'est **servi qu'à son destinataire** : tout filtre qui peut correspondre à un `1059` (`kinds` vide ou contenant `1059`) exige une authentification NIP-42 (sinon `CLOSED` « `auth-required:` », et le client s'authentifie puis réessaie) et un `#p` égal à la seule clé authentifiée (sinon « `restricted:` »). Comme la règle porte sur le filtre et non sur les résultats, elle couvre aussi la diffusion en direct. Le relais n'expose pas de `COUNT`.
+
+Communautés : les `39000`–`39003` ne sont acceptés que du relais lui-même, et restent lisibles par tous (un invité voit le nom avant d'entrer). Un filtre qui peut correspondre à un message ou une action de groupe (`9`, `9000`–`9022`, ou un `#h`) exige une authentification NIP-42 et un `#h` dont **chaque** groupe est une communauté (ou un salon d'une communauté) dont la clé authentifiée est membre. La diffusion en direct est vérifiée à chaque événement : un membre retiré ne reçoit plus rien sur ses abonnements déjà ouverts.
+
+### Clé du relais
+
+Le relais signe l'état des groupes avec sa propre clé, publiée dans son document NIP-11 (`self`). Elle vient de `SERVER_RELAYKEY` (hexadécimal) ; sinon le serveur en génère une au premier démarrage, dans `relay.key` (droits `0600`) à côté de la base. La perdre oblige les clients à faire confiance à une nouvelle clé : la sauvegarder avec la base.
 
 ## 4. Migration de compte
 

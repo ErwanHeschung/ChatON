@@ -1,2 +1,9 @@
-<img ngSrc="/chatON-logo.svg" width="50" height="50" alt="server-logo" />
-<h3>Nom du server</h3>
+@if (store.current(); as community) {
+  <span class="initial" aria-hidden="true">{{ community.name.charAt(0).toUpperCase() }}</span>
+  <h3>{{ community.name }}</h3>
+  @if (confirmLeave()) {
+    <button class="link danger" (click)="leave()" i18n="@@community.leave-confirm">Leave?</button>
+  } @else {
+    <button class="link" (click)="confirmLeave.set(true)" i18n="@@community.leave">Leave</button>
+  }
+}

@@ -6,13 +6,56 @@
   padding: 0.5rem;
 }
 
-.users {
-  width: 100%;
-  margin-bottom: 3px;
-}
-
 .me {
   all: unset;
   cursor: pointer;
   width: 100%;
+}
+
+.members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.member {
+  margin-bottom: 3px;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-left: 2.75rem;
+  font-size: var(--font-size-small);
+}
+
+.badge {
+  padding: 0 0.4rem;
+  border-radius: var(--base-radius);
+  background-color: var(--surface-elevated);
+  color: var(--content-secondary);
+}
+
+.action {
+  all: unset;
+  cursor: pointer;
+  color: var(--content-secondary);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+
+  &:focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--content-primary);
+  }
+}
+
+.member:hover .action {
+  opacity: 1;
+}
+
+.danger {
+  color: var(--content-error);
 }

@@ -62,10 +62,11 @@ pub fn validate(event: &Event, now: Timestamp) -> std::result::Result<(), Reject
     Ok(())
 }
 
-/// Removes U+0000–U+001F except `\t \n \r \b \f`: NIP-01 leaves them undefined.
+/// Removes U+0000–U+001F except `\t \n \r`: NIP-01 leaves most of them
+/// undefined, and some relays get the id of U+0008/U+000C wrong (spec § 1).
 fn clean(s: &str) -> String {
     s.chars()
-        .filter(|&c| c >= ' ' || matches!(c, '\t' | '\n' | '\r' | '\u{8}' | '\u{c}'))
+        .filter(|&c| c >= ' ' || matches!(c, '\t' | '\n' | '\r'))
         .collect()
 }
 
@@ -79,8 +80,8 @@ mod tests {
         let ev = build(
             &keys,
             Kind::Metadata,
-            [Tag::custom("t", ["a\u{1}b"])],
-            "hi\u{0}\tthere\n",
+            [Tag::custom("t", ["a\u{1}\u{8}b"])],
+            "hi\u{0}\tthere\u{c}\n",
         )
         .unwrap();
         assert_eq!(ev.content, "hi\tthere\n");

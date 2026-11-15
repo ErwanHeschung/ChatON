@@ -1,11 +1,19 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { NgOptimizedImage } from '@angular/common';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { CommunityStore } from '@stores/community.store';
 
+/** Name of the open community, and leaving it. */
 @Component({
   selector: 'app-server-banner',
-  imports: [NgOptimizedImage],
   templateUrl: './server-banner.html',
   styleUrl: './server-banner.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ServerBanner {}
+export class ServerBanner {
+  protected readonly store = inject(CommunityStore);
+  public readonly confirmLeave = signal(false);
+
+  public leave(): void {
+    this.confirmLeave.set(false);
+    void this.store.leave();
+  }
+}

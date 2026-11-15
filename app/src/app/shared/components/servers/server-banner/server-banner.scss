@@ -4,15 +4,40 @@
   gap: 0.5rem;
   display: flex;
   align-items: center;
-
-  img {
-    background-color: var(--surface-elevated);
-    border-radius: 50%;
-  }
+  min-height: 3.5rem;
 
   h3 {
+    flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+}
+
+.initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background-color: var(--surface-elevated);
+  font-weight: bold;
+}
+
+.link {
+  all: unset;
+  cursor: pointer;
+  font-size: var(--font-size-small);
+  color: var(--content-secondary);
+
+  &:hover {
+    color: var(--content-primary);
+  }
+}
+
+.danger,
+.danger:hover {
+  color: var(--content-error);
 }

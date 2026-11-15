@@ -12,10 +12,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 
+	"fiatjaf.com/nostr"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
-	"github.com/nbd-wtf/go-nostr"
 )
 
 const createdAt = 1700000000
@@ -25,6 +26,7 @@ var (
 	alice = key(1)
 	bob   = key(2)
 	ephem = key(3) // gift wrap throwaway key
+	relay = key(4) // relay key (NIP-11 self): signs group state (39000+)
 	v0    = nostr.Tag{"v", "0"}
 )
 
@@ -73,10 +75,56 @@ func key(n byte) keypair {
 	return keypair{hex.EncodeToString(b), hex.EncodeToString(schnorr.SerializePubKey(pub))}
 }
 
+// serialize is NIP-01 / spec § 1 written out, independent of any library:
+// fiatjaf.com/nostr doesn't escape U+0008 and U+000C, the spec does.
+func serialize(e Unsigned) []byte {
+	b := fmt.Appendf(nil, `[0,"%s",%s,%s,[`, e.PubKey, strconv.FormatInt(e.CreatedAt, 10), strconv.Itoa(e.Kind))
+	for i, tag := range e.Tags {
+		if i > 0 {
+			b = append(b, ',')
+		}
+		b = append(b, '[')
+		for j, v := range tag {
+			if j > 0 {
+				b = append(b, ',')
+			}
+			b = appendString(b, v)
+		}
+		b = append(b, ']')
+	}
+	b = append(b, "],"...)
+	b = appendString(b, e.Content)
+	return append(b, ']')
+}
+
+func appendString(b []byte, s string) []byte {
+	b = append(b, '"')
+	for i := 0; i < len(s); i++ { // byte loop: UTF-8 continuation bytes are >= 0x80, copied as is
+		switch c := s[i]; c {
+		case '"':
+			b = append(b, `\"`...)
+		case '\\':
+			b = append(b, `\\`...)
+		case '\n':
+			b = append(b, `\n`...)
+		case '\r':
+			b = append(b, `\r`...)
+		case '\t':
+			b = append(b, `\t`...)
+		case '\b':
+			b = append(b, `\b`...)
+		case '\f':
+			b = append(b, `\f`...)
+		default:
+			b = append(b, c)
+		}
+	}
+	return append(b, '"')
+}
+
 // sign returns the event id, and the BIP-340 signature unless rumor is true.
 func sign(k keypair, e Unsigned, rumor bool) (serialized, id, sig string) {
-	ev := nostr.Event{PubKey: e.PubKey, CreatedAt: nostr.Timestamp(e.CreatedAt), Kind: e.Kind, Tags: e.Tags, Content: e.Content}
-	ser := ev.Serialize()
+	ser := serialize(e)
 	h := sha256.Sum256(ser)
 	if rumor {
 		return string(ser), hex.EncodeToString(h[:]), ""
@@ -99,6 +147,7 @@ func valid(name string, k keypair, kind int, tags nostr.Tags, content string) Va
 func generate() []byte {
 	payload := sha256.Sum256([]byte(`{"name":"alice"}`))
 	channel := sha256.Sum256([]byte("chaton-link-v0|alice@chaton.example|K7F4"))
+	const community, channel1 = "k3j9x2m8q0aa", "g7w2p5n1c4bb"
 	// Seal/gift wrap content is NIP-44 ciphertext: opaque here, NIP-44 has its own vectors.
 	const opaque = "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
@@ -114,6 +163,15 @@ func generate() []byte {
 		// device linking (spec § 8): ephemeral, signed by a throwaway key, channel = sha256 hex
 		valid("device_link", ephem, 24135, nostr.Tags{v0, {"c", hex.EncodeToString(channel[:])}}, `{"type":"pake","msg":"AAAA"}`),
 		valid("http_auth", alice, 27235, nostr.Tags{v0, {"u", "https://chaton.example/api/handle"}, {"method", "POST"}, {"payload", hex.EncodeToString(payload[:])}}, ""),
+		// communities (spec § 9): C = community, S = channel
+		valid("group_create", alice, 9007, nostr.Tags{v0, {"h", community}}, ""),
+		valid("group_edit_metadata", alice, 9002, nostr.Tags{v0, {"h", community}, {"name", "Les chatons"}, {"child", channel1}}, ""),
+		valid("group_put_user", relay, 9000, nostr.Tags{v0, {"h", community}, {"p", alice.pk, "admin"}}, ""),
+		valid("group_create_invite", alice, 9009, nostr.Tags{v0, {"h", community}, {"code", "AB12CD34"}}, ""),
+		valid("group_join_request", bob, 9021, nostr.Tags{v0, {"h", community}, {"code", "AB12CD34"}}, ""),
+		valid("group_chat_message", bob, 9, nostr.Tags{v0, {"h", channel1}}, "Bonjour tout le monde"),
+		valid("group_metadata", relay, 39000, nostr.Tags{v0, {"d", community}, {"name", "Les chatons"}, {"private"}, {"restricted"}, {"closed"}, {"child", channel1}}, ""),
+		valid("groups_list", bob, 10009, nostr.Tags{v0, {"group", community, "wss://chaton.example"}}, ""),
 		// serialization edge cases (rumors: id only)
 		valid("escapes", alice, 14, nostr.Tags{v0}, "quote \" backslash \\ newline \n tab \t cr \r bs \b ff \f"),
 		valid("unicode_raw", alice, 14, nostr.Tags{v0}, "émoji 🎉 日本語 ñ"),

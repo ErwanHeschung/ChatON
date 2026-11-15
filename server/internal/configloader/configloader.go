@@ -19,9 +19,10 @@ type ServerConfig struct {
 	Port           string   // SERVER_PORT, e.g. ":8080"
 	AllowedOrigin  string   // SERVER_ALLOWEDORIGIN, browser CORS (dev only, Tauri goes through core)
 	PublicURL      string   // SERVER_PUBLICURL, e.g. "https://chaton.example" (NIP-98 "u", NIP-05 relays)
-	DBPath         string   // SERVER_DBPATH, SQLite file
+	DBPath         string   // SERVER_DBPATH, bbolt file (events + handles)
 	Name           string   // SERVER_NAME, shown in NIP-11
 	BlockedPubkeys []string // SERVER_BLOCKEDPUBKEYS, comma-separated hex keys
+	RelayKey       string   // SERVER_RELAYKEY, hex: signs group state; default relay.key next to the DB
 }
 
 func LoadConfig() (*Config, error) {

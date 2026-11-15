@@ -95,7 +95,7 @@ Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé
 │   ├── federation.md        # .well-known, découverte, migration
 │   └── test-vectors/        # JSON partagé Rust/Go
 ├── core/                    # crate Rust `chaton-core` (lib)
-│   ├── src/{identity,event,dm,session,link}.rs
+│   ├── src/{identity,event,dm,session,link,community}.rs
 │   └── tests/{vectors,e2e}.rs  # vecteurs à l'octet près, bout en bout contre un serveur
 ├── app/                     # Tauri 2
 │   ├── src/                 # UI web (TS)
@@ -124,7 +124,8 @@ cd app && npm run build && ./node_modules/.bin/eslint src
 # server
 cd server && go vet ./... && go test ./...
 cd server && SERVER_PORT=:8080 SERVER_PUBLICURL=http://localhost:8080 go run ./cmd/server
-# autres variables : SERVER_DBPATH (chaton.db), SERVER_NAME, SERVER_BLOCKEDPUBKEYS (hex, séparées par des virgules)
+# autres variables : SERVER_DBPATH (chaton.bolt, bbolt), SERVER_NAME, SERVER_BLOCKEDPUBKEYS (hex, séparées par des virgules),
+# SERVER_RELAYKEY (hex, clé qui signe l'état des communautés ; sinon relay.key à côté de la base, à sauvegarder avec elle)
 
 # vecteurs de test (spec/test-vectors), à régénérer après tout changement de cas
 cd server && go run ./cmd/genvectors > ../spec/test-vectors/events.json
@@ -167,7 +168,7 @@ Le détail par étape est dans [`ROADMAP.md`](ROADMAP.md).
 
 Tranchées le 2026-11-15 :
 
-- [x] **Compatible Nostr** : on réutilise NIP-01, 05, 17, 29, 42, 44, 49, 59, 65 et 98. La version du protocole passe dans un tag `["v","0"]`.
+- [x] **Compatible Nostr** : on réutilise NIP-01, 05, 17, 29, 42, 44, 49, 51, 59, 65 et 98. La version du protocole passe dans un tag `["v","0"]`.
 - [x] Courbe : secp256k1 (Schnorr, BIP-340).
 - [x] Sérialisation : celle de NIP-01 (`sha256([0,pubkey,created_at,kind,tags,content])`).
 - [x] Framework UI web : Angular (existant), dans Tauri 2.

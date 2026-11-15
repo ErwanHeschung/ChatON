@@ -16,4 +16,6 @@ export class Chat {
   public readonly disabled = input(false);
   public readonly error = input<string | null>(null);
   public readonly send = output<string>();
+  /** Id of a message to delete. */
+  public readonly remove = output<string>();
 }

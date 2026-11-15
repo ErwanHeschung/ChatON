@@ -32,3 +32,27 @@ img {
   border-radius: 50%;
   background-color: var(--surface-elevated);
 }
+
+.delete {
+  all: unset;
+  cursor: pointer;
+  margin-left: 0.5rem;
+  font-size: var(--font-size-small);
+  color: var(--content-secondary);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+
+  &:focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--content-primary);
+  }
+
+  &.confirm {
+    opacity: 1;
+    color: var(--content-error);
+  }
+}
+
+:host:hover .delete {
+  opacity: 1;
+}

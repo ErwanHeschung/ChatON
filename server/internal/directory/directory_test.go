@@ -12,9 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
-	"github.com/nbd-wtf/go-nostr"
+	"fiatjaf.com/nostr"
+	"go.etcd.io/bbolt"
 )
 
 const publicURL = "https://chaton.test"
@@ -23,7 +22,7 @@ var now = time.Unix(1700000000, 0)
 
 func newDirectory(t *testing.T) (*Directory, *http.ServeMux) {
 	t.Helper()
-	db, err := sqlx.Connect("sqlite3", filepath.Join(t.TempDir(), "t.db"))
+	db, err := bbolt.Open(filepath.Join(t.TempDir(), "t.bolt"), 0600, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,10 +41,10 @@ type auth struct {
 	url, method string
 	payload     []byte // nil: hash of the real body
 	createdAt   time.Time
-	signWith    string // nil: the claimer's key
+	signWith    *nostr.SecretKey // nil: the claimer's key
 }
 
-func claim(t *testing.T, mux *http.ServeMux, sk, body string, a auth) *httptest.ResponseRecorder {
+func claim(t *testing.T, mux *http.ServeMux, sk nostr.SecretKey, body string, a auth) *httptest.ResponseRecorder {
 	t.Helper()
 	if a.url == "" {
 		a.url = publicURL + ClaimPath
@@ -68,9 +67,9 @@ func claim(t *testing.T, mux *http.ServeMux, sk, body string, a auth) *httptest.
 	if err := ev.Sign(sk); err != nil {
 		t.Fatal(err)
 	}
-	if a.signWith != "" { // tamper: signature by another key, pubkey kept
+	if a.signWith != nil { // tamper: signature by another key, pubkey kept
 		pk := ev.PubKey
-		_ = ev.Sign(a.signWith)
+		_ = ev.Sign(*a.signWith)
 		ev.PubKey = pk
 	}
 	raw, _ := json.Marshal(ev)
@@ -97,14 +96,14 @@ func lookup(t *testing.T, mux *http.ServeMux, name string) nip05Response {
 
 func TestClaimThenLookup(t *testing.T) {
 	d, mux := newDirectory(t)
-	alice := nostr.GeneratePrivateKey()
-	alicePK, _ := nostr.GetPublicKey(alice)
+	alice := nostr.Generate()
+	alicePK := alice.Public()
 
 	if rec := claim(t, mux, alice, `{"name":"Alice"}`, auth{}); rec.Code != http.StatusCreated {
 		t.Fatalf("claim: %d %s", rec.Code, rec.Body)
 	}
 	resp := lookup(t, mux, "ALICE")
-	if resp.Names["alice"] != alicePK || resp.Relays[alicePK][0] != "wss://chaton.test" {
+	if resp.Names["alice"] != alicePK.Hex() || resp.Relays[alicePK.Hex()][0] != "wss://chaton.test" {
 		t.Fatalf("lookup: %+v", resp)
 	}
 	if !d.IsLocal(alicePK) {
@@ -117,12 +116,14 @@ func TestClaimThenLookup(t *testing.T) {
 
 func TestClaimConflictsAndValidation(t *testing.T) {
 	_, mux := newDirectory(t)
-	alice, bob := nostr.GeneratePrivateKey(), nostr.GeneratePrivateKey()
+	alice, bob := nostr.Generate(), nostr.Generate()
 	claim(t, mux, alice, `{"name":"alice"}`, auth{})
 
 	cases := []struct {
-		name, sk, body string
-		want           int
+		name string
+		sk   nostr.SecretKey
+		body string
+		want int
 	}{
 		{"name taken", bob, `{"name":"alice"}`, http.StatusConflict},
 		{"key already has a handle", alice, `{"name":"alice2"}`, http.StatusConflict},
@@ -140,7 +141,8 @@ func TestClaimConflictsAndValidation(t *testing.T) {
 
 func TestClaimRejectsBadNIP98(t *testing.T) {
 	_, mux := newDirectory(t)
-	sk := nostr.GeneratePrivateKey()
+	sk := nostr.Generate()
+	other := nostr.Generate()
 	body := `{"name":"carol"}`
 
 	cases := map[string]auth{
@@ -149,7 +151,7 @@ func TestClaimRejectsBadNIP98(t *testing.T) {
 		"wrong payload": {payload: []byte(`{"name":"mallory"}`)},
 		"expired":       {createdAt: now.Add(-2 * time.Minute)},
 		"future":        {createdAt: now.Add(2 * time.Minute)},
-		"bad signature": {signWith: nostr.GeneratePrivateKey()},
+		"bad signature": {signWith: &other},
 	}
 	for name, a := range cases {
 		if rec := claim(t, mux, sk, body, a); rec.Code != http.StatusUnauthorized {

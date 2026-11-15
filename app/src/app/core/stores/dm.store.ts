@@ -54,6 +54,8 @@ export const DmStore = signalStore(
     return {
       select,
       receive,
+      /** Resolves a key's handle once, for `label` (also used for community members). */
+      resolve: resolvePeer,
       label: (pubkey: string) => peerLabel(store.peers()[pubkey], pubkey),
 
       async load() {

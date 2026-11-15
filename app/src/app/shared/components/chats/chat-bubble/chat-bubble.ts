@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
 import { Message } from '@models/Message.model';
 import { NgOptimizedImage } from '@angular/common';
 
@@ -11,4 +11,7 @@ import { NgOptimizedImage } from '@angular/common';
 })
 export class ChatBubble {
   public message = input.required<Message>();
+  public readonly remove = output<void>();
+  /** First click asks, second deletes. */
+  public readonly confirming = signal(false);
 }

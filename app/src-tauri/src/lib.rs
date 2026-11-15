@@ -4,9 +4,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use chaton_core::Error;
+use chaton_core::community::{ChannelMessage, Community, Member, Update};
 use chaton_core::dm::Message;
 use chaton_core::link::{self, LinkOffer};
-use chaton_core::nostr::prelude::PublicKey;
+use chaton_core::nostr::prelude::{EventId, PublicKey};
 use chaton_core::session::{Account, Conversation, Peer, Session};
 use serde::Serialize;
 use tauri::async_runtime::JoinHandle;
@@ -38,7 +39,16 @@ impl From<Error> for CmdError {
             Error::WrongCode => "wrong_code",
             Error::CodeExpired => "code_expired",
             Error::LinkRefused => "link_refused",
+            Error::InvalidInvite => "invalid_invite",
             Error::Invalid(_) | Error::Nostr(_) => "invalid",
+            // The relay answered no (permissions, unknown account): not a network problem.
+            Error::NotDelivered(ref reason)
+                if ["restricted:", "invalid:", "duplicate:", "blocked:"]
+                    .iter()
+                    .any(|p| reason.contains(p)) =>
+            {
+                "refused"
+            }
             Error::Keychain(_) => "keychain",
             Error::Http(_) | Error::Relay(_) | Error::NotDelivered(_) | Error::Server(_) => {
                 "network"
@@ -70,14 +80,20 @@ fn data_dir(app: &AppHandle) -> Res<PathBuf> {
     })
 }
 
-/// Keeps the session and forwards incoming DMs to the UI as `dm` events.
+/// Keeps the session and forwards what comes in to the UI: `dm` events for
+/// private messages, `community` events for the rest (see `Update`).
 async fn start(app: &AppHandle, state: &App, session: Session) -> Account {
     let session = Arc::new(session);
     let account = session.account().clone();
     let (listener, handle) = (session.clone(), app.clone());
     tauri::async_runtime::spawn(async move {
         listener
-            .listen(move |message| drop(handle.emit("dm", message)))
+            .listen(move |update| {
+                let _ = match update {
+                    Update::Dm { message } => handle.emit("dm", message),
+                    other => handle.emit("community", other),
+                };
+            })
             .await;
     });
     *state.session.lock().await = Some(session);
@@ -246,6 +262,98 @@ async fn messages(state: State<'_, App>, pubkey: PublicKey) -> Res<Vec<Message>>
     Ok(session(&state).await?.messages(pubkey).await?)
 }
 
+#[tauri::command]
+async fn communities(state: State<'_, App>) -> Res<Vec<Community>> {
+    Ok(session(&state).await?.communities().await?)
+}
+
+#[tauri::command]
+async fn create_community(state: State<'_, App>, name: String) -> Res<Community> {
+    Ok(session(&state).await?.create_community(&name).await?)
+}
+
+#[tauri::command]
+async fn join_community(state: State<'_, App>, invite: String) -> Res<Community> {
+    Ok(session(&state).await?.join(&invite).await?)
+}
+
+#[tauri::command]
+async fn leave_community(state: State<'_, App>, community: String) -> Res<()> {
+    Ok(session(&state).await?.leave(&community).await?)
+}
+
+#[tauri::command]
+async fn create_channel(state: State<'_, App>, community: String, name: String) -> Res<()> {
+    session(&state)
+        .await?
+        .create_channel(&community, &name)
+        .await?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn create_invite(state: State<'_, App>, community: String) -> Res<String> {
+    Ok(session(&state).await?.invite(&community).await?)
+}
+
+#[tauri::command]
+async fn members(state: State<'_, App>, community: String) -> Res<Vec<Member>> {
+    Ok(session(&state).await?.members(&community).await?)
+}
+
+#[tauri::command]
+async fn set_roles(
+    state: State<'_, App>,
+    community: String,
+    pubkey: PublicKey,
+    roles: Vec<String>,
+) -> Res<()> {
+    let roles: Vec<&str> = roles.iter().map(String::as_str).collect();
+    Ok(session(&state)
+        .await?
+        .set_roles(&community, pubkey, &roles)
+        .await?)
+}
+
+#[tauri::command]
+async fn remove_member(state: State<'_, App>, community: String, pubkey: PublicKey) -> Res<()> {
+    Ok(session(&state)
+        .await?
+        .remove_member(&community, pubkey)
+        .await?)
+}
+
+#[tauri::command]
+async fn channel_messages(state: State<'_, App>, channel: String) -> Res<Vec<ChannelMessage>> {
+    Ok(session(&state).await?.channel_messages(&channel).await?)
+}
+
+#[tauri::command]
+async fn send_channel(
+    state: State<'_, App>,
+    community: String,
+    channel: String,
+    text: String,
+) -> Res<ChannelMessage> {
+    Ok(session(&state)
+        .await?
+        .send(&community, &channel, &text)
+        .await?)
+}
+
+#[tauri::command]
+async fn delete_message(
+    state: State<'_, App>,
+    community: String,
+    channel: String,
+    id: EventId,
+) -> Res<()> {
+    Ok(session(&state)
+        .await?
+        .delete_message(&community, &channel, id)
+        .await?)
+}
+
 /// Registers the OS keychain as `keyring-core`'s default store (CLAUDE.md, Secrets).
 fn keychain() -> Result<(), keyring_core::Error> {
     #[cfg(target_os = "linux")]
@@ -280,6 +388,18 @@ pub fn run() {
             send_dm,
             conversations,
             messages,
+            communities,
+            create_community,
+            join_community,
+            leave_community,
+            create_channel,
+            create_invite,
+            members,
+            set_roles,
+            remove_member,
+            channel_messages,
+            send_channel,
+            delete_message,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

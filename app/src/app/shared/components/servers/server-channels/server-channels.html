@@ -1,22 +1,59 @@
 <app-server-banner></app-server-banner>
-<cdk-virtual-scroll-viewport itemSize="36" class="viewport">
-  <div *cdkVirtualFor="let item of virtualItems(); trackBy: trackById" class="item-container">
-    @if (item.type === 'category') {
-      <div class="category-row" (click)="toggleCategory(item.data.id)">
-        @if (item.expanded) {}
-        <svg
-          [lucideIcon]="chevronIcon"
-          size="20"
-          [class.collapsed]="!item.expanded"
-          class="chevron"
-        ></svg>
-        <span>{{ item.data.name | uppercase }}</span>
-      </div>
-    } @else {
-      <div class="channel-row">
+
+@if (store.current(); as community) {
+  <nav class="channels">
+    @for (channel of community.channels; track channel.id) {
+      <button
+        type="button"
+        class="channel-row"
+        [class.active]="channel.id === store.channel()"
+        [attr.aria-current]="channel.id === store.channel() ? 'true' : null"
+        (click)="store.selectChannel(channel.id)"
+      >
         <svg [lucideIcon]="hashtagIcon" size="15"></svg>
-        <span>{{ item.data.name }}</span>
-      </div>
+        <span>{{ channel.name }}</span>
+      </button>
+    }
+  </nav>
+
+  <div class="tools">
+    @if (store.isAdmin()) {
+      <form class="add-channel" (submit)="$event.preventDefault(); addChannel(channelName)">
+        <input
+          #channelName
+          maxlength="100"
+          placeholder="new-channel"
+          i18n-placeholder="@@community.channel-placeholder"
+          aria-label="New channel name"
+          i18n-aria-label="@@community.channel-label"
+        />
+        <button class="btn" i18n-title="@@community.add-channel" title="Add a channel">
+          <svg [lucideIcon]="plusIcon" size="15"></svg>
+        </button>
+      </form>
+    }
+
+    @if (store.canModerate()) {
+      @if (invite(); as text) {
+        <code class="invite">{{ text }}</code>
+        <button class="btn" (click)="copy(text)">
+          @if (copied()) {
+            <ng-container i18n="@@community.copied">Copied</ng-container>
+          } @else {
+            <ng-container i18n="@@community.copy">Copy the invite</ng-container>
+          }
+        </button>
+      } @else {
+        <button class="btn" (click)="createInvite()" i18n="@@community.invite">Invite</button>
+      }
+    }
+
+    @if (store.error(); as error) {
+      <small class="error" i18n="@@community.action-failed">Not done: {{ error }}</small>
     }
   </div>
-</cdk-virtual-scroll-viewport>
+} @else {
+  <p class="empty" i18n="@@community.empty">
+    No community yet. Create one or join with an invite, with “+” at the top.
+  </p>
+}
