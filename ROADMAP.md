@@ -55,12 +55,12 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 - Client relais (`nostr-sdk`) et base SQLite (`nostr-sqlite`) **déplacés à l'étape 4**, quand les commandes Tauri en définiront le besoin.
 - **Terminé quand :** `cargo test` passe les `spec/test-vectors`, et `cargo clippy --all-targets -- -D warnings` ne remonte rien. ✅
 
-## Étape 3 : serveur (Go)
+## Étape 3 : serveur (Go) ✅
 
-- `server/internal/relay` : relais khatru avec stockage SQLite, authentification NIP-42 et limite de débit par clé et par IP.
-- `server/internal/directory` : `POST /handle` (une requête signée réserve `pseudo` → clé publique) et `GET /.well-known/nostr.json?name=`.
-- Fichier de règles de l'instance (`rules.yaml`) : mode liste noire par défaut, clés et instances bloquées, limites de débit. Appliqué dans les hooks `RejectEvent` de khatru.
-- **Terminé quand :** `go test ./...` passe les mêmes vecteurs, et un client Nostr standard (par exemple `nak`) peut publier et lire sur le relais.
+- `server/internal/relay` : relais khatru avec stockage SQLite, authentification NIP-42 et limite de débit par IP. Écriture réservée aux utilisateurs locaux et aux MP qui leur sont adressés ; un gift wrap n'est servi qu'à son destinataire (`spec/federation.md` § 2).
+- `server/internal/directory` : `POST /api/handle` (requête signée NIP-98, premier arrivé premier servi, un handle par clé) et `GET /.well-known/nostr.json?name=`. Même fichier SQLite que les événements.
+- Clés bloquées via `SERVER_BLOCKEDPUBKEYS`. Le fichier de règles complet passe à l'étape 10.
+- **Terminé quand :** `go test ./...` passe (vecteurs, annuaire, politique du relais), et un client Nostr standard peut publier et lire sur le relais.
 
 ## Étape 4 : app (Tauri 2 + Angular)
 
@@ -78,6 +78,7 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 
 ## Étape 6 : communautés
 
+- D'abord, migrer le serveur de `nbd-wtf/go-nostr`, `fiatjaf/khatru` et `fiatjaf/eventstore` (archivés ou en maintenance depuis 2025) vers le module unifié `fiatjaf.com/nostr`. Il n'a pas de backend SQLite : les événements passent en bbolt ou LMDB (pur Go, fin de cgo), et la table des handles a besoin de son propre stockage. Vérifier qu'il existe des versions taguées avant de migrer.
 - Groupes NIP-29 hébergés par l'instance (relay29 sur khatru). Les salons sont des groupes ou des sous-groupes. Rôles, permissions et bans sont des événements de modération signés.
 - Fichiers et médias via un envoi façon Blossom ou NIP-96, authentifié par NIP-98.
 - Brancher les composants existants `server-channels` et `server-banner`.
@@ -96,6 +97,7 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 
 ## Étape 10 : fédération
 
+- Fichier de règles de l'instance (`rules.yaml`), reporté de l'étape 3 : mode liste noire ou liste blanche, clés et instances bloquées, limites de débit configurables. Appliqué dans les hooks `RejectEvent` de khatru.
 - Outbox model via NIP-65 : le client lit sur les relais de ses contacts, et NIP-05 résout les handles d'autres instances. Le blocage se fait à trois niveaux (règles d'instance, modération de communauté, listes de mise en sourdine NIP-51 côté utilisateur). Les messages d'inconnus arrivent dans « demandes de message ». Migrer, c'est publier une nouvelle liste de relais 10002.
 
 ## Étape 11 : (plus tard) P2P direct

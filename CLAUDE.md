@@ -112,7 +112,9 @@ Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé
 cd app && npm ci && npm run build && npm start
 
 # server
-cd server && go vet ./... && go test ./... && go run ./cmd/server   # SERVER_PORT=:8080
+cd server && go vet ./... && go test ./...
+cd server && SERVER_PORT=:8080 SERVER_PUBLICURL=http://localhost:8080 go run ./cmd/server
+# autres variables : SERVER_DBPATH (chaton.db), SERVER_NAME, SERVER_BLOCKEDPUBKEYS (hex, séparées par des virgules)
 
 # vecteurs de test (spec/test-vectors), à régénérer après tout changement de cas
 cd server && go run ./cmd/genvectors > ../spec/test-vectors/events.json
@@ -158,8 +160,9 @@ Tranchées le 2026-11-15 :
 - [x] Sérialisation : celle de NIP-01 (`sha256([0,pubkey,created_at,kind,tags,content])`).
 - [x] Framework UI web : Angular (existant), dans Tauri 2.
 - [x] Desktop : Tauri uniquement. GPUI seulement si une raison concrète apparaît.
+- [x] Attribution des handles : premier arrivé, premier servi, un handle par clé (e-mail éventuellement à l'étape 5).
+- [x] Écriture sur le relais : utilisateurs locaux + MP qui leur sont adressés.
 
 Demande avant de trancher l'une de ces questions :
 
 - [ ] Mode par défaut des instances : liste noire (proposé) ou liste blanche ?
-- [ ] Attribution des handles : premier arrivé, premier servi, ou vérification par e-mail (étape 3) ?

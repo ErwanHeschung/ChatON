@@ -1,0 +1,54 @@
+package directory
+
+import (
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/nbd-wtf/go-nostr"
+)
+
+const nip98MaxSkew = 60 * time.Second
+
+// verifyNIP98 checks an `Authorization: Nostr <base64 event>` header (NIP-98)
+// for a request to url with the given body, and returns the signer's pubkey.
+func verifyNIP98(r *http.Request, url string, body []byte, now time.Time) (string, error) {
+	b64, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Nostr ")
+	if !ok {
+		return "", errors.New("missing Nostr authorization")
+	}
+	raw, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return "", errors.New("authorization is not base64")
+	}
+	var ev nostr.Event
+	if err := json.Unmarshal(raw, &ev); err != nil {
+		return "", errors.New("authorization is not an event")
+	}
+	if ev.Kind != nostr.KindHTTPAuth {
+		return "", errors.New("wrong kind")
+	}
+	if ok, _ := ev.CheckSignature(); !ok || !ev.CheckID() {
+		return "", errors.New("bad signature")
+	}
+	if d := now.Sub(ev.CreatedAt.Time()); d > nip98MaxSkew || d < -nip98MaxSkew {
+		return "", errors.New("expired")
+	}
+	sum := sha256.Sum256(body)
+	if tagValue(ev, "u") != url || tagValue(ev, "method") != r.Method || tagValue(ev, "payload") != hex.EncodeToString(sum[:]) {
+		return "", errors.New("u, method or payload mismatch")
+	}
+	return ev.PubKey, nil
+}
+
+func tagValue(ev nostr.Event, name string) string {
+	if t := ev.Tags.Find(name); len(t) > 1 {
+		return t[1]
+	}
+	return ""
+}

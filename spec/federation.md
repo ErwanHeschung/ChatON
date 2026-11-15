@@ -34,14 +34,25 @@ Content-Type: application/json
 
 - L'événement NIP-98 porte les tags `u` (URL exacte), `method` (`POST`), `payload` (sha256 hex du corps) et `v`. Vecteur : `http_auth`.
 - Le serveur vérifie l'événement (signature, `created_at` à ±60 s, `u`, `method`, `payload`), puis associe `name` à la `pubkey` de l'événement.
-- Réponses : `201` réservé, `409` déjà pris, `400` pseudo invalide, `401` authentification invalide.
-- **Ouvert, à trancher à l'étape 3** : la politique d'attribution (premier arrivé, premier servi, ou vérification par e-mail), et l'abandon ou le transfert d'un handle.
+- Réponses : `201` réservé, `409` pseudo déjà pris **ou clé ayant déjà un handle**, `400` pseudo invalide, `401` authentification invalide.
+- Politique : **premier arrivé, premier servi**, un seul handle par clé. Une vérification par e-mail pourra venir avec le coffre (étape 5).
+- Un pseudo inconnu renvoie `200` avec `{"names":{},"relays":{}}`.
+- Pas encore d'abandon ni de transfert de handle : il faudra une requête signée de libération.
 
 ## 3. Relais d'un utilisateur (NIP-65 et NIP-17)
 
 - `10002` : relais où l'utilisateur **publie** (`write`) et **lit** (`read`). Sans marqueur, le relais sert aux deux.
 - `10050` : relais où il **reçoit ses MP**.
 - Modèle « outbox » : pour lire quelqu'un, le client lit sur **ses** relais d'écriture. Pour lui envoyer un MP, il publie sur **ses** relais `10050`. Les serveurs n'ont pas à se parler entre eux.
+
+### Politique d'écriture du relais
+
+Le relais d'une instance n'est pas un dépôt ouvert. Il accepte :
+
+- de la part d'une clé **qui a un handle ici** : son profil (`0`) et ses listes de relais (`10002`, `10050`) ;
+- de la part de **n'importe qui**, y compris d'une autre instance : un gift wrap (`1059`) dont le tag `p` désigne un utilisateur local.
+
+Tout le reste est refusé : autres kinds, `14` publié nu, `created_at` à plus de 15 min dans le futur, clés bloquées (`SERVER_BLOCKEDPUBKEYS`). Un gift wrap n'est **servi qu'à son destinataire**, authentifié par NIP-42 ; le relais n'expose pas de `COUNT`. Les kinds NIP-29 arrivent à l'étape 6.
 
 ## 4. Migration de compte
 
@@ -60,4 +71,4 @@ La clé privée est stockée **chiffrée par le mot de passe** de l'utilisateur 
 
 ## 6. Règles d'instance (étape 10)
 
-Le blocage d'instances et de clés, le mode liste noire ou liste blanche et les limites de débit sont décrits à l'étape 3 (`rules.yaml`) puis complétés à l'étape 10. Le mode par défaut (liste noire proposé) reste à confirmer, voir `CLAUDE.md`.
+Le blocage d'instances et de clés, le mode liste noire ou liste blanche et les limites de débit arrivent à l'étape 10 (`rules.yaml`). Pour l'instant, seules des clés peuvent être bloquées, via `SERVER_BLOCKEDPUBKEYS`. Le mode par défaut (liste noire proposé) reste à confirmer, voir `CLAUDE.md`.
