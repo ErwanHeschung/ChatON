@@ -1,40 +1,23 @@
-import { inject, Injectable } from '@angular/core';
-import { environment } from '@environments/environment';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Injectable } from '@angular/core';
+import { invoke } from '@tauri-apps/api/core';
+import { from, Observable } from 'rxjs';
 import { ConnectedUser, UserLogin, UserRegister } from '@models/Auth.model';
 
+/** Account commands, all handled by core through Tauri. Errors are `CmdError`. */
 @Injectable({
   providedIn: 'root',
 })
 export class AuthService {
-  private readonly baseUrl = `${environment.apiUrl}/auth`;
-
-  private readonly http = inject(HttpClient);
-
-  public register(registerForm: UserRegister): Observable<ConnectedUser> {
-    return this.http.post<ConnectedUser>(`${this.baseUrl}/register`, registerForm, {
-      withCredentials: true,
-    });
+  public register(form: UserRegister): Observable<ConnectedUser> {
+    return from(invoke<ConnectedUser>('register', { ...form }));
   }
 
-  public login(loginForm: UserLogin): Observable<ConnectedUser> {
-    return this.http.post<ConnectedUser>(`${this.baseUrl}/login`, loginForm, {
-      withCredentials: true,
-    });
+  public login(form: UserLogin): Observable<ConnectedUser> {
+    return from(invoke<ConnectedUser>('login', { ...form }));
   }
 
-  public refreshToken(): Observable<ConnectedUser> {
-    return this.http.post<ConnectedUser>(
-      `${this.baseUrl}/refresh`,
-      {},
-      {
-        withCredentials: true,
-      },
-    );
-  }
-
-  public logout(): Observable<void> {
-    return this.http.post<void>(`${this.baseUrl}/logout`, {}, { withCredentials: true });
+  /** The account saved on this device, if any (no login needed). */
+  public currentAccount(): Observable<ConnectedUser | null> {
+    return from(invoke<ConnectedUser | null>('current_account'));
   }
 }

@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { UserShort } from '@models/User.model';
 import { UserCard } from '@components/users/user-card/user-card';
+import { ConnectedUserStore } from '@stores/connected-user.store';
 
 @Component({
   selector: 'app-users-list',
@@ -11,11 +12,13 @@ import { UserCard } from '@components/users/user-card/user-card';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UsersList {
-  public readonly connectedUser: UserShort = {
-    id: '1',
-    username: 'TOROIMERAI le bg de la mort',
+  private readonly account = inject(ConnectedUserStore);
+
+  public readonly connectedUser = computed<UserShort>(() => ({
+    id: this.account.user()?.npub ?? '',
+    username: this.account.user() ? `@${this.account.user()?.handle}` : '',
     profilePicture: '/chatON-logo.svg',
-  };
+  }));
 
   public readonly users = input<UserShort[]>(
     Array.from({ length: 100 }).map((_, i) => ({

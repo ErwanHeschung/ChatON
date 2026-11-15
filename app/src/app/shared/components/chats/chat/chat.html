@@ -1,7 +1,13 @@
 <div class="message-list">
-  @for (message of [...messages()]; track message.id) {
+  @for (message of messages(); track message.id) {
     <app-chat-bubble [message]="message"></app-chat-bubble>
   }
 </div>
 
-<app-chat-bar></app-chat-bar>
+@if (error()) {
+  <small class="error" i18n="@@chat.send-failed">Message not sent: {{ error() }}</small>
+}
+
+@if (!disabled()) {
+  <app-chat-bar (send)="send.emit($event)"></app-chat-bar>
+}

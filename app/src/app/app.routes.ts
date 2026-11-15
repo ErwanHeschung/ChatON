@@ -36,8 +36,7 @@ export const routes: Routes = [
         children: [
           {
             path: '',
-            loadComponent: () =>
-              import('@components/users/user-banner/user-banner').then((m) => m.UserBanner),
+            loadComponent: () => import('@components/chats/dm-list/dm-list').then((m) => m.DmList),
             outlet: 'left-sidebar',
           },
         ],

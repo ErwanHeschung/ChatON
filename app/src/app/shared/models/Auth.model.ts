@@ -1,18 +1,33 @@
 export interface UserLogin {
-  username: string;
-  password: string;
+  handle: string;
+  nsec: string;
 }
 
 export interface UserRegister {
-  username: string;
-  email: string;
-  password: string;
+  instance: string;
+  name: string;
 }
 
+/** The local account (core `session::Account`). */
 export interface ConnectedUser {
-  id: string;
-  username: string;
-  email: string;
+  handle: string;
+  relay: string;
+  pubkey: string;
+  npub: string;
+}
+
+/** Error returned by every Tauri command (`app/src-tauri/src/lib.rs`). */
+export interface CmdError {
+  code:
+    | 'handle_taken'
+    | 'not_found'
+    | 'key_mismatch'
+    | 'invalid'
+    | 'keychain'
+    | 'network'
+    | 'signed_out'
+    | 'internal';
+  message: string;
 }
 
 export enum AuthStatus {

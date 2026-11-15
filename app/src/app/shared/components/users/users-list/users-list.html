@@ -1,4 +1,4 @@
-<app-user-card [user]="connectedUser"></app-user-card>
+<app-user-card [user]="connectedUser()"></app-user-card>
 
 <cdk-virtual-scroll-viewport itemSize="55" class="users-viewport">
   <div *cdkVirtualFor="let user of users()" class="users">

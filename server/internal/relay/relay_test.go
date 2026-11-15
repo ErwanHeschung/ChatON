@@ -113,6 +113,30 @@ func TestWritePolicy(t *testing.T) {
 	}
 }
 
+// query subscribes with filter and returns the stored events, or the CLOSED reason.
+func query(t *testing.T, r *nostr.Relay, filter nostr.Filter) (evs []*nostr.Event, closed string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	sub, err := r.Subscribe(ctx, nostr.Filters{filter})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub.Unsub()
+	for {
+		select {
+		case ev := <-sub.Events:
+			evs = append(evs, ev)
+		case <-sub.EndOfStoredEvents:
+			return evs, ""
+		case reason := <-sub.ClosedReason:
+			return evs, reason
+		case <-ctx.Done():
+			t.Fatal("no EOSE nor CLOSED")
+		}
+	}
+}
+
 func TestGiftWrapsOnlyServedToRecipient(t *testing.T) {
 	bob, carol, ephemeral := newUser(), newUser(), newUser()
 	url := startRelay(t, bob, carol)
@@ -120,19 +144,33 @@ func TestGiftWrapsOnlyServedToRecipient(t *testing.T) {
 	if err := publish(t, connect(t, url, nil), gift); err != nil {
 		t.Fatal(err)
 	}
-	filter := nostr.Filter{Kinds: []int{nostr.KindGiftWrap}, Tags: nostr.TagMap{"p": {bob.pk}}}
+	forBob := nostr.Filter{Kinds: []int{nostr.KindGiftWrap}, Tags: nostr.TagMap{"p": {bob.pk}}}
 
-	got := map[string]int{}
-	for name, u := range map[string]*user{"bob": &bob, "carol": &carol, "anonymous": nil} {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		evs, err := connect(t, url, u).QuerySync(ctx, filter)
-		cancel()
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		got[name] = len(evs)
+	if evs, closed := query(t, connect(t, url, &bob), forBob); len(evs) != 1 || closed != "" {
+		t.Errorf("bob: got %d events, closed %q; want 1", len(evs), closed)
 	}
-	if got["bob"] != 1 || got["carol"] != 0 || got["anonymous"] != 0 {
-		t.Fatalf("gift wraps served: %v, want bob=1 carol=0 anonymous=0", got)
+
+	cases := []struct {
+		name   string
+		u      *user
+		filter nostr.Filter
+		want   string // CLOSED reason prefix
+	}{
+		{"anonymous", nil, forBob, "auth-required:"},
+		{"carol asks for bob's", &carol, forBob, "restricted:"},
+		{"carol, no #p", &carol, nostr.Filter{Kinds: []int{nostr.KindGiftWrap}}, "restricted:"},
+		{"carol, no kinds", &carol, nostr.Filter{Tags: nostr.TagMap{"p": {bob.pk}}}, "restricted:"},
+		{"carol, bob and herself", &carol, nostr.Filter{Kinds: []int{nostr.KindGiftWrap}, Tags: nostr.TagMap{"p": {carol.pk, bob.pk}}}, "restricted:"},
+	}
+	for _, c := range cases {
+		evs, closed := query(t, connect(t, url, c.u), c.filter)
+		if len(evs) != 0 || !strings.HasPrefix(closed, c.want) {
+			t.Errorf("%s: got %d events, closed %q; want 0, %q", c.name, len(evs), closed, c.want)
+		}
+	}
+
+	// Profiles stay public, no auth needed.
+	if _, closed := query(t, connect(t, url, nil), nostr.Filter{Kinds: []int{nostr.KindProfileMetadata}}); closed != "" {
+		t.Errorf("anonymous profile query closed: %q", closed)
 	}
 }

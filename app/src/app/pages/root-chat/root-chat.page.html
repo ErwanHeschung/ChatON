@@ -5,7 +5,13 @@
     <router-outlet name="left-sidebar"></router-outlet>
   </div>
 
-  <app-chat chat></app-chat>
+  <app-chat
+    chat
+    [messages]="messages()"
+    [disabled]="!dm.selected()"
+    [error]="dm.sendError()"
+    (send)="dm.send($event)"
+  ></app-chat>
 
   <app-users-list right></app-users-list>
 </app-chat-layout>

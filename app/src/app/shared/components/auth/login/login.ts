@@ -7,7 +7,7 @@ import {
   Validators,
 } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ConnectedUser } from '@models/Auth.model';
+import { CmdError, ConnectedUser } from '@models/Auth.model';
 import { AuthService } from '@services/auth.service';
 import { LucideCircleAlert, LucideDynamicIcon } from '@lucide/angular';
 import { finalize } from 'rxjs';
@@ -16,10 +16,14 @@ import { ConnectedUserStore } from '@stores/connected-user.store';
 import { ModalService } from '@services/modal.service';
 
 interface LoginForm {
-  username: FormControl<string>;
-  password: FormControl<string>;
+  handle: FormControl<string>;
+  nsec: FormControl<string>;
 }
 
+/**
+ * Step 4: imports an existing key for a handle (checked against the directory).
+ * Email + password login comes with the vault (step 5).
+ */
 @Component({
   selector: 'app-login',
   imports: [ReactiveFormsModule, LucideDynamicIcon],
@@ -38,32 +42,41 @@ export class Login {
   public errorIcon = LucideCircleAlert;
 
   public readonly loginForm: FormGroup<LoginForm> = this.fb.group({
-    username: ['', [Validators.required, Validators.minLength(3)]],
-    password: ['', [Validators.required, Validators.minLength(8)]],
+    handle: ['', [Validators.required, Validators.pattern(/^@?[^@\s]+@[^@\s]+$/)]],
+    nsec: ['', [Validators.required]],
   });
 
   public onSubmit(): void {
-    this.isPending.set(true);
-    if (this.loginForm.valid) {
-      this.authService
-        .login(this.loginForm.getRawValue())
-        .pipe(finalize(() => this.isPending.set(false)))
-        .subscribe({
-          next: (user: ConnectedUser) => {
-            this.connectedUserStore.setLoggedInUser(user);
-            this.modalService.close();
-            this.router.navigate([ROUTES.CHAT]);
-          },
-          error: (err) => {
-            if (err.status === 401) {
-              this.loginForm.setErrors({ unauthorized: true });
-            } else {
-              this.loginForm.setErrors({ unknown: true });
-            }
-          },
-        });
-    } else {
+    if (this.loginForm.invalid) {
       this.loginForm.markAllAsTouched();
+      return;
     }
+    this.isPending.set(true);
+    this.authService
+      .login(this.loginForm.getRawValue())
+      .pipe(finalize(() => this.isPending.set(false)))
+      .subscribe({
+        next: (user: ConnectedUser) => {
+          this.connectedUserStore.setLoggedInUser(user);
+          this.modalService.close();
+          this.router.navigate([ROUTES.CHAT, ROUTES.DMS]);
+        },
+        error: (err: CmdError) => {
+          const { handle, nsec } = this.loginForm.controls;
+          switch (err.code) {
+            case 'not_found':
+              handle.setErrors({ notFound: true });
+              break;
+            case 'invalid':
+              nsec.setErrors({ invalid: true });
+              break;
+            case 'key_mismatch':
+              this.loginForm.setErrors({ mismatch: true });
+              break;
+            default:
+              this.loginForm.setErrors({ unknown: true });
+          }
+        },
+      });
   }
 }

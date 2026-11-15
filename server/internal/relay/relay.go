@@ -1,7 +1,8 @@
 // Package relay is the instance's Nostr relay: khatru + SQLite + ChatON policies.
 // Write policy: local users publish their profile and relay lists; anyone may
 // drop a gift wrap for a local user. Gift wraps are only served to their
-// recipient (NIP-42 auth). See spec/federation.md.
+// recipient (NIP-42 auth), checked on the filter so it also covers live events.
+// See spec/federation.md.
 package relay
 
 import (
@@ -47,7 +48,7 @@ func New(cfg Config, db *sqlite3.SQLite3Backend, dir Directory) *khatru.Relay {
 	rl.StoreEvent = append(rl.StoreEvent, db.SaveEvent)
 	rl.ReplaceEvent = append(rl.ReplaceEvent, db.ReplaceEvent)
 	// No DeleteEvent: kind 5 (NIP-09) isn't accepted before step 6.
-	rl.QueryEvents = append(rl.QueryEvents, onlyOwnGiftWraps(db.QueryEvents))
+	rl.QueryEvents = append(rl.QueryEvents, db.QueryEvents)
 	// No CountEvents: counts would leak how many DMs someone receives.
 
 	// Challenge right away so clients can authenticate before asking for their DMs.
@@ -62,6 +63,7 @@ func New(cfg Config, db *sqlite3.SQLite3Backend, dir Directory) *khatru.Relay {
 		// ponytail: fixed limits per IP, make them configurable once real traffic shows the need.
 		policies.EventIPRateLimiter(20, time.Minute, 60),
 	)
+	rl.RejectFilter = append(rl.RejectFilter, giftWrapsOnlyForRecipient)
 	rl.RejectConnection = append(rl.RejectConnection, policies.ConnectionRateLimiter(10, time.Minute, 30))
 	return rl
 }
@@ -98,28 +100,21 @@ func writePolicy(dir Directory) func(context.Context, *nostr.Event) (bool, strin
 	}
 }
 
-type queryFunc = func(context.Context, nostr.Filter) (chan *nostr.Event, error)
-
-// onlyOwnGiftWraps drops kind 1059 events unless the authenticated client is their recipient.
-func onlyOwnGiftWraps(query queryFunc) queryFunc {
-	return func(ctx context.Context, filter nostr.Filter) (chan *nostr.Event, error) {
-		in, err := query(ctx, filter)
-		if err != nil {
-			return nil, err
-		}
-		authed := khatru.GetAuthed(ctx)
-		out := make(chan *nostr.Event)
-		go func() {
-			defer close(out)
-			for ev := range in {
-				if ev.Kind == nostr.KindGiftWrap && (authed == "" || recipient(ev) != authed) {
-					continue
-				}
-				out <- ev
-			}
-		}()
-		return out, nil
+// giftWrapsOnlyForRecipient rejects any filter that could match a gift wrap
+// unless the client is authenticated and asks only for its own (#p = itself).
+// Filters, not query results, so live broadcasts are covered too.
+func giftWrapsOnlyForRecipient(ctx context.Context, f nostr.Filter) (bool, string) {
+	if len(f.Kinds) > 0 && !slices.Contains(f.Kinds, nostr.KindGiftWrap) {
+		return false, ""
 	}
+	authed := khatru.GetAuthed(ctx)
+	if authed == "" {
+		return true, "auth-required: gift wraps are only served to their recipient"
+	}
+	if p := f.Tags["p"]; len(p) != 1 || p[0] != authed {
+		return true, "restricted: you can only ask for gift wraps addressed to you"
+	}
+	return false, ""
 }
 
 func recipient(ev *nostr.Event) string {

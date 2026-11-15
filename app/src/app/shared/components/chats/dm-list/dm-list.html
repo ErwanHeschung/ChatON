@@ -1,0 +1,37 @@
+<form class="search" (submit)="$event.preventDefault(); search(handle)">
+  <input
+    #handle
+    placeholder="@pseudo@instance"
+    i18n-placeholder="@@dm.search-placeholder"
+    aria-label="Search a handle"
+    i18n-aria-label="@@dm.search-label"
+    autocomplete="off"
+    spellcheck="false"
+  />
+</form>
+
+@switch (dm.searchError()) {
+  @case ('not_found') {
+    <small class="error" i18n="@@dm.search-not-found">No one with this handle</small>
+  }
+  @case (null) {}
+  @default {
+    <small class="error" i18n="@@dm.search-failed">Couldn't reach this instance</small>
+  }
+}
+
+<nav class="conversations">
+  @for (conversation of dm.conversations(); track conversation.peer) {
+    <button
+      type="button"
+      class="conversation"
+      [class.selected]="conversation.peer === dm.selected()"
+      [attr.aria-current]="conversation.peer === dm.selected() ? 'true' : null"
+      (click)="dm.select(conversation.peer)"
+    >
+      <app-user-card [user]="card(conversation.peer)"></app-user-card>
+    </button>
+  } @empty {
+    <p class="empty" i18n="@@dm.empty">No conversations yet. Search someone above.</p>
+  }
+</nav>

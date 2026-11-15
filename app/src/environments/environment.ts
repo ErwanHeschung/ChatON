@@ -1,3 +1,4 @@
 export const environment = {
-  apiUrl: 'http://localhost:8080',
+  /** Prefilled in the register form. */
+  defaultInstance: 'http://localhost:8080',
 };

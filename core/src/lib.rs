@@ -1,4 +1,4 @@
-//! ChatON client core: identity, events and private messages.
+//! ChatON client core: identity, events, private messages and the relay session.
 //!
 //! Thin layer over `rust-nostr` that enforces `spec/protocol.md`. All crypto
 //! lives here, never in the UI.
@@ -9,6 +9,7 @@
 pub mod dm;
 pub mod event;
 pub mod identity;
+pub mod session;
 
 pub use nostr;
 
@@ -20,6 +21,28 @@ pub enum Error {
     Nostr(#[from] nostr::error::Error),
     #[error("rejected: {0:?}")]
     Rejected(event::Reject),
+    #[error("relay: {0}")]
+    Relay(#[from] nostr_sdk::error::Error),
+    #[error("local database: {0}")]
+    Db(#[from] nostr_sqlite::prelude::Error),
+    #[error("http: {0}")]
+    Http(#[from] reqwest::Error),
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("json: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("invalid: {0}")]
+    Invalid(String),
+    #[error("server: {0}")]
+    Server(String),
+    #[error("handle already taken, or this key already has one")]
+    HandleTaken,
+    #[error("handle not found")]
+    NotFound,
+    #[error("this key doesn't match the handle")]
+    KeyMismatch,
+    #[error("no relay accepted the event: {0}")]
+    NotDelivered(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

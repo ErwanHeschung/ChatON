@@ -2,54 +2,60 @@
 
 <form [formGroup]="loginForm" (ngSubmit)="onSubmit()">
   <div class="field">
-    <label for="username">Username</label>
+    <label for="handle" i18n="@@login.handle-label">Handle</label>
     <input
-      id="username"
-      formControlName="username"
-      placeholder="Username"
-      i18n-placeholder="@@login.username-placeholder"
-      [class.input-error]="loginForm.hasError('unauthorized')"
+      id="handle"
+      formControlName="handle"
+      placeholder="@pseudo@instance"
       autocomplete="username"
+      spellcheck="false"
     />
-    @if (loginForm.controls.username.touched && loginForm.controls.username.invalid) {
-      <small class="error" i18n="@@login.username-invalid-error"
-        >Username is required (min 3 characters)</small
-      >
-    }
-    @if (loginForm.hasError('unauthorized')) {
+    @if (loginForm.controls.handle.touched && loginForm.controls.handle.invalid) {
       <small class="error error-logo">
         <svg [lucideIcon]="errorIcon" size="15"></svg>
-        Invalid username or password
+        @if (loginForm.controls.handle.hasError('notFound')) {
+          <ng-container i18n="@@login.handle-not-found">No one with this handle</ng-container>
+        } @else {
+          <ng-container i18n="@@login.handle-invalid"
+            >Enter your full handle, like pseudo@instance</ng-container
+          >
+        }
       </small>
     }
   </div>
 
   <div class="field">
-    <label for="password" i18n="@@register.password-label">Password</label>
+    <label for="nsec" i18n="@@login.nsec-label">Private key (nsec)</label>
     <input
-      id="password"
+      id="nsec"
       type="password"
-      formControlName="password"
-      autocomplete="new-password"
-      [class.input-error]="loginForm.hasError('unauthorized')"
+      formControlName="nsec"
+      placeholder="nsec1…"
+      autocomplete="off"
+      spellcheck="false"
     />
-    @if (loginForm.controls.password.touched && loginForm.controls.password.invalid) {
-      <small class="error" i18n="@@login.password-invalid-error"
-        >Password is required (min 8 characters)</small
-      >
-    }
-    @if (loginForm.hasError('unauthorized')) {
+    @if (loginForm.controls.nsec.touched && loginForm.controls.nsec.invalid) {
       <small class="error error-logo">
         <svg [lucideIcon]="errorIcon" size="15"></svg>
-        Invalid username or password
+        <ng-container i18n="@@login.nsec-invalid">This isn't a valid private key</ng-container>
       </small>
     }
   </div>
 
+  @if (loginForm.hasError('mismatch')) {
+    <small class="error-logo">
+      <svg [lucideIcon]="errorIcon" size="15"></svg>
+      <ng-container i18n="@@login.key-mismatch"
+        >This key doesn't belong to this handle</ng-container
+      >
+    </small>
+  }
   @if (loginForm.hasError('unknown')) {
     <small class="error-logo">
       <svg [lucideIcon]="errorIcon" size="15"></svg>
-      Something went wrong. Please try again
+      <ng-container i18n="@@form.unknown-error"
+        >Something went wrong. Please try again</ng-container
+      >
     </small>
   }
 

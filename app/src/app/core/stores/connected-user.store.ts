@@ -16,9 +16,12 @@ export const ConnectedUserStore = signalStore(
       pipe(
         switchMap(() => {
           patchState(store, { status: AuthStatus.LOADING });
-          return authService.refreshToken().pipe(
+          return authService.currentAccount().pipe(
             tap((user) => {
-              patchState(store, { user, status: AuthStatus.AUTHENTICATED });
+              patchState(store, {
+                user,
+                status: user ? AuthStatus.AUTHENTICATED : AuthStatus.UNAUTHENTICATED,
+              });
             }),
             catchError(() => {
               patchState(store, { user: null, status: AuthStatus.UNAUTHENTICATED });

@@ -6,7 +6,14 @@
   (click)="isPickerOpen = !isPickerOpen"
 ></svg>
 
-<input />
+<input
+  #text
+  (keydown.enter)="submit(text)"
+  placeholder="Message"
+  i18n-placeholder="@@chat.message-placeholder"
+  aria-label="Message"
+  i18n-aria-label="@@chat.message-placeholder"
+/>
 
 <ng-template
   cdkConnectedOverlay

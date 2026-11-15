@@ -22,6 +22,13 @@ impl Identity {
         }
     }
 
+    /// Imports an existing key (`nsec1…` or hex).
+    pub fn from_nsec(nsec: &str) -> Result<Self> {
+        Ok(Self {
+            keys: Keys::parse(nsec.trim())?,
+        })
+    }
+
     pub fn keys(&self) -> &Keys {
         &self.keys
     }

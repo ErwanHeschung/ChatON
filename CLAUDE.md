@@ -95,8 +95,8 @@ Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé
 │   ├── federation.md        # .well-known, découverte, migration
 │   └── test-vectors/        # JSON partagé Rust/Go
 ├── core/                    # crate Rust `chaton-core` (lib)
-│   ├── src/{identity,event,dm}.rs
-│   └── tests/vectors.rs     # reproduit spec/test-vectors à l'octet près
+│   ├── src/{identity,event,dm,session}.rs
+│   └── tests/{vectors,e2e}.rs  # vecteurs à l'octet près, bout en bout contre un serveur
 ├── app/                     # Tauri 2
 │   ├── src/                 # UI web (TS)
 │   └── src-tauri/           # commandes Tauri → core
@@ -108,8 +108,18 @@ Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé
 ## Commandes
 
 ```bash
-# app (Angular, en attendant Tauri à l'étape 4)
-cd app && npm ci && npm run build && npm start
+# app (Tauri 2 + Angular). Linux/WSL : un Secret Service avec un trousseau par défaut est requis.
+# WSL n'a pas de session graphique qui crée et déverrouille le trousseau « login ». Dans un vrai terminal
+# (pas via `!`), une seule instance du démon, mot de passe non vide ; à refaire après chaque redémarrage de WSL :
+#   sudo apt install gnome-keyring   # une fois
+#   pkill -u "$USER" -f gnome-keyring-daemon
+#   read -rsp "Mot de passe : " PW && printf %s "$PW" | gnome-keyring-daemon --daemonize --unlock --components=secrets >/dev/null; unset PW
+# Vérifier : busctl --user call org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service ReadAlias s default
+#   → doit renvoyer …/collection/login
+cd app && npm ci && npm run tauri dev
+# second compte sur la même machine (réutilise le serveur de dev de la première fenêtre)
+cd app && CHATON_PROFILE=bob src-tauri/target/debug/chaton-app
+cd app && npm run build && ./node_modules/.bin/eslint src
 
 # server
 cd server && go vet ./... && go test ./...
@@ -123,9 +133,11 @@ cd server && go run ./cmd/genvectors > ../spec/test-vectors/events.json
 ```bash
 # core
 cd core && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+# bout en bout, serveur lancé sur :8099 (SERVER_PORT=:8099 SERVER_PUBLICURL=http://localhost:8099)
+cd core && CHATON_TEST_SERVER=http://localhost:8099 cargo test --test e2e -- --ignored
 ```
 
-À venir : `npm run tauri dev | android dev | ios dev` (étape 4).
+À venir : `npm run tauri android dev | ios dev` (mobile, étape 8).
 
 ## Conventions
 

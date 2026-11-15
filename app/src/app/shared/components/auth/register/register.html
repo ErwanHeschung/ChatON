@@ -2,76 +2,73 @@
 
 <form [formGroup]="registerForm" (ngSubmit)="onSubmit()">
   <div class="field">
-    <label for="username">Username</label>
+    <label for="instance" i18n="@@register.instance-label">Instance</label>
     <input
-      id="username"
-      formControlName="username"
+      id="instance"
+      formControlName="instance"
+      placeholder="https://chaton.example"
+      autocomplete="url"
+      spellcheck="false"
+      [class.input-error]="registerForm.controls.instance.hasError('unreachable')"
+    />
+    @if (registerForm.controls.instance.touched && registerForm.controls.instance.invalid) {
+      <small class="error error-logo">
+        <svg [lucideIcon]="errorIcon" size="15"></svg>
+        @if (registerForm.controls.instance.hasError('unreachable')) {
+          <ng-container i18n="@@register.instance-unreachable"
+            >Couldn't reach this instance</ng-container
+          >
+        } @else {
+          <ng-container i18n="@@register.instance-invalid"
+            >Enter an address like https://chaton.example</ng-container
+          >
+        }
+      </small>
+    }
+  </div>
+
+  <div class="field">
+    <label for="name" i18n="@@register.name-label">Username</label>
+    <input
+      id="name"
+      formControlName="name"
       placeholder="Choose a username"
       i18n-placeholder="@@register.username-placeholder"
       autocomplete="username"
-      [class.input-error]="registerForm.controls.username.hasError('conflict')"
+      spellcheck="false"
+      [class.input-error]="registerForm.controls.name.hasError('conflict')"
     />
-    @if (registerForm.controls.username.touched) {
-      @if (
-        registerForm.controls.username.hasError('required') ||
-        registerForm.controls.username.hasError('minlength')
-      ) {
-        <small class="error">Username is required (min 3 characters)</small>
-      }
-
-      @if (registerForm.controls.username.hasError('conflict')) {
-        <small class="error error-logo">
-          <svg [lucideIcon]="errorIcon" size="15"></svg>
-          This username is already taken
-        </small>
-      }
+    @if (registerForm.controls.name.touched && registerForm.controls.name.invalid) {
+      <small class="error error-logo">
+        <svg [lucideIcon]="errorIcon" size="15"></svg>
+        @if (registerForm.controls.name.hasError('conflict')) {
+          <ng-container i18n="@@register.name-taken">This username is already taken</ng-container>
+        } @else {
+          <ng-container i18n="@@register.name-invalid"
+            >3 to 32 characters: letters, digits, . _ -</ng-container
+          >
+        }
+      </small>
+    }
+    @if (preview()) {
+      <small class="hint" i18n="@@register.handle-preview">Your address: {{ preview() }}</small>
     }
   </div>
 
-  <div class="field">
-    <label for="email">Email</label>
-    <input
-      id="email"
-      type="email"
-      formControlName="email"
-      placeholder="your@email.com"
-      i18n-placeholder="@@register.email-placeholder"
-      autocomplete="email"
-    />
-    @if (registerForm.controls.email.touched && registerForm.controls.email.invalid) {
-      <small class="error" i18n="@@register.email-invalid-error"
-        >Please enter a valid email address</small
+  @if (registerForm.hasError('keychain')) {
+    <small class="error-logo">
+      <svg [lucideIcon]="errorIcon" size="15"></svg>
+      <ng-container i18n="@@register.keychain-error"
+        >Your system keychain is unavailable, so your key can't be saved</ng-container
       >
-    }
-  </div>
-
-  <div class="field">
-    <label for="password" i18n="@@register.password-label">Password</label>
-    <input id="password" type="password" formControlName="password" autocomplete="new-password" />
-    @if (registerForm.controls.password.touched && registerForm.controls.password.invalid) {
-      <small class="error-logo" i18n="@@register.password-invalid-error"
-        >Password is required (min 8 characters)</small
-      >
-    }
-  </div>
-
-  <div class="field">
-    <label for="confirmPassword" i18n="@@register.confirm-password-label">Confirm Password</label>
-    <input
-      id="confirmPassword"
-      type="password"
-      formControlName="confirmPassword"
-      autocomplete="new-password"
-    />
-    @if (registerForm.hasError('mismatch') && registerForm.controls.confirmPassword.touched) {
-      <small class="error" i18n="@@register.password-mismatch-error">Passwords do not match</small>
-    }
-  </div>
-
+    </small>
+  }
   @if (registerForm.hasError('unknown')) {
     <small class="error-logo">
       <svg [lucideIcon]="errorIcon" size="15"></svg>
-      Something went wrong. Please try again
+      <ng-container i18n="@@form.unknown-error"
+        >Something went wrong. Please try again</ng-container
+      >
     </small>
   }
 

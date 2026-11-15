@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, output } from '@angular/core';
 import { LucideDynamicIcon, LucideSmile } from '@lucide/angular';
 import { EmojiSelect } from '@components/chats/emoji-select/emoji-select';
 import { OverlayModule } from '@angular/cdk/overlay';
@@ -13,4 +13,12 @@ import { OverlayModule } from '@angular/cdk/overlay';
 export class ChatBar {
   public readonly emojiIcon = LucideSmile;
   public isPickerOpen = false;
+  public readonly send = output<string>();
+
+  public submit(input: HTMLInputElement): void {
+    if (input.value.trim()) {
+      this.send.emit(input.value);
+      input.value = '';
+    }
+  }
 }

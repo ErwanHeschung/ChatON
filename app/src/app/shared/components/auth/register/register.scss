@@ -37,3 +37,9 @@ form {
   justify-content: center;
   gap: 0.25rem;
 }
+
+.hint {
+  font-size: var(--font-size-small);
+  color: var(--content-secondary, inherit);
+  word-break: break-all;
+}

@@ -62,19 +62,24 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 - Clés bloquées via `SERVER_BLOCKEDPUBKEYS`. Le fichier de règles complet passe à l'étape 10.
 - **Terminé quand :** `go test ./...` passe (vecteurs, annuaire, politique du relais), et un client Nostr standard peut publier et lire sur le relais.
 
-## Étape 4 : app (Tauri 2 + Angular)
+## Étape 4 : app (Tauri 2 + Angular) ✅
 
-- `core` : ajouter le client relais (`nostr-sdk`, outbox NIP-65, relais 10050 pour les MP) et la base locale (`nostr-sqlite`), reportés de l'étape 2.
-- `app/src-tauri` enregistre le store de trousseau de chaque plateforme (`keyring-core`) et expose des commandes qui enveloppent `core` : `register`, `login`, `search_handle`, `send_dm`, `list_dms`. Les événements remontent à l'UI via `emit`.
-- Angular les appelle par un petit `TauriService` (`invoke` de `@tauri-apps/api`). Les composants existants de connexion, inscription, chat et liste d'utilisateurs y sont rebranchés.
-- Inscription : générer la clé dans core, réserver le handle auprès de l'annuaire, publier les `kind` 0 et 10002, puis envoyer le `ncryptsec` au coffre (étape 5).
-- L'UI affiche toujours `pseudo@instance` en entier.
-- **Terminé quand :** deux comptes de la même instance se trouvent par `@pseudo` et échangent des MP NIP-17 sur desktop.
+- `core/src/session.rs` : client relais (`nostr-sdk`, authentification NIP-42 automatique) et base locale (`nostr-sqlite`). Sur le disque, il n'y a que les gift wraps chiffrés ; les messages sont déchiffrés à la lecture.
+- Inscription : la clé est générée dans `core`, le handle est réservé par une requête NIP-98, la clé va dans le trousseau, puis les `kind` 0, 10002 et 10050 sont publiés. Au lancement, un compte déjà présent ouvre directement le chat.
+- Connexion : import d'une clé `nsec` existante pour un handle, vérifiée par NIP-05. L'e-mail et le mot de passe arrivent avec le coffre (étape 5).
+- Recherche `@pseudo@instance` (NIP-05) et MP NIP-17. Un correspondant est affiché par son handle **vérifié** (son profil pointe vers un `nip05` qui renvoie bien sa clé), sinon par son npub abrégé.
+- `app/src-tauri` : trousseau de l'OS (Secret Service sous Linux, Windows et macOS branchés mais pas testés), commandes `current_account`, `register`, `login`, `search_handle`, `peer`, `send_dm`, `conversations`, `messages`, et un événement `dm` pour chaque message reçu. `CHATON_PROFILE` permet de lancer un second compte sur la même machine.
+- Angular : `AuthService` et `DmStore` appellent `invoke`, et une liste de conversations (`dm-list`) remplace la bannière dans la vue MP.
+- Serveur : un filtre qui peut correspondre à un gift wrap doit être authentifié et viser `#p` = soi (correction de l'étape 3, qui laissait passer la diffusion en direct).
+- Test de bout en bout : `core/tests/e2e.rs`, contre un vrai serveur.
+- **Terminé quand :** deux comptes de la même instance se trouvent par `@pseudo` et échangent des MP NIP-17 sur desktop. Validé par le test de bout en bout de `core` et à la main dans deux fenêtres (Linux, WSL).
 
 ## Étape 5 : coffre et multi-appareil
 
 - Le serveur stocke le blob `ncryptsec` sous le handle. On le récupère avec handle + mot de passe : le mot de passe ne sert qu'à déchiffrer la clé côté client, et le serveur ne le voit jamais. L'e-mail est facultatif et ne sert qu'à la récupération et aux notifications.
 - Un nouvel appareil se connecte, déchiffre la clé et synchronise l'historique depuis les relais.
+- Reportés de l'étape 4 : déconnexion (sans coffre, supprimer la clé ferait perdre le compte), export de la clé, durée de conservation des MP sur le relais.
+- Plus tard, si l'historique devient lent à charger : cache local des messages en clair, chiffré au repos.
 
 ## Étape 6 : communautés
 

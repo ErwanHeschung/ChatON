@@ -2,16 +2,31 @@
 
 use nostr::nips::nip59::{GiftWrapBuilder, UnwrappedGift};
 use nostr::prelude::{
-    Event, FinalizeEvent, FinalizeUnsignedEvent, Keys, Kind, PublicKey, Tag, Timestamp,
+    Event, EventId, FinalizeEvent, FinalizeUnsignedEvent, Keys, Kind, PublicKey, Tag, Timestamp,
 };
+use serde::Serialize;
 
 use crate::{Error, Result, event};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Message {
+    /// Rumor id: the same for the receiver's copy and the sender's own copy.
+    pub id: EventId,
     pub sender: PublicKey,
+    pub receiver: PublicKey,
     pub text: String,
     pub created_at: Timestamp,
+}
+
+impl Message {
+    /// The other side of the conversation, seen from `me`.
+    pub fn peer(&self, me: PublicKey) -> PublicKey {
+        if self.sender == me {
+            self.receiver
+        } else {
+            self.sender
+        }
+    }
 }
 
 /// Returns the two gift wraps to publish: `[to receiver, to self]`.
@@ -32,12 +47,19 @@ pub fn wrap(sender: &Keys, receiver: PublicKey, text: &str) -> Result<[Event; 2]
 /// Decrypts a gift wrap addressed to `keys`. `nostr` verifies the gift wrap and
 /// seal signatures and that the rumor author is the seal signer.
 pub fn unwrap(keys: &Keys, gift_wrap: &Event) -> Result<Message> {
-    let UnwrappedGift { sender, rumor } = UnwrappedGift::from_gift_wrap(keys, gift_wrap)?;
+    let UnwrappedGift { sender, mut rumor } = UnwrappedGift::from_gift_wrap(keys, gift_wrap)?;
     if rumor.kind != Kind::PrivateDirectMessage {
         return Err(Error::Rejected(event::Reject::UnexpectedKind));
     }
+    let receiver = rumor
+        .tags
+        .public_keys()
+        .next()
+        .ok_or(Error::Rejected(event::Reject::UnexpectedKind))?;
     Ok(Message {
+        id: rumor.id(),
         sender,
+        receiver,
         text: rumor.content,
         created_at: rumor.created_at,
     })
@@ -56,6 +78,9 @@ mod tests {
 
         let msg = unwrap(&bob, &to_bob).unwrap();
         assert_eq!(msg.sender, alice.public_key());
+        assert_eq!(msg.receiver, bob.public_key());
+        assert_eq!(msg.peer(bob.public_key()), alice.public_key());
+        assert_eq!(msg.peer(alice.public_key()), bob.public_key());
         assert_eq!(msg.text, "Salut Bob 👋");
         assert_eq!(unwrap(&alice, &to_self).unwrap(), msg);
 

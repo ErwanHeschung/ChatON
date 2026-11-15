@@ -21,3 +21,7 @@ go.work
 !.env.example
 *.pem
 *.key
+# local SQLite (relay + directory)
+*.db
+*.db-shm
+*.db-wal
