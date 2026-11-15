@@ -1,6 +1,80 @@
 <div class="message-list">
-  @for (message of messages(); track message.id) {
-    <app-chat-bubble [message]="message" (remove)="remove.emit(message.id)"></app-chat-bubble>
+  @for (row of rows(); track row.message.id) {
+    <app-chat-bubble
+      [message]="row.message"
+      [continued]="row.continued"
+      (remove)="remove.emit(row.message.id)"
+    ></app-chat-bubble>
+    @if (row.day; as day) {
+      <div class="day" role="separator">
+        <svg class="whiskers" viewBox="0 0 60 16" aria-hidden="true">
+          <path d="M2 3Q30 0 58 5M2 8Q30 7 58 9M2 14Q30 11 58 13" />
+        </svg>
+        @switch (day) {
+          @case ('today') {
+            <span i18n="@@chat.today">Today</span>
+          }
+          @case ('yesterday') {
+            <span i18n="@@chat.yesterday">Yesterday</span>
+          }
+          @default {
+            <span>{{ day | date: 'longDate' }}</span>
+          }
+        }
+        <svg class="whiskers right" viewBox="0 0 60 16" aria-hidden="true">
+          <path d="M2 3Q30 0 58 5M2 8Q30 7 58 9M2 14Q30 11 58 13" />
+        </svg>
+      </div>
+    }
+  }
+
+  <!-- Last in the DOM: on top of the bottom-up list, where the history starts. -->
+  @if (shell.conversation(); as view) {
+    <header class="intro">
+      @switch (view.kind) {
+        @case ('channel') {
+          <span class="intro-icon"
+            ><img ngSrc="/chatON-logo.svg" width="36" height="36" alt=""
+          /></span>
+          <h2 i18n="@@intro.channel-title">
+            Welcome to <span class="accent">#{{ view.title }}</span>
+          </h2>
+          <p class="hint" i18n="@@intro.channel">This is the start of the channel.</p>
+        }
+        @case ('group') {
+          <span class="intro-icon"><svg [lucideIcon]="icons.group" size="32"></svg></span>
+          <h2>{{ view.title }}</h2>
+          <p class="hint" i18n="@@intro.private">
+            This is the start of your conversation. It's end-to-end encrypted: your instance can't
+            read it.
+          </p>
+        }
+        @case ('person') {
+          <app-avatar
+            [picture]="view.picture"
+            [name]="view.title"
+            [seed]="view.pubkey"
+            size="xl"
+          ></app-avatar>
+          <h2>
+            {{ view.handle[0] }}<span class="instance">{{ view.handle[1] }}</span>
+          </h2>
+          <p class="hint" i18n="@@intro.private">
+            This is the start of your conversation. It's end-to-end encrypted: your instance can't
+            read it.
+          </p>
+        }
+      }
+    </header>
+  } @else {
+    <div class="nothing">
+      <img ngSrc="/chatON-logo.svg" width="64" height="64" alt="" />
+      <app-paw-trail></app-paw-trail>
+      <p class="hint" i18n="@@chat.nothing">
+        The cat is napping. Pick a conversation on the left, or find someone by their
+        &#64;handle&#64;instance.
+      </p>
+    </div>
   }
 </div>
 
@@ -15,5 +89,10 @@
 }
 
 @if (!disabled()) {
-  <app-chat-bar (send)="send.emit($event)" (file)="file.emit($event)"></app-chat-bar>
+  <app-chat-bar
+    [target]="shell.conversation()?.title ?? ''"
+    [channel]="shell.conversation()?.kind === 'channel'"
+    (send)="send.emit($event)"
+    (file)="file.emit($event)"
+  ></app-chat-bar>
 }

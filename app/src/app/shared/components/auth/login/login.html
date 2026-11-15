@@ -11,7 +11,7 @@
       spellcheck="false"
     />
     @if (loginForm.controls.handle.touched && loginForm.controls.handle.invalid) {
-      <small class="error error-logo">
+      <small class="error">
         <svg [lucideIcon]="errorIcon" size="15"></svg>
         @if (loginForm.controls.handle.hasError('notFound')) {
           <ng-container i18n="@@login.handle-not-found">No one with this handle</ng-container>
@@ -35,7 +35,7 @@
       spellcheck="false"
     />
     @if (loginForm.controls.nsec.touched && loginForm.controls.nsec.invalid) {
-      <small class="error error-logo">
+      <small class="error">
         <svg [lucideIcon]="errorIcon" size="15"></svg>
         <ng-container i18n="@@login.nsec-invalid">This isn't a valid private key</ng-container>
       </small>
@@ -43,7 +43,7 @@
   </div>
 
   @if (loginForm.hasError('mismatch')) {
-    <small class="error-logo">
+    <small class="error">
       <svg [lucideIcon]="errorIcon" size="15"></svg>
       <ng-container i18n="@@login.key-mismatch"
         >This key doesn't belong to this handle</ng-container
@@ -51,7 +51,7 @@
     </small>
   }
   @if (loginForm.hasError('unknown')) {
-    <small class="error-logo">
+    <small class="error">
       <svg [lucideIcon]="errorIcon" size="15"></svg>
       <ng-container i18n="@@form.unknown-error"
         >Something went wrong. Please try again</ng-container
@@ -61,7 +61,7 @@
 
   <button
     type="submit"
-    class="btn"
+    class="btn btn-primary"
     [disabled]="loginForm.invalid || isPending()"
     i18n="@@login.submit-button"
   >

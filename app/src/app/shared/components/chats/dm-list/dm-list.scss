@@ -1,61 +1,40 @@
 :host {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
   width: 100%;
   height: 100%;
-  padding: 0.5rem;
   overflow: hidden;
 }
 
-.search input {
-  width: 100%;
-  padding: 0.75rem;
-  color: var(--content-primary);
-  font-size: var(--font-size-medium);
-  background-color: var(--surface-primary);
-  border: solid 1px var(--border-subtle);
-  border-radius: var(--base-radius);
+// Same height as the community header, so the sidebar lines up with the sheet header.
+.search {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: calc(var(--header-height) + var(--space-2));
+  padding: var(--space-2) var(--space-2) 0;
+
+  input {
+    min-height: var(--control-sm);
+    font-size: var(--text-sm);
+  }
 }
 
-.error,
+.error {
+  padding: var(--space-2) var(--space-3) 0;
+}
+
 .empty {
-  padding: 0 0.5rem;
-  font-size: var(--font-size-small);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-2);
 }
 
 .conversations {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  overflow: auto;
-}
-
-.conversation {
-  padding: 0;
-  border: none;
-  background: none;
-  text-align: start;
-  border-radius: var(--base-radius);
-
-  &.selected app-user-card {
-    background-color: var(--interaction-hover);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--interaction-focus);
-  }
-}
-
-.new-group {
-  all: unset;
-  cursor: pointer;
-  padding: 0 0.5rem;
-  font-size: var(--font-size-small);
-  color: var(--content-secondary);
-  text-decoration: underline;
-
-  &:focus-visible {
-    outline: 2px solid var(--content-primary);
-  }
+  gap: 2px;
+  padding: var(--space-3) var(--space-2);
+  overflow-y: auto;
 }

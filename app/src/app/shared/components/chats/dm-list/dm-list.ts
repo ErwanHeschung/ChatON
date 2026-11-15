@@ -1,15 +1,18 @@
 import { ChangeDetectionStrategy, Component, inject, OnDestroy, OnInit } from '@angular/core';
+import { LucideDynamicIcon, LucidePlus } from '@lucide/angular';
 import { UserCard } from '@components/users/user-card/user-card';
 import { GroupDialog } from '@components/chats/group-dialog/group-dialog';
 import { Conversation, roomKey } from '@models/Dm.model';
 import { UserShort } from '@models/User.model';
+import { PawTrail } from '@components/paw-trail/paw-trail';
 import { ModalService } from '@services/modal.service';
+import { ShellService } from '@services/shell.service';
 import { DmStore } from '@stores/dm.store';
 
-/** Left sidebar of the DM view: find `@pseudo@instance`, list conversations. */
+/** Sidebar of the DM view: find `@pseudo@instance`, list conversations. */
 @Component({
   selector: 'app-dm-list',
-  imports: [UserCard],
+  imports: [UserCard, LucideDynamicIcon, PawTrail],
   templateUrl: './dm-list.html',
   styleUrl: './dm-list.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -17,6 +20,8 @@ import { DmStore } from '@stores/dm.store';
 export class DmList implements OnInit, OnDestroy {
   public readonly dm = inject(DmStore);
   private readonly modal = inject(ModalService);
+  private readonly shell = inject(ShellService);
+  protected readonly newIcon = LucidePlus;
 
   ngOnInit(): void {
     this.dm.load().catch(() => undefined);
@@ -32,9 +37,15 @@ export class DmList implements OnInit, OnDestroy {
       void this.dm.search(handle).then(() => {
         if (!this.dm.searchError()) {
           input.value = '';
+          this.shell.openChat();
         }
       });
     }
+  }
+
+  public open(conversation: Conversation): void {
+    void this.dm.select(this.key(conversation));
+    this.shell.openChat();
   }
 
   public key(conversation: Conversation): string {
@@ -50,14 +61,12 @@ export class DmList implements OnInit, OnDestroy {
       return {
         id: key,
         username: `${title} (${others.length + 1})`,
-        profilePicture: '/chatON-logo.svg',
       };
     }
     const pubkey = others[0] ?? key;
     return {
       id: pubkey,
       username: this.dm.label(pubkey),
-      profilePicture: '/chatON-logo.svg',
       picture: this.dm.peers()[pubkey]?.picture,
     };
   }

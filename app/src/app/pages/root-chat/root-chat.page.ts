@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { Chat } from '@components/chats/chat/chat';
-import { HorizontalList } from '@components/horizontal-list/horizontal-list';
+import { ChatHeader } from '@components/chats/chat-header/chat-header';
+import { CommunityRail } from '@components/community-rail/community-rail';
+import { UserPanel } from '@components/users/user-panel/user-panel';
 import { UsersList } from '@components/users/users-list/users-list';
 import { ChatLayout } from '@layouts/chat/chat.layout';
 import { Attachment } from '@models/Media.model';
@@ -13,7 +15,7 @@ import { DmStore } from '@stores/dm.store';
 /** The chat shows the open channel in the server view, else the open DM. */
 @Component({
   selector: 'app-root-chat',
-  imports: [ChatLayout, HorizontalList, RouterOutlet, UsersList, Chat],
+  imports: [ChatLayout, CommunityRail, ChatHeader, RouterOutlet, UsersList, UserPanel, Chat],
   templateUrl: './root-chat.page.html',
   styleUrl: './root-chat.page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -65,6 +67,7 @@ export class RootChat {
       senderId: sender,
       senderName: this.dm.label(sender),
       senderPicture: this.dm.peers()[sender]?.picture,
+      mine: sender === this.user.user()?.pubkey,
       text,
       timestamp: new Date(createdAt * 1000),
       status: MessageStatus.SENT,

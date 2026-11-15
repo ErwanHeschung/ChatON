@@ -4,7 +4,7 @@
     Your account lives only on your devices: no server keeps your key. If you lose this device
     without another one or this key, your account is lost. Keep it in a password manager.
   </p>
-  <code class="secret">{{ nsec }}</code>
+  <code class="key-text">{{ nsec }}</code>
   <button type="button" class="btn" (click)="copy()">
     @if (copied()) {
       <ng-container i18n="@@backup.copied">Copied</ng-container>
@@ -12,7 +12,9 @@
       <ng-container i18n="@@backup.copy">Copy</ng-container>
     }
   </button>
-  <button type="button" class="btn" (click)="saved()" i18n="@@backup.saved">I saved it</button>
+  <button type="button" class="btn btn-primary" (click)="saved()" i18n="@@backup.saved">
+    I saved it
+  </button>
 } @else {
   <h2 i18n="@@register-title">Create Account</h2>
 
@@ -28,7 +30,7 @@
         [class.input-error]="registerForm.controls.instance.hasError('unreachable')"
       />
       @if (registerForm.controls.instance.touched && registerForm.controls.instance.invalid) {
-        <small class="error error-logo">
+        <small class="error">
           <svg [lucideIcon]="errorIcon" size="15"></svg>
           @if (registerForm.controls.instance.hasError('unreachable')) {
             <ng-container i18n="@@register.instance-unreachable"
@@ -55,7 +57,7 @@
         [class.input-error]="registerForm.controls.name.hasError('conflict')"
       />
       @if (registerForm.controls.name.touched && registerForm.controls.name.invalid) {
-        <small class="error error-logo">
+        <small class="error">
           <svg [lucideIcon]="errorIcon" size="15"></svg>
           @if (registerForm.controls.name.hasError('conflict')) {
             <ng-container i18n="@@register.name-taken">This username is already taken</ng-container>
@@ -72,7 +74,7 @@
     </div>
 
     @if (registerForm.hasError('keychain')) {
-      <small class="error-logo">
+      <small class="error">
         <svg [lucideIcon]="errorIcon" size="15"></svg>
         <ng-container i18n="@@register.keychain-error"
           >Your system keychain is unavailable, so your key can't be saved</ng-container
@@ -80,7 +82,7 @@
       </small>
     }
     @if (registerForm.hasError('unknown')) {
-      <small class="error-logo">
+      <small class="error">
         <svg [lucideIcon]="errorIcon" size="15"></svg>
         <ng-container i18n="@@form.unknown-error"
           >Something went wrong. Please try again</ng-container
@@ -90,7 +92,7 @@
 
     <button
       type="submit"
-      class="btn"
+      class="btn btn-primary"
       [disabled]="registerForm.invalid || isPending()"
       i18n="@@register.submit-button"
     >

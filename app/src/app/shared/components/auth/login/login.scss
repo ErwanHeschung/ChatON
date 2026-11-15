@@ -1,53 +1,18 @@
+// Shared by login, register and link-join.
 :host {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 2rem 10rem;
-}
-
-h2 {
-  margin-top: 0;
+  gap: var(--space-4);
+  // Capped by the viewport: a % would loop on the modal, which fits its content.
+  width: min(22rem, 100vw - 5rem);
 }
 
 form {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
+  gap: var(--space-4);
 }
 
-.field {
-  width: 15rem;
-
-  input.input-error {
-    box-shadow: var(--shadow-text-error);
-  }
-}
-
-.btn {
-  margin-top: 1rem;
-  width: 100%;
-}
-
-.error-logo {
-  color: var(--content-error);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.25rem;
-}
-
-.hint {
-  text-align: center;
-  max-width: 20rem;
-  font-size: var(--font-size-small);
-  color: var(--content-secondary, inherit);
-  word-break: break-all;
-}
-
-.secret {
-  max-width: 20rem;
-  word-break: break-all;
-  user-select: all;
+.btn-primary {
+  margin-top: var(--space-2);
 }

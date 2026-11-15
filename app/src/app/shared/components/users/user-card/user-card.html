@@ -1,7 +1,10 @@
-@let src = user().picture ? (media.picture(user().picture!) | async) : null;
-@if (src) {
-  <img class="picture" [src]="src" width="35" height="35" alt="{{ user().username }}" />
-} @else {
-  <img ngSrc="{{ user().profilePicture }}" width="35" height="35" alt="{{ user().username }}" />
-}
-<h3>{{ user().username }}</h3>
+<app-avatar
+  [picture]="user().picture"
+  [name]="user().username"
+  [seed]="user().id"
+  [size]="size()"
+  [ears]="ears()"
+></app-avatar>
+<span class="name" [title]="user().username"
+  >{{ parts()[0] }}<span class="instance">{{ parts()[1] }}</span></span
+>

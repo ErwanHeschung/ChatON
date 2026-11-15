@@ -3,48 +3,91 @@
     {{ message().senderName }} named the group « {{ message().subject }} »
   </p>
 } @else {
-  @let avatar = message().senderPicture ? (media.picture(message().senderPicture!) | async) : null;
-  @if (avatar) {
-    <img class="avatar" [src]="avatar" width="35" height="35" alt="" />
-  } @else {
-    <img ngSrc="/chatON-logo.svg" width="35" height="35" alt="" />
-  }
-  <div class="message-wrapper">
-    <p class="username">
-      {{ message().senderName }}
-      @if (message().deletable) {
-        @if (confirming()) {
-          <button class="delete confirm" (click)="remove.emit()" i18n="@@chat.delete-confirm">
-            Delete?
-          </button>
-        } @else {
-          <button class="delete" (click)="confirming.set(true)" i18n="@@chat.delete">Delete</button>
-        }
-      }
-    </p>
+  <div class="gutter">
+    @if (continued()) {
+      <time class="hover-time" [attr.datetime]="message().timestamp.toISOString()">{{
+        message().timestamp | date: 'shortTime'
+      }}</time>
+    } @else {
+      <app-avatar
+        [picture]="message().senderPicture"
+        [name]="message().senderName"
+        [seed]="message().senderId"
+        [ears]="!!message().mine"
+      ></app-avatar>
+    }
+  </div>
+  <div class="body">
+    @if (!continued()) {
+      <p class="meta">
+        <span class="author" [class.mine]="message().mine"
+          >{{ author()[0] }}<span class="instance">{{ author()[1] }}</span></span
+        >
+        <time [attr.datetime]="message().timestamp.toISOString()">{{
+          message().timestamp | date: 'shortTime'
+        }}</time>
+      </p>
+    }
+    @if (message().text) {
+      <p class="text">{{ message().text }}</p>
+    }
     @if (message().attachment; as file) {
-      @if (isImage(file)) {
-        <!-- '' : on another instance, fetched only on a click (no IP leak to the sender's pick). -->
-        @let src = media.image(file) | async;
-        @if (src) {
-          <img class="attachment" [src]="src" [alt]="file.name" />
-        } @else if (src === '') {
+      @let src = isImage(file) ? (media.image(file) | async) : null;
+      @if (src) {
+        <!-- An image shows alone; Save is in the hover toolbar. -->
+        <img class="attachment" [src]="src" [alt]="file.name" />
+      } @else {
+        @if (src === '') {
+          <!-- On another instance: fetched only on a click (no IP leak to the sender's pick). -->
           <button class="link" (click)="media.download(file)" i18n="@@chat.show-image">
             Show the image
           </button>
         }
+        <div class="file">
+          <svg [lucideIcon]="icons.file" size="16"></svg>
+          <span class="name">{{ file.name }}</span>
+          <span class="size">{{ size(file.size) }}</span>
+          <button class="link" (click)="save(file)" i18n="@@chat.save">Save</button>
+        </div>
       }
-      <div class="file">
-        <span class="name">{{ file.name }}</span>
-        <span class="size">{{ size(file.size) }}</span>
-        <button class="link" (click)="save(file)" i18n="@@chat.save">Save</button>
-        @if (saveFailed()) {
-          <span class="error" i18n="@@chat.save-failed">Couldn't save the file</span>
-        }
-      </div>
-    }
-    @if (message().text) {
-      <p class="message">{{ message().text }}</p>
+      @if (saveFailed()) {
+        <span class="error" i18n="@@chat.save-failed">Couldn't save the file</span>
+      }
     }
   </div>
+
+  @if (message().deletable || message().attachment) {
+    <div class="toolbar">
+      @if (message().attachment; as file) {
+        <button
+          class="btn btn-ghost btn-icon btn-sm"
+          (click)="save(file)"
+          i18n-title="@@chat.save"
+          title="Save"
+        >
+          <svg [lucideIcon]="icons.save" size="16"></svg>
+        </button>
+      }
+      @if (message().deletable) {
+        @if (confirming()) {
+          <button
+            class="btn btn-danger btn-sm"
+            (click)="remove.emit()"
+            i18n="@@chat.delete-confirm"
+          >
+            Delete?
+          </button>
+        } @else {
+          <button
+            class="btn btn-ghost btn-icon btn-sm"
+            (click)="confirming.set(true)"
+            i18n-title="@@chat.delete"
+            title="Delete"
+          >
+            <svg [lucideIcon]="icons.delete" size="16"></svg>
+          </button>
+        }
+      }
+    </div>
+  }
 }

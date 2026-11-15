@@ -1,0 +1,106 @@
+// Design tokens: the only place where raw values live (see DESIGN.md).
+// Components use the semantic tokens below, never hex, px spacing or ad-hoc durations.
+
+:root {
+  color-scheme: dark;
+
+  /* --- SURFACES (night, blue-violet; darkest = furthest back). Navigation recedes, the conversation leads. --- */
+  --surface-frame: #09081a; /* community rail, sidebar: the night around the sheet */
+  --surface-sunken: #0c0b20; /* inputs, composer, account panel, key text */
+  --surface-panel: #100f27; /* members panel, inside the sheet */
+  --surface-base: #14132e; /* the sheet: open conversation, public pages */
+  --surface-raised: #211f45; /* file cards, dialogs, popovers, tooltips, menus */
+  --surface-hover: #2b2956; /* hover on a raised surface */
+  --surface-overlay: rgb(4 3 16 / 0.75); /* modal backdrop */
+  --frame-glow: radial-gradient(
+    70rem 30rem at 0% 100%,
+    #11203a,
+    transparent 60%
+  ); /* dusk, bottom left */
+
+  /* --- ACCENT (green #3ee07f, the cat's eyes): primary actions, selection, focus. Never decoration. --- */
+  --accent: #3ee07f;
+  --accent-hover: #6cf0a0;
+  --accent-ink: #04230f; /* text on --accent (10:1) */
+  --accent-text: #6cf0a0; /* green text on dark surfaces (11:1) */
+  --accent-subtle: rgb(62 224 127 / 0.14); /* selected rows, active tabs */
+  --accent-rgb: 62 224 127; /* for rgb(var(--accent-rgb) / alpha) */
+
+  /* --- STATES (neutral overlays, for anything not selected) --- */
+  --state-hover: rgb(165 160 220 / 0.08);
+  --state-active: rgb(165 160 220 / 0.14);
+  --focus-ring: var(--accent);
+
+  /* --- CONTENT (contrast on --surface-base) --- */
+  --content-primary: #f2f0ff; /* 16:1, text */
+  --content-secondary: #a19dc8; /* 6.9:1, meta, hints, placeholders */
+  --content-tertiary: #6c6896; /* 3.4:1, disabled and decorative icons only, never small text */
+
+  /* --- STATUS --- */
+  --danger: #f87171; /* 6.4:1 */
+  --danger-subtle: rgb(248 113 113 / 0.12);
+  --danger-border: rgb(248 113 113 / 0.45);
+
+  /* --- BORDERS --- */
+  --border-subtle: #24224a; /* dividers between panels */
+  --border-strong: #3a3770; /* controls, cards, whiskers */
+
+  /* --- TYPE (Inter for reading, Bricolage Grotesque for names and titles; ratio ~1.2, fixed rem) --- */
+  --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Bricolage Grotesque Variable', var(--font-sans);
+  --font-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Menlo, Consolas, monospace;
+  --text-xs: 0.75rem; /* 12: badges */
+  --text-sm: 0.875rem; /* 14: meta, sidebars, buttons */
+  --text-body: 0.9375rem; /* 15: messages */
+  --text-md: 1rem; /* 16: inputs, dialog text */
+  --text-lg: 1.125rem; /* 18: panel titles */
+  --text-xl: 1.375rem; /* 22: dialog titles */
+  --text-2xl: 1.75rem; /* 28: codes to read aloud */
+  --text-display: 6rem; /* 404 only */
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* --- SPACING (4px grid) --- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+
+  /* --- SIZES --- */
+  --control-sm: 2rem;
+  --control-md: 2.5rem;
+  --control-lg: 3rem;
+  --avatar-sm: 2rem;
+  --avatar-md: 2.5rem;
+  --avatar-lg: 3rem;
+  --avatar-xl: 4rem;
+  --rail-width: 4.5rem;
+  --sidebar-width: 15rem;
+  --members-width: 15rem;
+  --header-height: 3rem; /* sidebar header and sheet header line up */
+
+  /* --- RADIUS --- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  /* --- ELEVATION (only for things floating above the app) --- */
+  --shadow-popover: 0 12px 32px rgb(0 0 0 / 0.45), 0 2px 8px rgb(0 0 0 / 0.3);
+
+  /* --- MOTION --- */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* --- LAYERS --- */
+  --z-modal: 1000;
+}

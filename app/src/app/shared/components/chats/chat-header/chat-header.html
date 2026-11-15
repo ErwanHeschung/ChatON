@@ -1,0 +1,57 @@
+<button
+  type="button"
+  class="btn btn-ghost btn-icon btn-sm back"
+  (click)="shell.back()"
+  i18n-title="@@shell.back"
+  title="Back"
+>
+  <svg [lucideIcon]="icons.back" size="20"></svg>
+</button>
+
+@if (shell.conversation(); as view) {
+  <div class="title">
+    @switch (view.kind) {
+      @case ('channel') {
+        <svg class="kind" [lucideIcon]="icons.hash" size="20"></svg>
+        <h1>{{ view.title }}</h1>
+      }
+      @case ('group') {
+        <svg class="kind" [lucideIcon]="icons.members" size="20"></svg>
+        <h1>{{ view.title }}</h1>
+        <span class="meta" i18n="@@header.people">{{ view.count }} people</span>
+      }
+      @case ('person') {
+        <app-avatar
+          [picture]="view.picture"
+          [name]="view.title"
+          [seed]="view.pubkey"
+          size="sm"
+        ></app-avatar>
+        <h1>
+          {{ view.handle[0] }}<span class="instance">{{ view.handle[1] }}</span>
+        </h1>
+      }
+    }
+    @if (view.kind !== 'channel') {
+      <span
+        class="e2e"
+        i18n-title="@@header.e2e-hint"
+        title="Only the people in this conversation can read it. Your instance can't."
+      >
+        <svg [lucideIcon]="icons.lock" size="14"></svg>
+        <ng-container i18n="@@header.e2e">End-to-end encrypted</ng-container>
+      </span>
+    }
+  </div>
+
+  <button
+    type="button"
+    class="btn btn-ghost btn-icon btn-sm"
+    (click)="shell.toggleMembers()"
+    [attr.aria-pressed]="shell.members()"
+    i18n-title="@@header.members"
+    title="Show members"
+  >
+    <svg [lucideIcon]="icons.members" size="20"></svg>
+  </button>
+}

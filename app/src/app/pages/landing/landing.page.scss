@@ -1,39 +1,36 @@
 @use 'variables' as vars;
 
 :host {
-  height: 100%;
+  display: block;
   width: 100%;
 }
 
 .hero-img {
-  width: 50%;
+  width: min(50%, 50rem);
   height: auto;
-  max-width: 800px;
 }
 
 .description {
-  margin: 2rem 2rem;
-  font-size: 1.25rem;
+  max-width: 48ch;
+  margin: var(--space-8) var(--space-4);
+  color: var(--content-secondary);
+  font-size: var(--text-lg);
   text-align: center;
-  max-width: 800px;
 }
 
 .buttons {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 1rem;
-
-  .btn {
-    min-width: 10rem;
-    font-size: var(--font-size-large);
-  }
+  gap: var(--space-3);
+  padding: 0 var(--space-4);
 }
 
 .language-toggle {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 2;
 }
 
 @media (max-width: vars.$breakpoint-md) {
@@ -42,7 +39,12 @@
   }
 
   .description {
-    font-size: var(--font-size-medium);
-    padding: 0 1rem;
+    font-size: var(--text-md);
+  }
+
+  .buttons {
+    flex-direction: column;
+    align-items: stretch;
+    width: min(22rem, 100%);
   }
 }

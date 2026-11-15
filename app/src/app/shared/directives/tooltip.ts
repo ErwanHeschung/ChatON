@@ -13,6 +13,8 @@ import { Tooltip } from '@components/tooltip/tooltip';
 })
 export class TooltipDirective {
   text = input.required<string>({ alias: 'appTooltip' });
+  /** `right` for vertical bars (the community rail). */
+  side = input<'top' | 'right'>('top', { alias: 'appTooltipSide' });
 
   private readonly overlay = inject(Overlay);
   private readonly elementRef = inject(ElementRef);
@@ -24,10 +26,34 @@ export class TooltipDirective {
     const positionStrategy = this.overlay
       .position()
       .flexibleConnectedTo(this.elementRef)
-      .withPositions([
-        { originX: 'center', originY: 'top', overlayX: 'center', overlayY: 'bottom', offsetY: -8 },
-        { originX: 'center', originY: 'bottom', overlayX: 'center', overlayY: 'top', offsetY: 8 },
-      ]);
+      .withPositions(
+        this.side() === 'right'
+          ? [
+              {
+                originX: 'end',
+                originY: 'center',
+                overlayX: 'start',
+                overlayY: 'center',
+                offsetX: 12,
+              },
+            ]
+          : [
+              {
+                originX: 'center',
+                originY: 'top',
+                overlayX: 'center',
+                overlayY: 'bottom',
+                offsetY: -8,
+              },
+              {
+                originX: 'center',
+                originY: 'bottom',
+                overlayX: 'center',
+                overlayY: 'top',
+                offsetY: 8,
+              },
+            ],
+      );
 
     this.overlayRef = this.overlay.create({
       positionStrategy,

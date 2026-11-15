@@ -2,7 +2,7 @@
 
 @if (account.user(); as user) {
   <p class="handle">&#64;{{ user.handle }}</p>
-  <code class="npub">{{ user.npub }}</code>
+  <code class="key-text">{{ user.npub }}</code>
 }
 
 <section>
@@ -74,8 +74,8 @@
     }
     @case ('confirm') {
       <p i18n="@@link.confirm">Give access to your account to “{{ device() }}”?</p>
-      <div class="row">
-        <button class="btn" (click)="answer(true)" i18n="@@link.accept">Link</button>
+      <div class="actions">
+        <button class="btn btn-primary" (click)="answer(true)" i18n="@@link.accept">Link</button>
         <button class="btn" (click)="answer(false)" i18n="@@link.refuse">Refuse</button>
       </div>
     }
@@ -114,7 +114,7 @@
     Anyone with this key controls your account. Only show it to save it somewhere safe.
   </p>
   @if (nsec(); as nsec) {
-    <code class="npub">{{ nsec }}</code>
+    <code class="key-text">{{ nsec }}</code>
   } @else {
     <button class="btn" (click)="showKey()" i18n="@@backup.show">Show my secret key</button>
   }
@@ -126,11 +126,15 @@
       This removes your account from this device. Without another signed-in device or your saved
       secret key, it's lost for good.
     </p>
-    <div class="row">
-      <button class="btn danger" (click)="logout()" i18n="@@logout.confirm">Log out</button>
-      <button class="btn" (click)="confirmLogout.set(false)" i18n="@@logout.cancel">Cancel</button>
+    <div class="actions">
+      <button class="btn btn-danger" (click)="logout()" i18n="@@logout.confirm">Log out</button>
+      <button class="btn btn-ghost" (click)="confirmLogout.set(false)" i18n="@@logout.cancel">
+        Cancel
+      </button>
     </div>
   } @else {
-    <button class="btn" (click)="confirmLogout.set(true)" i18n="@@logout.button">Log out</button>
+    <button class="btn btn-danger" (click)="confirmLogout.set(true)" i18n="@@logout.button">
+      Log out
+    </button>
   }
 </section>

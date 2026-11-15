@@ -1,9 +1,10 @@
 .emoji-picker-container {
-  width: 30rem;
-  background: var(--surface-primary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--base-radius);
-  box-shadow: var(--shadow-elevated);
+  width: min(26rem, calc(100vw - 2 * var(--space-4)));
+  margin-bottom: var(--space-2);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popover);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -14,12 +15,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--surface-primary);
   border-bottom: 1px solid var(--border-strong);
 }
 
 .emoji-list {
-  padding: 0.75rem;
+  padding: var(--space-3);
   height: 20rem;
   width: 100%;
   overflow-x: hidden;
@@ -33,11 +33,11 @@
 .emoji-row {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 0.25rem;
+  gap: var(--space-1);
   height: 48px;
   width: 100%;
   overflow: hidden;
-  margin: 0.25rem 0;
+  margin: var(--space-1) 0;
 }
 
 .emoji-btn,
@@ -47,10 +47,10 @@
   justify-content: center;
   background: none;
   border: none;
-  padding: 0.5rem;
+  padding: var(--space-2);
   cursor: pointer;
-  border-radius: var(--base-radius);
-  transition: background-color 0.3s ease;
+  border-radius: var(--radius-md);
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
 
 .tab-btn {
@@ -59,10 +59,11 @@
 }
 
 .tab-btn.active {
-  border-bottom: 2px solid var(--border-strong);
-  background: var(--interaction-pressed);
+  box-shadow: inset 0 -2px 0 var(--accent);
+  background: var(--accent-subtle);
 }
 
-.emoji-btn:hover {
-  background: var(--interaction-hover);
+.emoji-btn:hover,
+.tab-btn:hover {
+  background: var(--state-hover);
 }

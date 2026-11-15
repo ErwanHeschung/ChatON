@@ -1,7 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { LucideDynamicIcon, LucideUserPlus } from '@lucide/angular';
 import { UserCard } from '@components/users/user-card/user-card';
 import { GroupDialog } from '@components/chats/group-dialog/group-dialog';
-import { AccountSettings } from '@components/account-settings/account-settings';
 import { Member, ROLE_ADMIN, ROLE_MODERATOR } from '@models/Community.model';
 import { UserShort } from '@models/User.model';
 import { ModalService } from '@services/modal.service';
@@ -9,10 +9,10 @@ import { CommunityStore } from '@stores/community.store';
 import { ConnectedUserStore } from '@stores/connected-user.store';
 import { DmStore } from '@stores/dm.store';
 
-/** Right sidebar: me, then the members of the open community. */
+/** Members panel: the open community's members by role, or the open conversation's people. */
 @Component({
   selector: 'app-users-list',
-  imports: [UserCard],
+  imports: [UserCard, LucideDynamicIcon],
   templateUrl: './users-list.html',
   styleUrl: './users-list.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -22,42 +22,32 @@ export class UsersList {
   private readonly modalService = inject(ModalService);
   protected readonly dm = inject(DmStore);
   protected readonly community = inject(CommunityStore);
+  protected readonly addPeopleIcon = LucideUserPlus;
 
-  public readonly connectedUser = computed<UserShort>(() => ({
-    id: this.account.user()?.npub ?? '',
-    username: this.account.user() ? `@${this.account.user()?.handle}` : '',
-    profilePicture: '/chatON-logo.svg',
-    picture: this.dm.peers()[this.account.user()?.pubkey ?? '']?.picture,
-  }));
-
-  /** Admins, then moderators, then the rest. Only in the server view. */
-  public readonly members = computed(() => {
-    if (this.community.channel() === null) {
-      return [];
-    }
-    const rank = (m: Member) =>
-      m.roles.includes(ROLE_ADMIN) ? 0 : m.roles.includes(ROLE_MODERATOR) ? 1 : 2;
-    return [...this.community.members()].sort((a, b) => rank(a) - rank(b));
+  /** Admins, moderators, then the rest, as sections. Only in the server view. */
+  public readonly sections = computed(() => {
+    const members = this.community.channel() === null ? [] : this.community.members();
+    const admins = members.filter((m) => this.isAdmin(m));
+    const moderators = members.filter((m) => !this.isAdmin(m) && this.isModerator(m));
+    const others = members.filter((m) => !this.isAdmin(m) && !this.isModerator(m));
+    return [
+      { role: ROLE_ADMIN, members: admins },
+      { role: ROLE_MODERATOR, members: moderators },
+      { role: 'member', members: others },
+    ].filter((s) => s.members.length);
   });
 
-  constructor() {
-    // My own profile, for my picture.
-    effect(() => {
-      const me = this.account.user()?.pubkey;
-      if (me) void this.dm.resolve(me);
-    });
-  }
-
-  /** The open group's members (DM view only). */
-  public readonly groupMembers = computed(() =>
-    this.community.channel() === null && this.dm.isGroup() ? this.dm.room() : [],
+  /** The open conversation's people (DM view only). */
+  public readonly roomMembers = computed(() =>
+    this.community.channel() === null ? this.dm.room() : [],
   );
+
+  protected readonly me = computed(() => this.account.user()?.pubkey);
 
   public cardOf(pubkey: string): UserShort {
     return {
       id: pubkey,
       username: this.dm.label(pubkey),
-      profilePicture: '/chatON-logo.svg',
       picture: this.dm.peers()[pubkey]?.picture,
     };
   }
@@ -70,10 +60,6 @@ export class UsersList {
   public addPeople(): void {
     this.dm.setGroupDraft(this.dm.others(this.dm.selected() ?? ''));
     this.modalService.open(GroupDialog);
-  }
-
-  public openAccount(): void {
-    this.modalService.open(AccountSettings);
   }
 
   public card(member: Member): UserShort {
@@ -90,6 +76,11 @@ export class UsersList {
 
   public isModerator(member: Member): boolean {
     return member.roles.includes(ROLE_MODERATOR);
+  }
+
+  /** Only an admin names or unnames moderators, never another admin. */
+  public canPromote(member: Member): boolean {
+    return this.community.isAdmin() && !this.isMe(member) && !this.isAdmin(member);
   }
 
   /** Admins remove anyone; moderators everyone but admins (the relay checks too). */

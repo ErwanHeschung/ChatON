@@ -1,9 +1,10 @@
 <app-chat-layout>
-  <app-horizontal-list header></app-horizontal-list>
+  <app-community-rail rail></app-community-rail>
 
-  <div left class="left">
-    <router-outlet name="left-sidebar"></router-outlet>
-  </div>
+  <router-outlet sidebar name="left-sidebar"></router-outlet>
+  <app-user-panel account></app-user-panel>
+
+  <app-chat-header header></app-chat-header>
 
   <app-chat
     chat
@@ -15,5 +16,5 @@
     (remove)="remove($event)"
   ></app-chat>
 
-  <app-users-list right></app-users-list>
+  <app-users-list members></app-users-list>
 </app-chat-layout>

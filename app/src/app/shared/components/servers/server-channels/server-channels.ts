@@ -7,24 +7,27 @@ import {
   signal,
 } from '@angular/core';
 import { LucideDynamicIcon, LucideHash, LucidePlus } from '@lucide/angular';
+import { PawTrail } from '@components/paw-trail/paw-trail';
 import { ServerBanner } from '@components/servers/server-banner/server-banner';
+import { ShellService } from '@services/shell.service';
 import { CommunityStore } from '@stores/community.store';
 
-/** Left sidebar of the server view: channels of the open community, invites. */
+/** Sidebar of the server view: the open community's channels. */
 @Component({
   selector: 'app-server-channels',
-  imports: [LucideDynamicIcon, ServerBanner],
+  imports: [LucideDynamicIcon, PawTrail, ServerBanner],
   templateUrl: './server-channels.html',
   styleUrl: './server-channels.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ServerChannels implements OnInit, OnDestroy {
   protected readonly store = inject(CommunityStore);
+  private readonly shell = inject(ShellService);
 
   public readonly hashtagIcon = LucideHash;
   public readonly plusIcon = LucidePlus;
-  public readonly invite = signal<string | null>(null);
-  public readonly copied = signal(false);
+  /** Admin: the "new channel" field is shown. */
+  public readonly adding = signal(false);
 
   ngOnInit(): void {
     this.store
@@ -38,19 +41,18 @@ export class ServerChannels implements OnInit, OnDestroy {
     void this.store.selectChannel(null);
   }
 
+  public open(channel: string): void {
+    void this.store.selectChannel(channel);
+    this.shell.openChat();
+  }
+
   public addChannel(input: HTMLInputElement): void {
     const name = input.value.trim();
     if (name) {
-      void this.store.createChannel(name).then(() => (input.value = ''));
+      void this.store.createChannel(name).then(() => {
+        input.value = '';
+        this.adding.set(false);
+      });
     }
-  }
-
-  public async createInvite(): Promise<void> {
-    this.copied.set(false);
-    this.invite.set(await this.store.invite());
-  }
-
-  public copy(text: string): void {
-    void navigator.clipboard.writeText(text).then(() => this.copied.set(true));
   }
 }

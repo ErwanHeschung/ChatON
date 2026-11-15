@@ -1,19 +1,11 @@
-<svg
-  class="emoji"
-  [lucideIcon]="emojiIcon"
-  cdkOverlayOrigin
-  #trigger="cdkOverlayOrigin"
-  (click)="isPickerOpen = !isPickerOpen"
-></svg>
-
 <button
   type="button"
-  class="attach"
+  class="btn btn-ghost btn-icon btn-sm"
   (click)="picker.click()"
   title="Attach a file"
   i18n-title="@@chat.attach"
 >
-  <svg [lucideIcon]="attachIcon"></svg>
+  <svg [lucideIcon]="attachIcon" size="20"></svg>
 </button>
 <input #picker type="file" hidden (change)="pick(picker)" />
 
@@ -21,17 +13,29 @@
   #text
   (keydown.enter)="submit(text)"
   (paste)="paste($event)"
-  placeholder="Message"
-  i18n-placeholder="@@chat.message-placeholder"
-  aria-label="Message"
-  i18n-aria-label="@@chat.message-placeholder"
+  [attr.placeholder]="placeholder()"
+  [attr.aria-label]="placeholder()"
 />
+
+<button
+  type="button"
+  class="btn btn-ghost btn-icon btn-sm"
+  cdkOverlayOrigin
+  #trigger="cdkOverlayOrigin"
+  (click)="isPickerOpen = !isPickerOpen"
+  [attr.aria-expanded]="isPickerOpen"
+  i18n-title="@@chat.emoji"
+  title="Emoji"
+>
+  <svg [lucideIcon]="emojiIcon" size="20"></svg>
+</button>
 
 <ng-template
   cdkConnectedOverlay
   [cdkConnectedOverlayOrigin]="trigger"
   [cdkConnectedOverlayOpen]="isPickerOpen"
   [cdkConnectedOverlayPush]="true"
+  [cdkConnectedOverlayPositions]="pickerPositions"
   (overlayOutsideClick)="isPickerOpen = false"
 >
   <app-emoji-select></app-emoji-select>

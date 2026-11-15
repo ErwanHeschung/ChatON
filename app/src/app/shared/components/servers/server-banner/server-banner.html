@@ -1,20 +1,28 @@
 @if (store.current(); as community) {
-  @let src = community.picture ? (media.picture(community.picture) | async) : null;
-  @if (src) {
-    <img class="initial" [src]="src" alt="" />
-  } @else {
-    <span class="initial" aria-hidden="true">{{ community.name.charAt(0).toUpperCase() }}</span>
-  }
-  <h3>{{ community.name }}</h3>
-  @if (store.isAdmin()) {
-    <input #picture type="file" accept="image/*" hidden (change)="setPicture(picture)" />
-    <button class="link" (click)="picture.click()" i18n="@@community.change-picture">
-      Picture
-    </button>
-  }
-  @if (confirmLeave()) {
-    <button class="link danger" (click)="leave()" i18n="@@community.leave-confirm">Leave?</button>
-  } @else {
-    <button class="link" (click)="confirmLeave.set(true)" i18n="@@community.leave">Leave</button>
-  }
+  <button type="button" class="trigger" [cdkMenuTriggerFor]="menu">
+    <h2>{{ community.name }}</h2>
+    <svg [lucideIcon]="icons.chevron" size="18"></svg>
+  </button>
+  <input #picture type="file" accept="image/*" hidden (change)="setPicture(picture)" />
+
+  <ng-template #menu>
+    <div class="menu" cdkMenu>
+      @if (store.canModerate()) {
+        <button class="menu-item" cdkMenuItem (cdkMenuItemTriggered)="invite()">
+          <svg [lucideIcon]="icons.invite" size="16"></svg>
+          <ng-container i18n="@@community.invite">Invite</ng-container>
+        </button>
+      }
+      @if (store.isAdmin()) {
+        <button class="menu-item" cdkMenuItem (cdkMenuItemTriggered)="picture.click()">
+          <svg [lucideIcon]="icons.picture" size="16"></svg>
+          <ng-container i18n="@@community.change-picture-long">Change the picture</ng-container>
+        </button>
+      }
+      <button class="menu-item danger" cdkMenuItem (cdkMenuItemTriggered)="leave()">
+        <svg [lucideIcon]="icons.leave" size="16"></svg>
+        <ng-container i18n="@@community.leave-menu">Leave the community</ng-container>
+      </button>
+    </div>
+  </ng-template>
 }

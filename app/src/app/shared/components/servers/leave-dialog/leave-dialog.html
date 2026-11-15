@@ -1,0 +1,8 @@
+<section>
+  <h2 i18n="@@leave.title">Leave {{ store.current()?.name }}?</h2>
+  <p class="hint" i18n="@@leave.hint">To come back, you'll need a new invite.</p>
+  <div class="actions">
+    <button class="btn btn-danger" (click)="leave()" i18n="@@community.leave">Leave</button>
+    <button class="btn btn-ghost" (click)="modal.close()" i18n="@@leave.cancel">Cancel</button>
+  </div>
+</section>

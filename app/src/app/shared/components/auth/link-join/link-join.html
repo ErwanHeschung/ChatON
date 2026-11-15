@@ -15,7 +15,7 @@
       spellcheck="false"
     />
     @if (form.controls.handle.touched && form.controls.handle.invalid) {
-      <small class="error error-logo">
+      <small class="error">
         <svg [lucideIcon]="errorIcon" size="15"></svg>
         <ng-container i18n="@@login.handle-invalid"
           >Enter your full handle, like pseudo@instance</ng-container
@@ -36,7 +36,7 @@
   </div>
 
   @if (form.errors; as errors) {
-    <small class="error-logo">
+    <small class="error">
       <svg [lucideIcon]="errorIcon" size="15"></svg>
       @if (errors['not_found']) {
         <ng-container i18n="@@login.handle-not-found">No one with this handle</ng-container>
@@ -68,7 +68,7 @@
 
   <button
     type="submit"
-    class="btn"
+    class="btn btn-primary"
     [disabled]="form.invalid || isPending()"
     i18n="@@link-join.submit-button"
   >

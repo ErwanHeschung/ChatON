@@ -1,52 +1,78 @@
-<button class="me" (click)="openAccount()" i18n-title="@@account-title" title="Account">
-  <app-user-card [user]="connectedUser()"></app-user-card>
-</button>
-
-<ul class="members">
-  @if (groupMembers().length) {
-    <li class="group">
-      <form (submit)="$event.preventDefault(); rename(name)">
-        <input
-          #name
-          maxlength="100"
-          [value]="dm.title(dm.selected() ?? '')"
-          aria-label="Group name"
-          i18n-aria-label="@@group.name-label"
-        />
-        <button class="link" i18n="@@group.rename">Rename</button>
-      </form>
-      <button class="link" (click)="addPeople()" i18n="@@group.add-people">Add people</button>
-    </li>
-    @for (pubkey of groupMembers(); track pubkey) {
-      <li class="member">
-        <app-user-card [user]="cardOf(pubkey)"></app-user-card>
+@if (roomMembers().length) {
+  @if (dm.isGroup()) {
+    <form class="group" (submit)="$event.preventDefault(); rename(name)">
+      <input
+        #name
+        maxlength="100"
+        [value]="dm.title(dm.selected() ?? '')"
+        aria-label="Group name"
+        i18n-aria-label="@@group.name-label"
+      />
+      <button class="btn btn-sm" i18n="@@group.rename">Rename</button>
+    </form>
+  }
+  <h3 class="section-label">
+    <span i18n="@@members.section">Members — {{ roomMembers().length }}</span>
+    @if (dm.isGroup()) {
+      <button
+        type="button"
+        class="btn btn-ghost btn-icon btn-sm"
+        (click)="addPeople()"
+        i18n-title="@@group.add-people"
+        title="Add people"
+      >
+        <svg [lucideIcon]="addPeopleIcon" size="16"></svg>
+      </button>
+    }
+  </h3>
+  <ul>
+    @for (pubkey of roomMembers(); track pubkey) {
+      <li class="list-row">
+        <app-user-card [user]="cardOf(pubkey)" [ears]="pubkey === me()"></app-user-card>
       </li>
     }
-  }
-  @for (member of members(); track member.pubkey) {
-    <li class="member">
-      <app-user-card [user]="card(member)"></app-user-card>
-      <div class="meta">
-        @if (isAdmin(member)) {
-          <span class="badge" i18n="@@role.admin">admin</span>
-        } @else if (isModerator(member)) {
-          <span class="badge" i18n="@@role.moderator">moderator</span>
-        }
-        @if (community.isAdmin() && !isMe(member) && !isAdmin(member)) {
-          <button class="action" (click)="toggleModerator(member)">
-            @if (isModerator(member)) {
-              <ng-container i18n="@@role.unmake-moderator">Remove moderator</ng-container>
-            } @else {
-              <ng-container i18n="@@role.make-moderator">Make moderator</ng-container>
+  </ul>
+}
+
+@for (section of sections(); track section.role) {
+  <h3 class="section-label">
+    @switch (section.role) {
+      @case ('admin') {
+        <span i18n="@@members.admins">Admins — {{ section.members.length }}</span>
+      }
+      @case ('moderator') {
+        <span i18n="@@members.moderators">Moderators — {{ section.members.length }}</span>
+      }
+      @default {
+        <span i18n="@@members.section">Members — {{ section.members.length }}</span>
+      }
+    }
+  </h3>
+  <ul>
+    @for (member of section.members; track member.pubkey) {
+      <li class="member">
+        <div class="list-row">
+          <app-user-card [user]="card(member)" [ears]="isMe(member)"></app-user-card>
+        </div>
+        @if (canPromote(member) || canRemove(member)) {
+          <div class="actions">
+            @if (canPromote(member)) {
+              <button class="link" (click)="toggleModerator(member)">
+                @if (isModerator(member)) {
+                  <ng-container i18n="@@role.unmake-moderator">Remove moderator</ng-container>
+                } @else {
+                  <ng-container i18n="@@role.make-moderator">Make moderator</ng-container>
+                }
+              </button>
             }
-          </button>
+            @if (canRemove(member)) {
+              <button class="link danger" (click)="remove(member)" i18n="@@role.remove">
+                Remove
+              </button>
+            }
+          </div>
         }
-        @if (canRemove(member)) {
-          <button class="action danger" (click)="remove(member)" i18n="@@role.remove">
-            Remove
-          </button>
-        }
-      </div>
-    </li>
-  }
-</ul>
+      </li>
+    }
+  </ul>
+}

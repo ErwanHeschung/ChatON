@@ -1,0 +1,48 @@
+<button
+  type="button"
+  class="rail-item home"
+  (click)="openDms()"
+  [attr.aria-current]="inDms() ? 'true' : null"
+  appTooltip="Private messages"
+  i18n-appTooltip="@@shell.dms"
+  appTooltipSide="right"
+  aria-label="Private messages"
+  i18n-aria-label="@@shell.dms"
+>
+  <img ngSrc="/chatON-logo.svg" width="28" height="28" alt="" />
+</button>
+
+<span class="separator" role="separator"></span>
+
+@for (community of store.communities(); track community.id) {
+  <button
+    type="button"
+    class="rail-item"
+    (click)="open(community.id)"
+    [attr.aria-current]="!inDms() && community.id === store.selected() ? 'true' : null"
+    [appTooltip]="community.name"
+    appTooltipSide="right"
+    [attr.aria-label]="community.name"
+  >
+    <app-avatar
+      [picture]="community.picture"
+      [name]="community.name"
+      [seed]="community.id"
+      size="lg"
+      shape="square"
+    ></app-avatar>
+  </button>
+}
+
+<button
+  type="button"
+  class="rail-item add"
+  (click)="add()"
+  appTooltip="Create or join a community"
+  i18n-appTooltip="@@community.add"
+  appTooltipSide="right"
+  aria-label="Create or join a community"
+  i18n-aria-label="@@community.add"
+>
+  <svg [lucideIcon]="addIcon" size="22"></svg>
+</button>
