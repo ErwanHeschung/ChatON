@@ -1,0 +1,6 @@
+@let src = picture() ? (media.picture(picture()!) | async) : null;
+@if (src) {
+  <img [src]="src" alt="" />
+} @else {
+  <span aria-hidden="true">{{ initial() }}</span>
+}

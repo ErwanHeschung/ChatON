@@ -1,47 +1,41 @@
 :host {
-  border-bottom: 1px solid var(--border-subtle);
-  padding: 0.5rem;
-  gap: 0.5rem;
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: calc(var(--header-height) + var(--space-2));
+  padding: var(--space-2) var(--space-2) 0;
+}
+
+.trigger {
   display: flex;
   align-items: center;
-  min-height: 3.5rem;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--content-primary);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out);
 
-  h3 {
+  &:hover,
+  &[aria-expanded='true'] {
+    background-color: var(--state-hover);
+  }
+
+  h2 {
     flex: 1;
+    min-width: 0;
     overflow: hidden;
+    font-size: var(--text-md);
+    text-align: start;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-}
 
-.initial {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 50%;
-  background-color: var(--surface-elevated);
-  font-weight: bold;
-}
-
-.link {
-  all: unset;
-  cursor: pointer;
-  font-size: var(--font-size-small);
-  color: var(--content-secondary);
-
-  &:hover {
-    color: var(--content-primary);
+  svg {
+    color: var(--content-secondary);
   }
-}
-
-.danger,
-.danger:hover {
-  color: var(--content-error);
-}
-
-img.initial {
-  object-fit: cover;
 }

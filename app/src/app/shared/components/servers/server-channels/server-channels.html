@@ -2,22 +2,23 @@
 
 @if (store.current(); as community) {
   <nav class="channels">
-    @for (channel of community.channels; track channel.id) {
-      <button
-        type="button"
-        class="channel-row"
-        [class.active]="channel.id === store.channel()"
-        [attr.aria-current]="channel.id === store.channel() ? 'true' : null"
-        (click)="store.selectChannel(channel.id)"
-      >
-        <svg [lucideIcon]="hashtagIcon" size="15"></svg>
-        <span>{{ channel.name }}</span>
-      </button>
-    }
-  </nav>
+    <h3 class="section-label">
+      <span i18n="@@channels.section">Channels</span>
+      @if (store.isAdmin()) {
+        <button
+          type="button"
+          class="btn btn-ghost btn-icon btn-sm"
+          (click)="adding.set(!adding())"
+          [attr.aria-expanded]="adding()"
+          i18n-title="@@community.add-channel"
+          title="Add a channel"
+        >
+          <svg [lucideIcon]="plusIcon" size="16"></svg>
+        </button>
+      }
+    </h3>
 
-  <div class="tools">
-    @if (store.isAdmin()) {
+    @if (adding()) {
       <form class="add-channel" (submit)="$event.preventDefault(); addChannel(channelName)">
         <input
           #channelName
@@ -26,34 +27,32 @@
           i18n-placeholder="@@community.channel-placeholder"
           aria-label="New channel name"
           i18n-aria-label="@@community.channel-label"
+          (keydown.escape)="adding.set(false)"
         />
-        <button class="btn" i18n-title="@@community.add-channel" title="Add a channel">
-          <svg [lucideIcon]="plusIcon" size="15"></svg>
-        </button>
       </form>
     }
 
-    @if (store.canModerate()) {
-      @if (invite(); as text) {
-        <code class="invite">{{ text }}</code>
-        <button class="btn" (click)="copy(text)">
-          @if (copied()) {
-            <ng-container i18n="@@community.copied">Copied</ng-container>
-          } @else {
-            <ng-container i18n="@@community.copy">Copy the invite</ng-container>
-          }
-        </button>
-      } @else {
-        <button class="btn" (click)="createInvite()" i18n="@@community.invite">Invite</button>
-      }
+    @for (channel of community.channels; track channel.id) {
+      <button
+        type="button"
+        class="list-row"
+        [attr.aria-current]="channel.id === store.channel() ? 'true' : null"
+        (click)="open(channel.id)"
+      >
+        <svg [lucideIcon]="hashtagIcon" size="18"></svg>
+        <span>{{ channel.name }}</span>
+      </button>
     }
 
     @if (store.error(); as error) {
       <small class="error" i18n="@@community.action-failed">Not done: {{ error }}</small>
     }
-  </div>
+  </nav>
 } @else {
-  <p class="empty" i18n="@@community.empty">
-    No community yet. Create one or join with an invite, with “+” at the top.
-  </p>
+  <div class="empty">
+    <app-paw-trail [length]="4" [size]="16"></app-paw-trail>
+    <p class="hint" i18n="@@community.empty">
+      No community yet. Create one or join with an invite, with “+” at the top.
+    </p>
+  </div>
 }

@@ -1,9 +1,8 @@
 :host {
   display: flex;
-  gap: 0.5rem;
-}
-
-.active {
-  background-color: var(--interaction-pressed);
-  color: var(--on-action-primary);
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-sunken);
 }

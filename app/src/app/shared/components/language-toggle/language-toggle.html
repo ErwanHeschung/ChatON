@@ -1,7 +1,16 @@
-<button class="btn" (click)="switchLanguage('en')" [class.active]="activeLocale === 'en'">
+<button
+  class="btn btn-ghost btn-sm"
+  (click)="switchLanguage('en')"
+  [attr.aria-pressed]="activeLocale === 'en'"
+  lang="en"
+>
   EN
 </button>
-
-<button class="btn" (click)="switchLanguage('fr')" [class.active]="activeLocale === 'fr'">
+<button
+  class="btn btn-ghost btn-sm"
+  (click)="switchLanguage('fr')"
+  [attr.aria-pressed]="activeLocale === 'fr'"
+  lang="fr"
+>
   FR
 </button>

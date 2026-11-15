@@ -1,90 +1,52 @@
 :host {
-  display: grid;
-  grid-template-rows: 4rem 1fr;
-  width: 100%;
-  height: 100%;
-  padding: 0.5rem;
-}
-
-.me {
-  all: unset;
-  cursor: pointer;
-  width: 100%;
-}
-
-.members {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-}
-
-.member {
-  margin-bottom: 3px;
-}
-
-.meta {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  padding-left: 2.75rem;
-  font-size: var(--font-size-small);
+  flex-direction: column;
+  padding: var(--space-3) var(--space-2);
 }
 
-.badge {
-  padding: 0 0.4rem;
-  border-radius: var(--base-radius);
-  background-color: var(--surface-elevated);
-  color: var(--content-secondary);
-}
+.section-label {
+  margin-top: var(--space-3);
 
-.action {
-  all: unset;
-  cursor: pointer;
-  color: var(--content-secondary);
-  opacity: 0;
-  transition: opacity 0.2s ease;
-
-  &:focus-visible {
-    opacity: 1;
-    outline: 2px solid var(--content-primary);
+  &:first-child {
+    margin-top: 0;
   }
 }
 
-.member:hover .action {
-  opacity: 1;
+ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.danger {
-  color: var(--content-error);
+// Moderation actions show on hover or keyboard focus, under the name.
+.actions {
+  height: 0;
+  padding-left: calc(var(--avatar-sm) + var(--space-4));
+  overflow: hidden;
+  opacity: 0;
+  gap: var(--space-3);
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.member:hover .actions,
+.member:focus-within .actions {
+  height: auto;
+  padding-bottom: var(--space-1);
+  opacity: 1;
 }
 
 .group {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-
-  form {
-    display: flex;
-    gap: 0.5rem;
-  }
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 
   input {
     flex: 1;
     min-width: 0;
-  }
-}
-
-.link {
-  all: unset;
-  cursor: pointer;
-  font-size: var(--font-size-small);
-  color: var(--content-secondary);
-  text-decoration: underline;
-
-  &:focus-visible {
-    outline: 2px solid var(--content-primary);
+    min-height: var(--control-sm);
+    font-size: var(--text-sm);
   }
 }

@@ -33,6 +33,12 @@ export interface Conversation {
 /** One string per conversation, the same for every member. */
 export const roomKey = (room: string[]): string => room.join(',');
 
+/** "@lea@chaton.fr" → ["@lea", "@chaton.fr"], so the UI shows the instance apart; else [label, ""]. */
+export function splitHandle(label: string): [string, string] {
+  const at = label.lastIndexOf('@');
+  return label.startsWith('@') && at > 0 ? [label.slice(0, at), label.slice(at)] : [label, ''];
+}
+
 /** Always the full handle (never a bare name, CLAUDE.md), else a shortened npub. */
 export function peerLabel(peer: Peer | undefined, pubkey: string): string {
   if (peer?.handle) {

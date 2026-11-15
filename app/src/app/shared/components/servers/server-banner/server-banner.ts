@@ -1,20 +1,38 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { AsyncPipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
+import {
+  LucideChevronDown,
+  LucideDynamicIcon,
+  LucideImage,
+  LucideLogOut,
+  LucideUserPlus,
+} from '@lucide/angular';
+import { InviteDialog } from '@components/servers/invite-dialog/invite-dialog';
+import { LeaveDialog } from '@components/servers/leave-dialog/leave-dialog';
+import { ModalService } from '@services/modal.service';
 import { CommunityStore } from '@stores/community.store';
-import { MediaService } from '@services/media.service';
 
-/** Name and picture of the open community, and leaving it. */
+/** Sidebar header: the open community's name, and its menu (invite, picture, leave). */
 @Component({
   selector: 'app-server-banner',
-  imports: [AsyncPipe],
+  imports: [CdkMenu, CdkMenuItem, CdkMenuTrigger, LucideDynamicIcon],
   templateUrl: './server-banner.html',
   styleUrl: './server-banner.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ServerBanner {
   protected readonly store = inject(CommunityStore);
-  protected readonly media = inject(MediaService);
-  public readonly confirmLeave = signal(false);
+  private readonly modal = inject(ModalService);
+  protected readonly icons = {
+    chevron: LucideChevronDown,
+    invite: LucideUserPlus,
+    picture: LucideImage,
+    leave: LucideLogOut,
+  };
+
+  public invite(): void {
+    this.modal.open(InviteDialog);
+  }
 
   public setPicture(input: HTMLInputElement): void {
     const file = input.files?.[0];
@@ -23,7 +41,6 @@ export class ServerBanner {
   }
 
   public leave(): void {
-    this.confirmLeave.set(false);
-    void this.store.leave();
+    this.modal.open(LeaveDialog);
   }
 }

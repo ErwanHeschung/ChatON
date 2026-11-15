@@ -20,20 +20,32 @@
   }
 }
 
-<button type="button" class="new-group" (click)="newGroup()" i18n="@@group.new">New group</button>
-
 <nav class="conversations">
+  <h3 class="section-label">
+    <span i18n="@@dm.section">Private messages</span>
+    <button
+      type="button"
+      class="btn btn-ghost btn-icon btn-sm"
+      (click)="newGroup()"
+      i18n-title="@@group.new"
+      title="New group"
+    >
+      <svg [lucideIcon]="newIcon" size="16"></svg>
+    </button>
+  </h3>
   @for (conversation of dm.conversations(); track key(conversation)) {
     <button
       type="button"
-      class="conversation"
-      [class.selected]="key(conversation) === dm.selected()"
+      class="list-row"
       [attr.aria-current]="key(conversation) === dm.selected() ? 'true' : null"
-      (click)="dm.select(key(conversation))"
+      (click)="open(conversation)"
     >
       <app-user-card [user]="card(conversation)"></app-user-card>
     </button>
   } @empty {
-    <p class="empty" i18n="@@dm.empty">No conversations yet. Search someone above.</p>
+    <div class="empty">
+      <app-paw-trail [length]="4" [size]="16"></app-paw-trail>
+      <p class="hint" i18n="@@dm.empty">No conversations yet. Search someone above.</p>
+    </div>
   }
 </nav>

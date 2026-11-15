@@ -1,26 +1,150 @@
+@use 'variables' as vars;
+
+// rail | sidebar | sheet, with my account across the bottom of rail and sidebar.
 :host {
   display: grid;
-  height: 100vh;
-  grid-template-columns: 17rem 1fr 17rem;
+  grid-template-areas:
+    'rail sidebar sheet'
+    'account account sheet';
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-columns: var(--rail-width) var(--sidebar-width) minmax(0, 1fr);
+  height: 100dvh;
+  background: var(--frame-glow), var(--surface-frame);
 }
 
-.chat {
-  height: 100%;
+.rail {
+  grid-area: rail;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.sidebar {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+// The conversation is a sheet set into the frame: navigation recedes, content leads.
+.account {
+  grid-area: account;
+  min-width: 0;
+}
+
+.sheet {
+  grid-area: sheet;
   display: grid;
-  grid-template-rows: 5rem 1fr;
+  grid-template-rows: var(--header-height) minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  margin: var(--space-2) var(--space-2) var(--space-2) 0;
   overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background-color: var(--surface-base);
 }
 
-.header {
-  background: linear-gradient(to bottom, var(--surface-primary) 5%, var(--surface-base) 100%);
+.sheet-header {
+  min-width: 0;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.left {
-  border-right: solid 1px var(--border-subtle);
-  overflow: hidden;
+.sheet-body {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
 }
 
-.right {
-  border-left: solid 1px var(--border-subtle);
-  overflow: hidden;
+.conversation {
+  min-width: 0;
+  min-height: 0;
+}
+
+.members {
+  display: none;
+  min-height: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--border-subtle);
+  background-color: var(--surface-panel);
+}
+
+.scrim {
+  display: none;
+}
+
+:host(.members-open) {
+  .sheet-body {
+    grid-template-columns: minmax(0, 1fr) var(--members-width);
+  }
+
+  .members {
+    display: block;
+  }
+}
+
+// Tablets: members slide over the conversation.
+@media (max-width: #{vars.$breakpoint-lg - 1px}) {
+  :host(.members-open) {
+    .sheet-body {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .members {
+      position: absolute;
+      inset: 0 0 0 auto;
+      z-index: 2;
+      width: min(var(--members-width), 85%);
+      box-shadow: var(--shadow-popover);
+    }
+
+    .scrim {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: block;
+      padding: 0;
+      border: none;
+      background-color: var(--surface-overlay);
+    }
+  }
+}
+
+// Phones: the lists, or the conversation after a tap.
+@media (max-width: #{vars.$breakpoint-md - 1px}) {
+  :host {
+    grid-template-areas:
+      'rail sidebar'
+      'account account';
+    grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  }
+
+  .sheet {
+    display: none;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+  }
+
+  :host(.chat-open) {
+    grid-template-areas: 'sheet';
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+
+    .rail,
+    .sidebar,
+    .account {
+      display: none;
+    }
+
+    .sheet {
+      display: grid;
+    }
+  }
 }

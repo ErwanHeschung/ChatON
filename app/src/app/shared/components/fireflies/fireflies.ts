@@ -35,7 +35,7 @@ export class FirefliesComponent implements OnInit, OnDestroy {
   private readonly canvasRef!: ElementRef<HTMLCanvasElement>;
 
   public count = input<number>(50);
-  public color = input<string>('34, 197, 94');
+  public color = input<string>('62, 224, 127'); // --accent
 
   private ctx!: CanvasRenderingContext2D;
   private readonly fireflies: Firefly[] = [];

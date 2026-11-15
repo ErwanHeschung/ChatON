@@ -1,12 +1,29 @@
-<aside class="left" aria-label="left panel">
-  <ng-content select="[left]"></ng-content>
+<nav class="rail" aria-label="Communities" i18n-aria-label="@@shell.communities">
+  <ng-content select="[rail]"></ng-content>
+</nav>
+<aside class="sidebar">
+  <ng-content select="[sidebar]"></ng-content>
 </aside>
-<div class="chat">
-  <div class="header">
-    <ng-content select="[header]"></ng-content>
-  </div>
-  <ng-content select="[chat]"></ng-content>
+<div class="account">
+  <ng-content select="[account]"></ng-content>
 </div>
-<aside class="right" aria-label="right panel">
-  <ng-content select="[right]"></ng-content>
-</aside>
+<main class="sheet">
+  <header class="sheet-header">
+    <ng-content select="[header]"></ng-content>
+  </header>
+  <div class="sheet-body">
+    <div class="conversation">
+      <ng-content select="[chat]"></ng-content>
+    </div>
+    <button
+      type="button"
+      class="scrim"
+      tabindex="-1"
+      aria-hidden="true"
+      (click)="shell.toggleMembers()"
+    ></button>
+    <aside class="members" aria-label="Members" i18n-aria-label="@@shell.members">
+      <ng-content select="[members]"></ng-content>
+    </aside>
+  </div>
+</main>

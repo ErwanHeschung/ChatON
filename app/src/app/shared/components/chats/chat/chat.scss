@@ -7,15 +7,93 @@
 }
 
 .message-list {
+  display: flex;
   flex: 1;
+  flex-direction: column-reverse;
   width: 100%;
   max-height: 100%;
+  padding-bottom: var(--space-4);
   overflow: auto;
+}
+
+.intro {
   display: flex;
-  flex-direction: column-reverse;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: auto;
+  padding: var(--space-12) var(--space-4) var(--space-4);
+
+  h2 {
+    font-size: var(--text-2xl);
+  }
+
+  .hint {
+    max-width: 60ch;
+    font-size: var(--text-body);
+  }
+}
+
+.nothing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  margin: auto;
+  padding: var(--space-6);
+  text-align: center;
+
+  .hint {
+    max-width: 32ch;
+    font-size: var(--text-body);
+  }
+}
+
+.intro-icon {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  margin-bottom: var(--space-1);
+  border-radius: var(--radius-lg);
+  background-color: var(--surface-raised);
+  color: var(--content-secondary);
+}
+
+.instance {
+  color: var(--content-secondary);
+  font-weight: var(--weight-regular);
+}
+
+// The day between two sets of whiskers.
+.day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin: var(--space-6) var(--space-4) var(--space-2);
+  color: var(--content-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.whiskers {
+  width: 6.5rem;
+  height: 0.875rem;
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+
+  &.right {
+    transform: scaleX(-1);
+  }
+}
+
+.accent {
+  color: var(--accent-text);
 }
 
 .error {
-  padding: 0 1rem 0.5rem;
-  font-size: var(--font-size-small);
+  padding: 0 var(--space-4) var(--space-2);
 }

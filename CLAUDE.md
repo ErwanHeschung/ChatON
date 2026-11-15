@@ -90,6 +90,7 @@ Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé
 ```
 .
 ├── CLAUDE.md
+├── DESIGN.md                # design system de l'app (tokens, composants, règles)
 ├── spec/
 │   ├── protocol.md          # formats d'événements, signature, versions
 │   ├── federation.md        # .well-known, découverte, migration
@@ -156,6 +157,7 @@ iOS (`npm run tauri ios dev`) attend un Mac.
 - Rust : `cargo fmt`, `cargo clippy -- -D warnings`. Pas de `unwrap()` hors des tests.
 - Go : `gofmt`, `go vet`. Erreurs enveloppées avec `%w`.
 - UI : aucune logique métier ni crypto en TypeScript. Tout passe par les commandes Tauri vers `core`.
+- UI : style selon [`DESIGN.md`](DESIGN.md). Toute valeur vient des tokens (`app/src/styles/_tokens.scss`) ; réutiliser `.btn`, `.list-row`, `.field`, `.badge` et `app-avatar` avant d'écrire du style.
 - Secrets : jamais en clair sur disque. Utiliser Keychain, Keystore ou le trousseau de l'OS. `core` passe par `keyring-core` : l'app enregistre le store de sa plateforme au démarrage (`keyring_core::set_default_store`), les tests utilisent `keyring_core::mock`.
 - Le code et les commentaires peuvent être en anglais. La doc du projet est en français.
 

@@ -1,0 +1,10 @@
+<app-user-card [user]="me()" size="md" [ears]="true"></app-user-card>
+<button
+  type="button"
+  class="btn btn-ghost btn-icon btn-sm"
+  (click)="openAccount()"
+  i18n-title="@@account-title"
+  title="Account"
+>
+  <svg [lucideIcon]="settingsIcon" size="18"></svg>
+</button>

@@ -5,9 +5,21 @@
     animate.enter="enter-animation"
     animate.leave="leave-animation"
   >
-    <div class="modal-container" (click)="$event.stopPropagation()">
-      <button class="btn" (click)="modalService.close()">✕</button>
-      <ng-container *ngComponentOutlet="modalService.activeComponent()" />
+    <div class="modal-frame" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+      <div class="modal-container">
+        <button
+          class="btn btn-ghost btn-icon btn-sm close"
+          (click)="modalService.close()"
+          i18n-title="@@modal.close"
+          title="Close"
+        >
+          <svg [lucideIcon]="closeIcon" size="18"></svg>
+        </button>
+        <!-- An HTML parent: after the close icon, the dialog would be created in the SVG namespace. -->
+        <div>
+          <ng-container *ngComponentOutlet="modalService.activeComponent()" />
+        </div>
+      </div>
     </div>
   </div>
 }

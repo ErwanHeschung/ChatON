@@ -1,0 +1,23 @@
+<section>
+  <h2 i18n="@@invite.title">Invite people to {{ store.current()?.name }}</h2>
+  <p class="hint" i18n="@@invite.hint">
+    Anyone with this invite can join the community, whatever their instance.
+  </p>
+  @if (invite(); as text) {
+    <code class="key-text">{{ text }}</code>
+    <button class="btn btn-primary" (click)="copy(text)">
+      @if (copied()) {
+        <ng-container i18n="@@community.copied">Copied</ng-container>
+      } @else {
+        <ng-container i18n="@@community.copy">Copy the invite</ng-container>
+      }
+    </button>
+  } @else if (store.error(); as error) {
+    <p class="error" i18n="@@community.action-failed">Not done: {{ error }}</p>
+  } @else {
+    <p class="hint creating">
+      <app-paw-trail [length]="3" [size]="14"></app-paw-trail>
+      <ng-container i18n="@@invite.creating">Creating the invite…</ng-container>
+    </p>
+  }
+</section>

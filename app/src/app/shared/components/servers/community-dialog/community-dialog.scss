@@ -1,42 +1,32 @@
+// Shared with the group dialog.
 :host {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  padding: 2rem 3rem;
-  width: min(28rem, 90vw);
+  gap: var(--space-6);
+  // Capped by the viewport: a % would loop on the modal, which fits its content.
+  width: min(26rem, 100vw - 5rem);
+}
+
+section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1.1rem;
+  font-size: var(--text-lg);
 }
 
 form {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
+
+  &.column {
+    flex-direction: column;
+  }
 }
 
 input {
   flex: 1;
-}
-
-.error {
-  margin: 0;
-  color: var(--content-error);
-}
-
-// Shared with the group dialog.
-form.column {
-  flex-direction: column;
-}
-
-.hint {
-  margin: 0;
-  font-size: var(--font-size-small);
-  color: var(--content-secondary);
-}
-
-textarea {
-  resize: vertical;
-  font: inherit;
+  min-width: 0;
 }
