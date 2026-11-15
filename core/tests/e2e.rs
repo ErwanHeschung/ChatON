@@ -72,7 +72,7 @@ async fn two_users_find_each_other_and_exchange_dms() {
     // Alice finds @bob and writes to him.
     let peer = alice.search(&format!("@{bob_name}@{host}")).await.unwrap();
     assert_eq!(peer.npub, bob.account().npub);
-    let sent = alice.send_dm(peer.pubkey, "salut Bob 👋").await.unwrap();
+    let sent = alice.send_dm(&[peer.pubkey], "salut Bob 👋").await.unwrap();
 
     let got = tokio::time::timeout(Duration::from_secs(10), rx.recv())
         .await
@@ -88,7 +88,7 @@ async fn two_users_find_each_other_and_exchange_dms() {
     );
     // Nostr timestamps are in seconds: same-second messages have no defined order.
     tokio::time::sleep(Duration::from_millis(1100)).await;
-    bob.send_dm(got.sender, "salut Alice").await.unwrap();
+    bob.send_dm(&[got.sender], "salut Alice").await.unwrap();
 
     let bob_convs = bob.conversations().await.unwrap();
     assert_eq!(bob_convs.len(), 1);
@@ -97,7 +97,7 @@ async fn two_users_find_each_other_and_exchange_dms() {
     // Alice's history (her own copy + Bob's reply) survives a restart.
     let mut history = Vec::new();
     for _ in 0..50 {
-        history = alice.messages(peer.pubkey).await.unwrap();
+        history = alice.messages(&[peer.pubkey]).await.unwrap();
         if history.len() == 2 {
             break;
         }
@@ -108,7 +108,7 @@ async fn two_users_find_each_other_and_exchange_dms() {
     let reopened = Session::open(&alice_dir).await.unwrap().expect("account");
     assert_eq!(reopened.account().npub, alice.account().npub);
     let texts: Vec<_> = reopened
-        .messages(peer.pubkey)
+        .messages(&[peer.pubkey])
         .await
         .unwrap()
         .into_iter()
@@ -150,7 +150,7 @@ async fn a_second_device_links_with_a_code() {
         .await
         .unwrap();
     let handle = alice.account().handle.clone();
-    bob.send_dm(alice.account().pubkey, "hello Alice")
+    bob.send_dm(&[alice.account().pubkey], "hello Alice")
         .await
         .unwrap();
 
@@ -166,7 +166,7 @@ async fn a_second_device_links_with_a_code() {
         .unwrap();
     assert_eq!(a_side.await.unwrap().unwrap(), "laptop");
     assert_eq!(laptop.account().npub, alice.account().npub);
-    let history = laptop.messages(bob.account().pubkey).await.unwrap();
+    let history = laptop.messages(&[bob.account().pubkey]).await.unwrap();
     assert_eq!(history.len(), 1, "{history:?}");
     assert_eq!(history[0].text, "hello Alice");
 
@@ -176,7 +176,7 @@ async fn a_second_device_links_with_a_code() {
     tokio::spawn(async move { listener.listen(move |u| dms(&tx, u)).await });
     tokio::time::sleep(Duration::from_millis(1100)).await;
     laptop
-        .send_dm(bob.account().pubkey, "from my laptop")
+        .send_dm(&[bob.account().pubkey], "from my laptop")
         .await
         .unwrap();
     let got = tokio::time::timeout(Duration::from_secs(10), rx.recv())
@@ -472,11 +472,11 @@ async fn files_in_channels_dms_and_pictures() {
     // DM: kind 15, same round trip.
     let pdf = b"%PDF-1.7 pretend".to_vec();
     let dm = alice
-        .send_dm_file(bob.account().pubkey, &pdf, "application/pdf", "cv.pdf")
+        .send_dm_file(&[bob.account().pubkey], &pdf, "application/pdf", "cv.pdf")
         .await
         .unwrap();
     let got = eventually("bob gets the DM file", || async {
-        let msgs = bob.messages(alice.account().pubkey).await.ok()?;
+        let msgs = bob.messages(&[alice.account().pubkey]).await.ok()?;
         msgs.into_iter().find(|m| m.id == dm.id)?.attachment
     })
     .await;
@@ -501,4 +501,89 @@ async fn files_in_channels_dms_and_pictures() {
     let alice_seen = bob.peer(alice.account().pubkey).await;
     let url = alice_seen.picture.expect("alice's picture");
     assert_eq!(bob.picture(&url).await.unwrap(), png);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a running server, see the module docs"]
+async fn a_named_group_of_three() {
+    let (server, _) = setup();
+    let register = |name: &'static str| {
+        let server = server.clone();
+        async move {
+            Session::register(&temp_dir(name), &server, &unique(name))
+                .await
+                .unwrap()
+        }
+    };
+    let (alice, bob, carol) = (
+        register("alice").await,
+        register("bob").await,
+        register("carol").await,
+    );
+    let (pk_alice, pk_bob, pk_carol) = (
+        alice.account().pubkey,
+        bob.account().pubkey,
+        carol.account().pubkey,
+    );
+
+    // Creating the group is naming it: everyone sees it right away.
+    let named = alice
+        .name_group(&[pk_bob, pk_carol], "Projet")
+        .await
+        .unwrap();
+    assert_eq!(named.room.len(), 3);
+    for (who, session) in [("bob", &bob), ("carol", &carol)] {
+        let conv = eventually(&format!("{who} sees the group"), || async {
+            let convs = session.conversations().await.ok()?;
+            convs.into_iter().find(|c| c.room == named.room)
+        })
+        .await;
+        assert_eq!(conv.subject.as_deref(), Some("Projet"));
+    }
+
+    // Bob replies to the room; carol gets both, in order.
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let reply = bob.send_dm(&named.room, "je suis là").await.unwrap();
+    assert_eq!(reply.room, named.room);
+    let file = alice
+        .send_dm_file(&[pk_bob, pk_carol], b"plan", "text/plain", "plan.txt")
+        .await
+        .unwrap();
+    let got = eventually("carol gets the file", || async {
+        let msgs = carol.messages(&[pk_alice, pk_bob]).await.ok()?;
+        (msgs.len() == 3).then_some(msgs)
+    })
+    .await;
+    // Same-second messages have no defined order: match by id.
+    let by_id = |id| got.iter().find(|m| m.id == id).expect("message");
+    assert_eq!(by_id(reply.id).text, "je suis là");
+    let att = by_id(file.id).attachment.clone().expect("attachment");
+    assert_eq!(carol.open_attachment(&att, false).await.unwrap(), b"plan");
+
+    // Renaming: the latest name wins, for everyone.
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    alice.name_group(&named.room, "Projet 2").await.unwrap();
+    eventually("bob sees the new name", || async {
+        let convs = bob.conversations().await.ok()?;
+        let conv = convs.into_iter().find(|c| c.room == named.room)?;
+        (conv.subject.as_deref() == Some("Projet 2")).then_some(())
+    })
+    .await;
+
+    // A 1:1 with bob is its own conversation.
+    alice.send_dm(&[pk_bob], "rien qu'à toi").await.unwrap();
+    let convs = eventually("bob has two conversations", || async {
+        let convs = bob.conversations().await.ok()?;
+        (convs.len() == 2).then_some(convs)
+    })
+    .await;
+    assert_eq!(convs[0].last.text, "rien qu'à toi");
+    assert_eq!(convs[0].room.len(), 2);
+
+    // 11 members: refused before sending.
+    let crowd: Vec<_> = (0..10)
+        .map(|_| chaton_core::nostr::prelude::Keys::generate().public_key())
+        .collect();
+    let res = alice.send_dm(&crowd, "trop").await;
+    assert!(matches!(res, Err(Error::Invalid(_))), "{res:?}");
 }

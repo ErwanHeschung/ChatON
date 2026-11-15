@@ -28,9 +28,10 @@ export class RootChat {
   // Newest first for the bottom-up chat list.
   public readonly messages = computed<Message[]>(() => {
     if (!this.inChannel()) {
-      return [...this.dm.messages()]
-        .reverse()
-        .map((m) => this.message(m.id, m.sender, m.text, m.created_at, m.attachment));
+      return [...this.dm.messages()].reverse().map((m) => ({
+        ...this.message(m.id, m.sender, m.text, m.created_at, m.attachment),
+        subject: m.subject,
+      }));
     }
     const me = this.user.user()?.pubkey;
     const moderator = this.community.canModerate();

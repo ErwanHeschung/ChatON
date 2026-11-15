@@ -107,6 +107,21 @@
     "chat.show-image": " Afficher l'image ",
     "chat.save": "Enregistrer",
     "chat.save-failed": "Impossible d'enregistrer le fichier",
-    "community.change-picture": " Image "
+    "community.change-picture": " Image ",
+    "group.named": " {$INTERPOLATION} a nommé le groupe « {$INTERPOLATION_1} » ",
+    "group.new": "Nouveau groupe",
+    "group.title": "Nouveau groupe",
+    "group.name-placeholder": "Nom",
+    "group.name-label": "Nom du groupe",
+    "group.with": "Avec {$INTERPOLATION}",
+    "group.handles-placeholder": "@pseudo@instance, un par ligne",
+    "group.handles-label": "Membres",
+    "group.limits": " Jusqu'à 10 personnes, vous compris. Les membres ne changent plus ensuite : ajouter quelqu'un crée un nouveau groupe. ",
+    "group.create": "Créer",
+    "group.not-found": "Personne avec le handle {$INTERPOLATION}",
+    "group.invalid": "Un groupe a un nom et de 2 à 10 personnes",
+    "group.unreachable": "Impossible de joindre l'instance de chaque membre",
+    "group.rename": "Renommer",
+    "group.add-people": "Ajouter des personnes"
   }
 }

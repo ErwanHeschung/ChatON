@@ -24,7 +24,7 @@ Règle pour toute la feuille de route : chaque étape part d'une NIP et d'une bi
 | Communautés | NIP-29 (groupes hébergés par un relais) + NIP-51 (10009) | `fiatjaf.com/nostr/nip29` + règles maison |
 | Fichiers et médias | Blossom (BUD-01, 02) + NIP-17 kind 15 + NIP-92 `imeta` | `fiatjaf.com/nostr/khatru/blossom`, `nostr-blossom` (Rust), `aes-gcm` |
 | Auth HTTP (jeton LiveKit) | NIP-98 | `fiatjaf.com/nostr` |
-| E2EE des groupes | MLS sur Nostr (NIP-EE / Marmot) | openmls |
+| Groupes chiffrés | NIP-17 à plusieurs destinataires ; MLS (Marmot) plus tard | `nostr` (Rust) |
 
 Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape 4**. On avance donc une partie de l'étape 7, et on évite de construire des MP en clair qu'il faudrait jeter ensuite.
 
@@ -108,9 +108,16 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 - **Terminé quand :** une image et un PDF circulent dans un salon et dans un MP, et les photos de profil et de communauté s'affichent chez l'autre. Validé par `server/internal/media/media_test.go`, `core/tests/e2e.rs` (le serveur ne voit que du chiffré, mauvaise clé et mauvais hash refusés, hôte étranger refusé sans clic, fichier trop gros) et à la main dans deux fenêtres.
 - Plus tard : quotas par utilisateur, nettoyage des fichiers dont le message est supprimé, miniatures et dimensions, lecteur vidéo, progression de l'envoi, listes de serveurs Blossom (10063) et miroirs, téléchargement automatique entre instances (étape 10).
 
-## Étape 7 : E2EE des groupes
+## Étape 7 : conversations de groupe chiffrées ✅
 
-- Les groupes privés utilisent MLS (openmls dans core), en suivant NIP-EE / Marmot plutôt que d'inventer un format. Les communautés publiques restent en clair et sont modérées par leur hôte.
+- Prévu avec MLS via Marmot, mais Marmot n'est pas utilisable proprement aujourd'hui (2026-11-15) : la crate publiée `mdk-core` 0.8 dépend de nostr 0.44 (ChatON est en 0.45, deux jeux de types incompatibles) et d'openmls 0.8.1, que l'équipe MDK a dépassé pour des correctifs de sécurité. La version courante de MDK n'est pas publiée, épingle openmls sur un commit git et change plusieurs fois par jour ; la spec Marmot reste un brouillon.
+- Modèle (`spec/protocol.md` § 5, groupes) : groupes **NIP-17**, comme les groupes de MP de Discord. Le salon est {auteur} ∪ les `p` ; un emballage par membre, plus une copie pour moi. 10 membres au plus. Nom par le tag `subject` (créer un groupe, c'est le nommer). Les membres ne changent jamais : « ajouter des personnes » crée un nouveau groupe. Lisible par les autres clients NIP-17 (0xchat, Amethyst).
+- Les communautés restent en clair : leur instance modère et sert l'historique.
+- `core/src/dm.rs` : un message porte son `room` (membres triés) et son `subject`. `core/src/session.rs` : `send_dm`, `send_dm_file` et `messages` prennent les membres, `name_group` crée ou renomme, une conversation par salon. Si certains membres sont injoignables, ma copie part quand même et l'erreur le dit.
+- App : « Nouveau groupe » dans la liste des MP (nom + handles), groupes avec leur nom et leur taille, membres, « Renommer » et « Ajouter des personnes » à droite, renommages affichés comme des notes dans le fil.
+- **Terminé quand :** trois personnes discutent dans un groupe nommé (texte et fichier), le renomment, et un 1:1 entre deux d'entre elles reste à part. Validé par `core/src/dm.rs` (aller-retour à trois, plafonds, nom vide), `core/tests/e2e.rs` et à la main dans trois fenêtres.
+- Limites connues : pas de confidentialité persistante (comme les MP), membres figés, coût linéaire en nombre de membres.
+- Plus tard : MLS via Marmot quand il sera publié et stable (confidentialité persistante, membres modifiables) ; quitter ou masquer un groupe ; photo de groupe ; demandes de message des inconnus.
 
 ## Étape 8 : notifications push
 

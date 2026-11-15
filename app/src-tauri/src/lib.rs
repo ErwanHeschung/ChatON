@@ -251,8 +251,15 @@ async fn peer(state: State<'_, App>, pubkey: PublicKey) -> Res<Peer> {
 }
 
 #[tauri::command]
-async fn send_dm(state: State<'_, App>, pubkey: PublicKey, text: String) -> Res<Message> {
-    Ok(session(&state).await?.send_dm(pubkey, &text).await?)
+/// `room`: the conversation's members (me included or not): one person, or a group.
+async fn send_dm(state: State<'_, App>, room: Vec<PublicKey>, text: String) -> Res<Message> {
+    Ok(session(&state).await?.send_dm(&room, &text).await?)
+}
+
+/// Creates a group (its first event is its name) or renames it.
+#[tauri::command]
+async fn name_group(state: State<'_, App>, room: Vec<PublicKey>, subject: String) -> Res<Message> {
+    Ok(session(&state).await?.name_group(&room, &subject).await?)
 }
 
 #[tauri::command]
@@ -261,8 +268,8 @@ async fn conversations(state: State<'_, App>) -> Res<Vec<Conversation>> {
 }
 
 #[tauri::command]
-async fn messages(state: State<'_, App>, pubkey: PublicKey) -> Res<Vec<Message>> {
-    Ok(session(&state).await?.messages(pubkey).await?)
+async fn messages(state: State<'_, App>, room: Vec<PublicKey>) -> Res<Vec<Message>> {
+    Ok(session(&state).await?.messages(&room).await?)
 }
 
 #[tauri::command]
@@ -392,10 +399,15 @@ impl Upload {
 #[tauri::command]
 async fn send_dm_file(state: State<'_, App>, request: tauri::ipc::Request<'_>) -> Res<Message> {
     let file = Upload::from(&request)?;
-    let to = PublicKey::from_hex(file.get("pubkey")?).map_err(internal)?;
+    let room = file
+        .get("room")?
+        .split(',')
+        .map(PublicKey::from_hex)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(internal)?;
     Ok(session(&state)
         .await?
-        .send_dm_file(to, &file.bytes, file.get("mime")?, file.get("name")?)
+        .send_dm_file(&room, &file.bytes, file.get("mime")?, file.get("name")?)
         .await?)
 }
 
@@ -504,6 +516,7 @@ pub fn run() {
             search_handle,
             peer,
             send_dm,
+            name_group,
             conversations,
             messages,
             communities,

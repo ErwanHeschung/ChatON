@@ -5,9 +5,12 @@ import { Attachment } from '@models/Media.model';
 export interface DmMessage {
   id: string;
   sender: string;
-  receiver: string;
+  /** Every member, sender included, sorted by core: the conversation (spec § 5). */
+  room: string[];
   text: string;
   created_at: number;
+  /** Group name set by this message (empty text then). */
+  subject: string | null;
   attachment: Attachment | null;
 }
 
@@ -20,10 +23,15 @@ export interface Peer {
   picture: string | null;
 }
 
+/** A 1:1 (2 members) or a group (up to 10). */
 export interface Conversation {
-  peer: string;
+  room: string[];
+  subject: string | null;
   last: DmMessage;
 }
+
+/** One string per conversation, the same for every member. */
+export const roomKey = (room: string[]): string => room.join(',');
 
 /** Always the full handle (never a bare name, CLAUDE.md), else a shortened npub. */
 export function peerLabel(peer: Peer | undefined, pubkey: string): string {

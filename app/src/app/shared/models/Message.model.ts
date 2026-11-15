@@ -10,6 +10,8 @@ export interface Message {
   timestamp: Date;
   status: MessageStatus;
   attachment?: Attachment | null;
+  /** A group (re)naming: shown as a note, not a bubble. */
+  subject?: string | null;
   /** Shows a delete button: my own message, or I moderate the community. */
   deletable?: boolean;
 }

@@ -83,7 +83,7 @@ Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé
 - La sérialisation signée doit être **déterministe** (JSON canonique ou CBOR, voir les décisions ouvertes). Ne jamais signer un JSON sérialisé « au hasard ».
 - `spec/test-vectors/` contient des cas « entrée → octets sérialisés → signature attendue ». **Les tests Rust ET Go doivent les passer.** Ajoute un vecteur pour chaque nouveau type d'événement.
 - Chaque événement contient un champ de **version du protocole**.
-- Le chiffrement (MLS pour les groupes, chiffrement 1:1 pour les messages privés) est **uniquement dans `core/`**. Pas de MLS côté Go.
+- Le chiffrement (NIP-17 pour les messages privés et les groupes ; MLS plus tard) est **uniquement dans `core/`**. Rien de tel côté Go.
 
 ## Arborescence prévue
 
@@ -159,7 +159,7 @@ Le détail par étape est dans [`ROADMAP.md`](ROADMAP.md).
 4. **app** : inscription, connexion, recherche `@pseudo`, messages privés.
 5. Multi-appareil : liaison d'appareils et export de la clé (pas de coffre).
 6. Communautés : salons, rôles et permissions (événements signés), modération.
-7. Chiffrement de bout en bout : messages privés, puis groupes (openmls).
+7. Chiffrement de bout en bout : messages privés, puis groupes (NIP-17 ; MLS plus tard).
 8. Notifications push (plugin Tauri Swift/Kotlin + passerelle Go).
 9. Voix et vidéo (LiveKit).
 10. Fédération multi-instances, règles de blocage, migration de compte.
@@ -176,6 +176,7 @@ Tranchées le 2026-11-15 :
 - [x] Desktop : Tauri uniquement. GPUI seulement si une raison concrète apparaît.
 - [x] Attribution des handles : premier arrivé, premier servi, un handle par clé. Pas d'e-mail.
 - [x] Écriture sur le relais : utilisateurs locaux + MP qui leur sont adressés.
+- [x] **Groupes en NIP-17, MLS reporté** : Marmot (MLS sur Nostr) n'a pas de version publiée compatible (`mdk-core` 0.8 : nostr 0.44 et un openmls dépassé pour des raisons de sécurité). Groupes de 10 au plus, membres figés. On y reviendra quand Marmot sera stable.
 - [x] **Pas de coffre de clés** : un mot de passe fuité donnerait la clé pour toujours (une clé ne se révoque pas), et l'opérateur pourrait attaquer hors ligne les mots de passe faibles. Multi-appareil par liaison d'appareils, sauvegarde par export de la clé. Perdre tous ses appareils sans export = perdre le compte.
 
 Demande avant de trancher l'une de ces questions :

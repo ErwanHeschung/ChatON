@@ -101,17 +101,30 @@ Rejetées : **04** (ancien format de MP, qui fuit les métadonnées : remplacé 
 - Chiffrement **NIP-44 v2** uniquement, fait **exclusivement dans `core`**. `core` s'appuie sur `rust-nostr`, dont la suite de tests passe déjà les vecteurs officiels de NIP-44 (`nip44.vectors.json`). `core` teste l'aller-retour complet d'un MP et le rejet d'un sceau falsifié (`core/src/dm.rs`).
 - Le serveur ne voit que l'emballage : le destinataire (`p`), une clé d'expéditeur jetable, un horodatage légèrement aléatoire et un contenu chiffré.
 
+### Groupes
+
+Une conversation de groupe est un MP NIP-17 à plusieurs destinataires, comme les groupes de MP de Discord. Pas de MLS pour l'instant (voir plus bas).
+
+- **Salon** : l'ensemble {auteur} ∪ les `p` d'un kind 14 ou 15. On l'identifie par la liste triée des clés de ses membres, la même pour tous. Un MP à deux est le salon [moi, lui].
+- **Taille** : **10 membres au plus**, auteur compris. `core` refuse d'envoyer au-delà et ignore un message reçu pour un salon plus grand.
+- **Envoi** : un emballage par membre, vers ses relais, plus un vers moi pour mes autres appareils. La rumeur, donc son id, est la même pour tous.
+- **Nom** : tag `subject` de NIP-17, 100 caractères au plus. Le dernier `subject` vu dans le salon l'emporte. Nommer ou renommer envoie un kind 14 au contenu vide avec un `subject` (vecteur `group_dm_rumor`). Créer un groupe exige un nom et envoie cet événement, pour que les membres voient le groupe tout de suite. Un contenu vide n'est accepté qu'avec un `subject` ou un fichier.
+- **Membres** : la liste ne change jamais. Ajouter quelqu'un crée un nouveau salon, à l'historique vide. Personne ne peut être retiré.
+- Le coût grandit avec le nombre de membres (un emballage chacun), d'où la limite.
+
 ### Pourquoi le message (14) n'est pas signé
 
 Le sceau, signé par l'auteur, prouve au destinataire qui a écrit. Le message intérieur n'a pas de signature, donc **le message seul ne prouve rien** : une copie du texte déchiffré, une capture ou une base locale volée sans les sceaux ne peut pas être attribuée à l'auteur.
 
-**Ce n'est qu'un déni partiel, pas celui de Signal.** Un destinataire qui conserve le sceau et révèle la clé de conversation NIP-44 peut prouver à un tiers que l'auteur a bien envoyé ce contenu. Le sceau signé couvre le texte chiffré, et le MAC empêche de le faire déchiffrer en autre chose. Pour un déni complet, il faudrait des clés éphémères (type Signal ou MLS) : on y reviendra à l'étape 7.
+**Ce n'est qu'un déni partiel, pas celui de Signal.** Un destinataire qui conserve le sceau et révèle la clé de conversation NIP-44 peut prouver à un tiers que l'auteur a bien envoyé ce contenu. Le sceau signé couvre le texte chiffré, et le MAC empêche de le faire déchiffrer en autre chose. Pour un déni complet, il faudrait des clés éphémères (type Signal ou MLS) : MLS est reporté (voir ci-dessous).
 
 Conséquence : un kind 14 (ou 15) **portant une `sig` est rejeté** (vecteur `signed_rumor`), car une rumeur signée serait une preuve autonome.
 
 ### Limite connue : pas de confidentialité persistante
 
-NIP-17/44 utilisent les clés à long terme. **Si une clé privée fuit, tous les MP passés stockés par les relais deviennent déchiffrables.** On l'accepte pour la v0. MLS (étape 7) apporte la confidentialité persistante pour les groupes, et on réévaluera alors les MP.
+NIP-17/44 utilisent les clés à long terme. **Si une clé privée fuit, tous les MP et groupes passés stockés par les relais deviennent déchiffrables.** On l'accepte pour la v0.
+
+MLS (via Marmot) apporterait la confidentialité persistante et des membres modifiables. Il est **reporté** (2026-11-15) : la crate publiée `mdk-core` 0.8 dépend de nostr 0.44 et d'openmls 0.8.1, dont les correctifs de sécurité sont postérieurs, et la version courante de MDK n'est pas publiée et son spec reste un brouillon. On y reviendra quand Marmot sera publié et stable.
 
 ## 6. Validation à la réception
 
@@ -231,7 +244,7 @@ Les fichiers ne passent pas par le relais. Chaque instance expose un serveur **B
 - `x` = sha256 du fichier **chiffré** (son adresse Blossom), `ox` = sha256 du fichier **en clair**. Le client vérifie `x` avant de déchiffrer et `ox` après.
 - Comme le blob est illisible sans le message, il reste lisible par empreinte sans contrôle d'accès.
 
-**En message privé** : une rumeur NIP-17 de kind **15**, scellée et emballée comme un kind 14 (§ 5). Contenu = URL du fichier. Tags : `p`, `file-type` (type MIME), `encryption-algorithm` = `aes-gcm`, `decryption-key`, `decryption-nonce`, `x`, `ox`, `size` (octets, en clair), et `name` (nom d'origine, ajout ChatON).
+**En message privé** : une rumeur NIP-17 de kind **15**, scellée et emballée comme un kind 14 (§ 5). Contenu = URL du fichier. Tags : un `p` par destinataire (§ 5, groupes), `file-type` (type MIME), `encryption-algorithm` = `aes-gcm`, `decryption-key`, `decryption-nonce`, `x`, `ox`, `size` (octets, en clair), et `name` (nom d'origine, ajout ChatON).
 
 **Dans un salon** : un `9` (`["h", S]`) avec un tag NIP-92 `imeta` ; le contenu est une légende facultative.
 

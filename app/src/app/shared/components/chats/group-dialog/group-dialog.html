@@ -1,0 +1,46 @@
+<section>
+  <h2 i18n="@@group.title">New group</h2>
+  <form class="column" (submit)="$event.preventDefault(); submit(name, handles)">
+    <input
+      #name
+      maxlength="100"
+      placeholder="Name"
+      i18n-placeholder="@@group.name-placeholder"
+      aria-label="Group name"
+      i18n-aria-label="@@group.name-label"
+    />
+    @if (draft()) {
+      <p class="hint" i18n="@@group.with">With {{ draft() }}</p>
+    }
+    <textarea
+      #handles
+      rows="4"
+      placeholder="@pseudo@instance, one per line"
+      i18n-placeholder="@@group.handles-placeholder"
+      aria-label="Members"
+      i18n-aria-label="@@group.handles-label"
+      autocomplete="off"
+      spellcheck="false"
+    ></textarea>
+    <p class="hint" i18n="@@group.limits">
+      Up to 10 people, you included. Members can't change later: adding someone starts a new group.
+    </p>
+    <button class="btn" [disabled]="busy()" i18n="@@group.create">Create</button>
+  </form>
+</section>
+
+@switch (error()) {
+  @case (null) {}
+  @case ('not_found') {
+    <p class="error" i18n="@@group.not-found">No one with the handle {{ unknown() }}</p>
+  }
+  @case ('invalid') {
+    <p class="error" i18n="@@group.invalid">A group has a name and 2 to 10 people</p>
+  }
+  @case ('network') {
+    <p class="error" i18n="@@group.unreachable">Couldn't reach every member's instance</p>
+  }
+  @default {
+    <p class="error" i18n="@@form.unknown-error">Something went wrong. Please try again</p>
+  }
+}

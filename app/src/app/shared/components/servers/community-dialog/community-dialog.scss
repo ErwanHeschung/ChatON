@@ -24,3 +24,19 @@ input {
   margin: 0;
   color: var(--content-error);
 }
+
+// Shared with the group dialog.
+form.column {
+  flex-direction: column;
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--font-size-small);
+  color: var(--content-secondary);
+}
+
+textarea {
+  resize: vertical;
+  font: inherit;
+}

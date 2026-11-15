@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
 import { UserCard } from '@components/users/user-card/user-card';
+import { GroupDialog } from '@components/chats/group-dialog/group-dialog';
 import { AccountSettings } from '@components/account-settings/account-settings';
 import { Member, ROLE_ADMIN, ROLE_MODERATOR } from '@models/Community.model';
 import { UserShort } from '@models/User.model';
@@ -19,7 +20,7 @@ import { DmStore } from '@stores/dm.store';
 export class UsersList {
   private readonly account = inject(ConnectedUserStore);
   private readonly modalService = inject(ModalService);
-  private readonly dm = inject(DmStore);
+  protected readonly dm = inject(DmStore);
   protected readonly community = inject(CommunityStore);
 
   public readonly connectedUser = computed<UserShort>(() => ({
@@ -47,17 +48,36 @@ export class UsersList {
     });
   }
 
+  /** The open group's members (DM view only). */
+  public readonly groupMembers = computed(() =>
+    this.community.channel() === null && this.dm.isGroup() ? this.dm.room() : [],
+  );
+
+  public cardOf(pubkey: string): UserShort {
+    return {
+      id: pubkey,
+      username: this.dm.label(pubkey),
+      profilePicture: '/chatON-logo.svg',
+      picture: this.dm.peers()[pubkey]?.picture,
+    };
+  }
+
+  public rename(input: HTMLInputElement): void {
+    void this.dm.rename(input.value);
+  }
+
+  /** A new group, starting from these members: membership never changes (spec § 5). */
+  public addPeople(): void {
+    this.dm.setGroupDraft(this.dm.others(this.dm.selected() ?? ''));
+    this.modalService.open(GroupDialog);
+  }
+
   public openAccount(): void {
     this.modalService.open(AccountSettings);
   }
 
   public card(member: Member): UserShort {
-    return {
-      id: member.pubkey,
-      username: this.dm.label(member.pubkey),
-      profilePicture: '/chatON-logo.svg',
-      picture: this.dm.peers()[member.pubkey]?.picture,
-    };
+    return this.cardOf(member.pubkey);
   }
 
   public isMe(member: Member): boolean {

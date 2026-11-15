@@ -1,44 +1,50 @@
-@let avatar = message().senderPicture ? (media.picture(message().senderPicture!) | async) : null;
-@if (avatar) {
-  <img class="avatar" [src]="avatar" width="35" height="35" alt="" />
-} @else {
-  <img ngSrc="/chatON-logo.svg" width="35" height="35" alt="" />
-}
-<div class="message-wrapper">
-  <p class="username">
-    {{ message().senderName }}
-    @if (message().deletable) {
-      @if (confirming()) {
-        <button class="delete confirm" (click)="remove.emit()" i18n="@@chat.delete-confirm">
-          Delete?
-        </button>
-      } @else {
-        <button class="delete" (click)="confirming.set(true)" i18n="@@chat.delete">Delete</button>
-      }
-    }
+@if (message().subject && !message().text && !message().attachment) {
+  <p class="note" i18n="@@group.named">
+    {{ message().senderName }} named the group « {{ message().subject }} »
   </p>
-  @if (message().attachment; as file) {
-    @if (isImage(file)) {
-      <!-- '' : on another instance, fetched only on a click (no IP leak to the sender's pick). -->
-      @let src = media.image(file) | async;
-      @if (src) {
-        <img class="attachment" [src]="src" [alt]="file.name" />
-      } @else if (src === '') {
-        <button class="link" (click)="media.download(file)" i18n="@@chat.show-image">
-          Show the image
-        </button>
+} @else {
+  @let avatar = message().senderPicture ? (media.picture(message().senderPicture!) | async) : null;
+  @if (avatar) {
+    <img class="avatar" [src]="avatar" width="35" height="35" alt="" />
+  } @else {
+    <img ngSrc="/chatON-logo.svg" width="35" height="35" alt="" />
+  }
+  <div class="message-wrapper">
+    <p class="username">
+      {{ message().senderName }}
+      @if (message().deletable) {
+        @if (confirming()) {
+          <button class="delete confirm" (click)="remove.emit()" i18n="@@chat.delete-confirm">
+            Delete?
+          </button>
+        } @else {
+          <button class="delete" (click)="confirming.set(true)" i18n="@@chat.delete">Delete</button>
+        }
       }
+    </p>
+    @if (message().attachment; as file) {
+      @if (isImage(file)) {
+        <!-- '' : on another instance, fetched only on a click (no IP leak to the sender's pick). -->
+        @let src = media.image(file) | async;
+        @if (src) {
+          <img class="attachment" [src]="src" [alt]="file.name" />
+        } @else if (src === '') {
+          <button class="link" (click)="media.download(file)" i18n="@@chat.show-image">
+            Show the image
+          </button>
+        }
+      }
+      <div class="file">
+        <span class="name">{{ file.name }}</span>
+        <span class="size">{{ size(file.size) }}</span>
+        <button class="link" (click)="save(file)" i18n="@@chat.save">Save</button>
+        @if (saveFailed()) {
+          <span class="error" i18n="@@chat.save-failed">Couldn't save the file</span>
+        }
+      </div>
     }
-    <div class="file">
-      <span class="name">{{ file.name }}</span>
-      <span class="size">{{ size(file.size) }}</span>
-      <button class="link" (click)="save(file)" i18n="@@chat.save">Save</button>
-      @if (saveFailed()) {
-        <span class="error" i18n="@@chat.save-failed">Couldn't save the file</span>
-      }
-    </div>
-  }
-  @if (message().text) {
-    <p class="message">{{ message().text }}</p>
-  }
-</div>
+    @if (message().text) {
+      <p class="message">{{ message().text }}</p>
+    }
+  </div>
+}

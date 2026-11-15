@@ -55,9 +55,11 @@ pub struct Peer {
     pub relays: Vec<RelayUrl>,
 }
 
+/// A 1:1 or a group (spec § 5): its members, its latest name, its latest message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Conversation {
-    pub peer: PublicKey,
+    pub room: Vec<PublicKey>,
+    pub subject: Option<String>,
     pub last: Message,
 }
 
@@ -292,22 +294,28 @@ impl Session {
         peer
     }
 
-    /// Sends `text` to `to` (NIP-17) and returns the message as stored.
-    pub async fn send_dm(&self, to: PublicKey, text: &str) -> Result<Message> {
-        self.deliver_dm(to, dm::wrap(&self.keys, to, text)?).await
+    /// Sends `text` to `to`, one person or a group's members (NIP-17), and
+    /// returns the message as stored.
+    pub async fn send_dm(&self, to: &[PublicKey], text: &str) -> Result<Message> {
+        self.deliver(dm::wrap(&self.keys, to, text)?).await
+    }
+
+    /// Names a group, or renames it (spec § 5). Creating a group is naming it.
+    pub async fn name_group(&self, to: &[PublicKey], subject: &str) -> Result<Message> {
+        self.deliver(dm::wrap_subject(&self.keys, to, subject)?)
+            .await
     }
 
     /// Encrypts and uploads a file, then sends it to `to` (NIP-17 kind 15).
     pub async fn send_dm_file(
         &self,
-        to: PublicKey,
+        to: &[PublicKey],
         bytes: &[u8],
         mime: &str,
         name: &str,
     ) -> Result<Message> {
         let file = self.upload_attachment(bytes, mime, name).await?;
-        self.deliver_dm(to, dm::wrap_file(&self.keys, to, &file)?)
-            .await
+        self.deliver(dm::wrap_file(&self.keys, to, &file)?).await
     }
 
     /// Sets my profile picture (public, uploaded to my instance).
@@ -391,9 +399,31 @@ impl Session {
         Ok(bytes)
     }
 
-    async fn deliver_dm(&self, to: PublicKey, [to_peer, to_self]: [Event; 2]) -> Result<Message> {
-        let peer = self.peer(to).await;
+    /// Each member's gift wrap to their relays, then my copy to mine. The copy
+    /// goes out if anyone got the message; then an error names who didn't.
+    // ponytail: one member after the other (≤ 9). Send in parallel if it gets slow.
+    async fn deliver(&self, wraps: dm::Wraps) -> Result<Message> {
+        let mut failed = Vec::new();
+        for (to, gift) in &wraps.members {
+            if let Err(e) = self.send_to_inbox(*to, gift).await {
+                failed.push(e.to_string());
+            }
+        }
+        if failed.len() == wraps.members.len() {
+            return Err(Error::NotDelivered(failed.join("; ")));
+        }
+        self.client
+            .send_event(&wraps.to_self)
+            .to([self.account.relay.as_str()])
+            .await?;
+        if !failed.is_empty() {
+            return Err(Error::NotDelivered(failed.join("; ")));
+        }
+        dm::unwrap(&self.keys, &wraps.to_self)
+    }
 
+    async fn send_to_inbox(&self, to: PublicKey, gift: &Event) -> Result<()> {
+        let peer = self.peer(to).await;
         // ponytail: the peer's relays come from NIP-05 (their instance). Read their
         // 10050 list instead at step 10 (federation). Unverified peer: our own relay.
         let relays: Vec<String> = if peer.relays.is_empty() {
@@ -407,29 +437,25 @@ impl Session {
         }
         let out = self
             .client
-            .send_event(&to_peer)
+            .send_event(gift)
             .to(relays.iter().map(String::as_str))
             .await?;
         if out.success.is_empty() {
             return Err(Error::NotDelivered(format!("{:?}", out.failed)));
         }
-        self.client
-            .send_event(&to_self)
-            .to([self.account.relay.as_str()])
-            .await?;
-        dm::unwrap(&self.keys, &to_self)
+        Ok(())
     }
 
     /// Conversations, most recent first.
     pub async fn conversations(&self) -> Result<Vec<Conversation>> {
-        Ok(group(self.keys.public_key(), self.messages_all().await?))
+        Ok(group(self.messages_all().await?))
     }
 
-    /// Messages with `peer`, oldest first.
-    pub async fn messages(&self, peer: PublicKey) -> Result<Vec<Message>> {
-        let me = self.keys.public_key();
+    /// Messages of the conversation with `members` (me added), oldest first.
+    pub async fn messages(&self, members: &[PublicKey]) -> Result<Vec<Message>> {
+        let room = dm::room(self.keys.public_key(), members);
         let mut all = self.messages_all().await?;
-        all.retain(|m| m.peer(me) == peer);
+        all.retain(|m| m.room == room);
         Ok(all)
     }
 
@@ -545,15 +571,21 @@ fn nip05_url(address: &Nip05Address) -> String {
 }
 
 /// Last message per peer, most recent conversation first. `messages` is sorted oldest first.
-fn group(me: PublicKey, messages: Vec<Message>) -> Vec<Conversation> {
-    let mut last: HashMap<PublicKey, Message> = HashMap::new();
+/// One conversation per room. `messages` oldest first: the latest name wins.
+fn group(messages: Vec<Message>) -> Vec<Conversation> {
+    let mut rooms: HashMap<Vec<PublicKey>, Conversation> = HashMap::new();
     for m in messages {
-        last.insert(m.peer(me), m);
+        let c = rooms.entry(m.room.clone()).or_insert_with(|| Conversation {
+            room: m.room.clone(),
+            subject: None,
+            last: m.clone(),
+        });
+        if m.subject.is_some() {
+            c.subject.clone_from(&m.subject);
+        }
+        c.last = m;
     }
-    let mut conversations: Vec<Conversation> = last
-        .into_iter()
-        .map(|(peer, last)| Conversation { peer, last })
-        .collect();
+    let mut conversations: Vec<Conversation> = rooms.into_values().collect();
     conversations.sort_by_key(|c| std::cmp::Reverse(c.last.created_at));
     conversations
 }
@@ -603,31 +635,43 @@ mod tests {
     use nostr::event::FinalizeEvent;
 
     #[test]
-    fn groups_conversations_by_peer_latest_first() {
+    fn groups_conversations_by_room_latest_first() {
         let (me, bob, carol) = (Keys::generate(), Keys::generate(), Keys::generate());
-        let unwrap_mine = |sender: &Keys, receiver: &Keys, text: &str| {
-            let [to_receiver, to_self] = dm::wrap(sender, receiver.public_key(), text).unwrap();
-            let gift = if receiver.public_key() == me.public_key() {
-                to_receiver
-            } else {
-                to_self
-            };
+        let (pk_me, pk_bob, pk_carol) = (me.public_key(), bob.public_key(), carol.public_key());
+        // My copy of what I send, my wrap of what bob sends.
+        let mine = |wraps: dm::Wraps| dm::unwrap(&me, &wraps.to_self).unwrap();
+        let from_bob = |wraps: dm::Wraps| {
+            let (_, gift) = wraps
+                .members
+                .into_iter()
+                .find(|(pk, _)| *pk == pk_me)
+                .unwrap();
             dm::unwrap(&me, &gift).unwrap()
         };
         let mut msgs = vec![
-            unwrap_mine(&bob, &me, "1 from bob"),
-            unwrap_mine(&me, &carol, "2 to carol"),
-            unwrap_mine(&me, &bob, "3 to bob"),
+            from_bob(dm::wrap(&bob, &[pk_me], "1 from bob").unwrap()),
+            mine(dm::wrap_subject(&me, &[pk_bob, pk_carol], "Projet").unwrap()),
+            mine(dm::wrap(&me, &[pk_carol], "3 to carol").unwrap()),
+            from_bob(dm::wrap(&bob, &[pk_me, pk_carol], "4 in the group").unwrap()),
+            mine(dm::wrap(&me, &[pk_bob], "5 to bob").unwrap()),
         ];
         for (i, m) in msgs.iter_mut().enumerate() {
             m.created_at = Timestamp::from_secs(100 + i as u64);
         }
 
-        let convs = group(me.public_key(), msgs);
-        assert_eq!(convs.len(), 2);
-        assert_eq!(convs[0].peer, bob.public_key());
-        assert_eq!(convs[0].last.text, "3 to bob");
-        assert_eq!(convs[1].peer, carol.public_key());
+        let convs = group(msgs);
+        let rooms: Vec<_> = convs
+            .iter()
+            .map(|c| (c.room.len(), c.last.text.as_str()))
+            .collect();
+        // The 1:1 with bob and the group with bob stay apart.
+        assert_eq!(
+            rooms,
+            [(2, "5 to bob"), (3, "4 in the group"), (2, "3 to carol")]
+        );
+        assert_eq!(convs[1].subject.as_deref(), Some("Projet"));
+        assert_eq!(convs[0].room, dm::room(pk_me, &[pk_bob]));
+        assert_eq!(convs[0].subject, None);
     }
 
     #[tokio::test]

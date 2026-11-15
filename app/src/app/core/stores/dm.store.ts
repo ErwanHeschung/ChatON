@@ -1,22 +1,38 @@
-import { inject } from '@angular/core';
-import { patchState, signalStore, withHooks, withMethods, withState } from '@ngrx/signals';
+import { computed, inject } from '@angular/core';
+import {
+  patchState,
+  signalStore,
+  withComputed,
+  withHooks,
+  withMethods,
+  withState,
+} from '@ngrx/signals';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { CmdError } from '@models/Auth.model';
-import { Conversation, DmMessage, Peer, peerLabel } from '@models/Dm.model';
+import { Conversation, DmMessage, Peer, peerLabel, roomKey } from '@models/Dm.model';
 import { ConnectedUserStore } from '@stores/connected-user.store';
 import { MediaService } from '@services/media.service';
 
-/** Private conversations. Everything comes from core; nothing is decrypted here. */
+const code = (e: unknown): CmdError['code'] => (e as CmdError).code ?? 'internal';
+
+/** Private conversations, 1:1 and groups. Everything comes from core; nothing is decrypted here. */
 export const DmStore = signalStore(
   { providedIn: 'root' },
   withState({
     conversations: [] as Conversation[],
     peers: {} as Record<string, Peer>,
+    /** Room key (`roomKey`) of the open conversation. */
     selected: null as string | null,
     messages: [] as DmMessage[],
     searchError: null as CmdError['code'] | null,
     sendError: null as CmdError['code'] | null,
+    /** Members already in the group that "Add people" starts from. */
+    groupDraft: [] as string[],
+  }),
+  withComputed((store) => {
+    const room = computed(() => store.selected()?.split(',') ?? []);
+    return { room, isGroup: computed(() => room().length > 2) };
   }),
   withMethods((store, user = inject(ConnectedUserStore), media = inject(MediaService)) => {
     const resolvePeer = async (pubkey: string, refresh = false) => {
@@ -26,30 +42,58 @@ export const DmStore = signalStore(
       const peer = await invoke<Peer>('peer', { pubkey });
       patchState(store, (s) => ({ peers: { ...s.peers, [pubkey]: peer } }));
     };
+    const label = (pubkey: string) => peerLabel(store.peers()[pubkey], pubkey);
+    const others = (key: string) => key.split(',').filter((pk) => pk !== user.user()?.pubkey);
 
-    const select = async (pubkey: string | null) => {
-      patchState(store, { selected: pubkey, messages: [], sendError: null });
-      if (!pubkey) {
-        return;
-      }
-      const messages = await invoke<DmMessage[]>('messages', { pubkey });
-      if (store.selected() === pubkey) {
+    /** Messages of `key`, without clearing what's shown (after a send that partly failed). */
+    const reload = async (key: string) => {
+      const messages = await invoke<DmMessage[]>('messages', { room: key.split(',') });
+      if (store.selected() === key) {
         patchState(store, { messages });
+      }
+    };
+
+    const select = async (key: string | null) => {
+      patchState(store, { selected: key, messages: [], sendError: null });
+      if (key) {
+        await reload(key);
       }
     };
 
     // Same path for incoming (`dm` event) and sent messages.
     const receive = (message: DmMessage) => {
-      const me = user.user()?.pubkey;
-      const peer = message.sender === me ? message.receiver : message.sender;
-      patchState(store, (s) => ({
-        conversations: [{ peer, last: message }, ...s.conversations.filter((c) => c.peer !== peer)],
-        messages:
-          s.selected === peer && !s.messages.some((m) => m.id === message.id)
-            ? [...s.messages, message]
-            : s.messages,
-      }));
-      void resolvePeer(peer);
+      const key = roomKey(message.room);
+      patchState(store, (s) => {
+        const old = s.conversations.find((c) => roomKey(c.room) === key);
+        const conversation = {
+          room: message.room,
+          subject: message.subject ?? old?.subject ?? null,
+          last: message,
+        };
+        return {
+          conversations: [conversation, ...s.conversations.filter((c) => c !== old)],
+          messages:
+            s.selected === key && !s.messages.some((m) => m.id === message.id)
+              ? [...s.messages, message]
+              : s.messages,
+        };
+      });
+      message.room.forEach((pk) => void resolvePeer(pk));
+    };
+
+    /** Sends in the open conversation. Partly delivered: core kept my copy, show it. */
+    const deliver = async (send: (room: string[]) => Promise<DmMessage>) => {
+      const key = store.selected();
+      if (!key) {
+        return;
+      }
+      try {
+        receive(await send(key.split(',')));
+        patchState(store, { sendError: null });
+      } catch (e) {
+        patchState(store, { sendError: code(e) });
+        void reload(key);
+      }
     };
 
     return {
@@ -57,14 +101,23 @@ export const DmStore = signalStore(
       receive,
       /** Resolves a key's handle once, for `label` (also used for community members). */
       resolve: resolvePeer,
-      label: (pubkey: string) => peerLabel(store.peers()[pubkey], pubkey),
+      label,
+      others,
+
+      /** The group's name, else its other members' handles. */
+      title(key: string) {
+        const subject = store.conversations().find((c) => roomKey(c.room) === key)?.subject;
+        return subject ?? others(key).map(label).join(', ');
+      },
 
       async load() {
         const conversations = await invoke<Conversation[]>('conversations');
         patchState(store, { conversations });
-        await Promise.all(conversations.map((c) => resolvePeer(c.peer)));
+        const keys = new Set(conversations.flatMap((c) => c.room));
+        await Promise.all([...keys].map((pk) => resolvePeer(pk)));
       },
 
+      /** Finds `@pseudo@instance` and opens the 1:1 with them. */
       async search(handle: string) {
         try {
           const peer = await invoke<Peer>('search_handle', { handle });
@@ -72,36 +125,45 @@ export const DmStore = signalStore(
             peers: { ...s.peers, [peer.pubkey]: peer },
             searchError: null,
           }));
-          await select(peer.pubkey);
+          // Core sorts rooms by key bytes: the same order as lowercase hex strings.
+          await select(roomKey([user.user()?.pubkey ?? '', peer.pubkey].sort()));
         } catch (e) {
-          patchState(store, { searchError: (e as CmdError).code ?? 'internal' });
+          patchState(store, { searchError: code(e) });
         }
       },
 
       async send(text: string) {
-        const pubkey = store.selected();
-        if (!pubkey || !text.trim()) {
-          return;
-        }
-        try {
-          receive(await invoke<DmMessage>('send_dm', { pubkey, text }));
-          patchState(store, { sendError: null });
-        } catch (e) {
-          patchState(store, { sendError: (e as CmdError).code ?? 'internal' });
+        if (text.trim()) {
+          await deliver((room) => invoke<DmMessage>('send_dm', { room, text }));
         }
       },
 
       async sendFile(file: File) {
-        const pubkey = store.selected();
-        if (!pubkey) {
-          return;
-        }
+        await deliver((room) =>
+          media.upload<DmMessage>('send_dm_file', file, { room: room.join(',') }),
+        );
+      },
+
+      /** Creates a group (its first event is its name) and opens it. Null when done. */
+      async createGroup(members: string[], subject: string): Promise<CmdError['code'] | null> {
         try {
-          receive(await media.upload<DmMessage>('send_dm_file', file, { pubkey }));
-          patchState(store, { sendError: null });
+          const message = await invoke<DmMessage>('name_group', { room: members, subject });
+          receive(message);
+          await select(roomKey(message.room));
+          return null;
         } catch (e) {
-          patchState(store, { sendError: (e as CmdError).code ?? 'internal' });
+          return code(e);
         }
+      },
+
+      async rename(subject: string) {
+        if (subject.trim()) {
+          await deliver((room) => invoke<DmMessage>('name_group', { room, subject }));
+        }
+      },
+
+      setGroupDraft(members: string[]) {
+        patchState(store, { groupDraft: members });
       },
     };
   }),

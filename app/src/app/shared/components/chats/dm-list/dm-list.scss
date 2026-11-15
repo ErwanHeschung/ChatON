@@ -46,3 +46,16 @@
     outline: 2px solid var(--interaction-focus);
   }
 }
+
+.new-group {
+  all: unset;
+  cursor: pointer;
+  padding: 0 0.5rem;
+  font-size: var(--font-size-small);
+  color: var(--content-secondary);
+  text-decoration: underline;
+
+  &:focus-visible {
+    outline: 2px solid var(--content-primary);
+  }
+}

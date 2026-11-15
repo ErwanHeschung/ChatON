@@ -1,5 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject, OnDestroy, OnInit } from '@angular/core';
 import { UserCard } from '@components/users/user-card/user-card';
+import { GroupDialog } from '@components/chats/group-dialog/group-dialog';
+import { Conversation, roomKey } from '@models/Dm.model';
+import { UserShort } from '@models/User.model';
+import { ModalService } from '@services/modal.service';
 import { DmStore } from '@stores/dm.store';
 
 /** Left sidebar of the DM view: find `@pseudo@instance`, list conversations. */
@@ -12,6 +16,7 @@ import { DmStore } from '@stores/dm.store';
 })
 export class DmList implements OnInit, OnDestroy {
   public readonly dm = inject(DmStore);
+  private readonly modal = inject(ModalService);
 
   ngOnInit(): void {
     this.dm.load().catch(() => undefined);
@@ -32,12 +37,33 @@ export class DmList implements OnInit, OnDestroy {
     }
   }
 
-  public card(pubkey: string) {
+  public key(conversation: Conversation): string {
+    return roomKey(conversation.room);
+  }
+
+  /** A 1:1 shows the other person, a group its name and size. */
+  public card(conversation: Conversation): UserShort {
+    const key = roomKey(conversation.room);
+    const others = this.dm.others(key);
+    if (others.length > 1) {
+      const title = this.dm.title(key);
+      return {
+        id: key,
+        username: `${title} (${others.length + 1})`,
+        profilePicture: '/chatON-logo.svg',
+      };
+    }
+    const pubkey = others[0] ?? key;
     return {
       id: pubkey,
       username: this.dm.label(pubkey),
       profilePicture: '/chatON-logo.svg',
       picture: this.dm.peers()[pubkey]?.picture,
     };
+  }
+
+  public newGroup(): void {
+    this.dm.setGroupDraft([]);
+    this.modal.open(GroupDialog);
   }
 }

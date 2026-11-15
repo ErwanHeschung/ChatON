@@ -20,16 +20,18 @@
   }
 }
 
+<button type="button" class="new-group" (click)="newGroup()" i18n="@@group.new">New group</button>
+
 <nav class="conversations">
-  @for (conversation of dm.conversations(); track conversation.peer) {
+  @for (conversation of dm.conversations(); track key(conversation)) {
     <button
       type="button"
       class="conversation"
-      [class.selected]="conversation.peer === dm.selected()"
-      [attr.aria-current]="conversation.peer === dm.selected() ? 'true' : null"
-      (click)="dm.select(conversation.peer)"
+      [class.selected]="key(conversation) === dm.selected()"
+      [attr.aria-current]="key(conversation) === dm.selected() ? 'true' : null"
+      (click)="dm.select(key(conversation))"
     >
-      <app-user-card [user]="card(conversation.peer)"></app-user-card>
+      <app-user-card [user]="card(conversation)"></app-user-card>
     </button>
   } @empty {
     <p class="empty" i18n="@@dm.empty">No conversations yet. Search someone above.</p>

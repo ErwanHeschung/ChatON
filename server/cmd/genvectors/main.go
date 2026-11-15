@@ -28,6 +28,7 @@ var (
 	bob   = key(2)
 	ephem = key(3) // gift wrap throwaway key
 	relay = key(4) // relay key (NIP-11 self): signs group state (39000+)
+	carol = key(5)
 	v0    = nostr.Tag{"v", "0"}
 )
 
@@ -181,6 +182,8 @@ func generate() []byte {
 		valid("dm_file_rumor", alice, 15, nostr.Tags{v0, {"p", bob.pk}, {"file-type", "image/png"}, {"encryption-algorithm", "aes-gcm"},
 			{"decryption-key", fileKey}, {"decryption-nonce", fileNonce}, {"x", fileX}, {"ox", fileOX}, {"size", "1234"}, {"name", "chat.png"}},
 			"https://chaton.example/"+fileX),
+		// group DM (spec § 5): room = author + every p; naming event = empty content + subject
+		valid("group_dm_rumor", alice, 14, nostr.Tags{v0, {"p", bob.pk}, {"p", carol.pk}, {"subject", "Projet"}}, ""),
 		valid("group_file_message", bob, 9, nostr.Tags{v0, {"h", channel1}, {"imeta", "url https://chaton.example/" + fileX, "m image/png",
 			"x " + fileX, "ox " + fileOX, "size 1234", "name chat.png", "encryption-algorithm aes-gcm",
 			"decryption-key " + fileKey, "decryption-nonce " + fileNonce}}, "Regardez !"),

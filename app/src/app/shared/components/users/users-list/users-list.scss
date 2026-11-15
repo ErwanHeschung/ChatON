@@ -59,3 +59,32 @@
 .danger {
   color: var(--content-error);
 }
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+
+  form {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  input {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.link {
+  all: unset;
+  cursor: pointer;
+  font-size: var(--font-size-small);
+  color: var(--content-secondary);
+  text-decoration: underline;
+
+  &:focus-visible {
+    outline: 2px solid var(--content-primary);
+  }
+}

@@ -3,6 +3,26 @@
 </button>
 
 <ul class="members">
+  @if (groupMembers().length) {
+    <li class="group">
+      <form (submit)="$event.preventDefault(); rename(name)">
+        <input
+          #name
+          maxlength="100"
+          [value]="dm.title(dm.selected() ?? '')"
+          aria-label="Group name"
+          i18n-aria-label="@@group.name-label"
+        />
+        <button class="link" i18n="@@group.rename">Rename</button>
+      </form>
+      <button class="link" (click)="addPeople()" i18n="@@group.add-people">Add people</button>
+    </li>
+    @for (pubkey of groupMembers(); track pubkey) {
+      <li class="member">
+        <app-user-card [user]="cardOf(pubkey)"></app-user-card>
+      </li>
+    }
+  }
   @for (member of members(); track member.pubkey) {
     <li class="member">
       <app-user-card [user]="card(member)"></app-user-card>
