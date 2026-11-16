@@ -27,7 +27,9 @@
       <p class="error" i18n="@@chat.too-large">File too large (25 MB max)</p>
     }
     @default {
-      <p class="error" i18n="@@form.unknown-error">Something went wrong. Please try again</p>
+      <p class="error" i18n="@@form.unknown-error">
+        Something went wrong. Try again, it works on my machine.
+      </p>
     }
   }
 </section>
@@ -42,7 +44,7 @@
         </p>
       }
       @case ('pending') {
-        <p class="hint" i18n="@@push.pending">Setting up…</p>
+        <p class="hint" i18n="@@push.pending">Loading the loading screen…</p>
       }
       @case ('no_distributor') {
         <p class="hint" i18n="@@push.no-distributor">
@@ -98,7 +100,7 @@
           }
           @default {
             <ng-container i18n="@@form.unknown-error"
-              >Something went wrong. Please try again</ng-container
+              >Something went wrong. Try again, it works on my machine.</ng-container
             >
           }
         }

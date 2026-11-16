@@ -136,11 +136,11 @@ Source de vérité du code : `app/src/styles/_tokens.scss` (valeurs), `_base.scs
 
 L'identité tient dans des motifs de chat, chacun avec un sens :
 - **Le chat** : le logo (`/chatON-logo.svg`) : bouton des messages privés, intro des salons, écran vide. Les yeux restent des trous dans la tête blanche : pas de lueur.
-- **Oreilles** : la communauté ouverte devient une tête de chat (contour vert, voir Rail) ; **mon** avatar est découpé en tête de chat (`app-avatar [ears]`, masque SVG, même encombrement que le cercle) : une photo remplit aussi les oreilles. Panneau du compte, mes messages, listes de membres. Les oreilles, c'est moi ; nulle part ailleurs.
+- **Oreilles** : **mon** avatar est découpé en tête de chat (`app-avatar [ears]`, masque SVG, même encombrement que le cercle) : une photo remplit aussi les oreilles. Panneau du compte, mes messages, listes de membres. Les oreilles, c'est moi ; nulle part ailleurs.
 - **Moustaches** : de part et d'autre du jour dans l'historique.
 - **Pattes** (`app-paw-trail`, icône Lucide `PawPrint`) : un chat est passé par là. États vides (rien d'ouvert, pas de conversation, pas de communauté), attente (création d'invitation), 404. Les empreintes s'allument une à une, sans bouger si le mouvement est réduit.
 - **Lucioles** : accueil, bas du rail.
-- **Texte** : un clin d'œil au plus par écran vide (« Le chat fait la sieste. »), jamais dans les erreurs ni les actions.
+- **Texte** : ton geek, culture mème : écrans vides (« It's dangerous to go alone! », « Pas un chat ici. »), attentes (« Loading the loading screen… »), 404 (« Must have been the wind. ») et erreur générique (« it works on my machine »). Un clin d'œil par endroit, et la phrase dit toujours quoi faire. Jamais dans les erreurs précises (clé, réseau, identifiant), ni sur les boutons d'action hors de la 404.
 
 ChatON est un outil qu'on garde ouvert des heures : l'interface s'efface derrière les conversations. La navigation (rail, colonne) est posée sur un **cadre** plus sombre ; la conversation ouverte est une **feuille** arrondie, encastrée dans ce cadre. Une seule famille de caractères (Inter), des surfaces qui se distinguent par leur valeur (plus clair = plus proche) plutôt que par des ombres. Le vert `#3ee07f` est l'identité du produit (le dégradé de l'accueil, les lucioles) et la seule couleur d'accent.
 
@@ -158,7 +158,7 @@ Un réseau fédéré expose des identités qui se ressemblent : `erwan@a.fr` et 
 Nuit bleu-violet en six paliers, un vert franc, un rouge doux pour le danger. Le cadre est uni : une seule couleur de fond autour de la feuille, barre de titre comprise.
 
 ### Primary
-- **Vert** (#3ee07f) `--accent` : bouton principal (un par écran au plus), anneau et oreilles de la communauté ouverte, focus clavier. Texte posé dessus : `--accent-ink` (#04230f, 10:1). `--accent-rgb` pour les transparences (`rgb(var(--accent-rgb) / .3)`).
+- **Vert** (#3ee07f) `--accent` : bouton principal (un par écran au plus), anneau de la communauté ouverte, focus clavier. Texte posé dessus : `--accent-ink` (#04230f, 10:1). `--accent-rgb` pour les transparences (`rgb(var(--accent-rgb) / .3)`).
 - **Vert clair** (#6cf0a0) `--accent-hover` / `--accent-text` : survol du bouton principal ; texte vert (mon propre nom dans les messages, nom du salon dans l'intro, icône du salon actif, liens).
 - **Vert voilé** (`rgb(62 224 127 / .14)`) `--accent-subtle` : ligne sélectionnée (en dégradé qui s'éteint vers la droite), onglet actif, halo des champs au focus.
 
@@ -260,7 +260,7 @@ Nomme un groupe de lignes (« SALONS », « ADMINS — 1 »), avec au besoin un 
 Avec `CdkMenu` : actions de la communauté (Inviter, Changer l'image, Quitter). Nuit levée, ombre popover ; `.menu-item.danger` pour le destructif. Un élément de menu ferme toujours le menu : une confirmation passe par un dialogue (`LeaveDialog`).
 
 ### Rail (`app-community-rail`)
-Le chat (`/chatON-logo.svg`) mène aux messages privés, puis les communautés en tuiles carrées lg, puis « + ». Sélection = la tuile devient une **tête de chat** : un seul contour vert de 2 px (masque SVG dans `community-rail.scss`), détaché par 2 px de cadre, dont les oreilles sortent des côtés comme sur le logo. Il remplace l'anneau carré, sans lueur. L'image n'est jamais recouverte. Quelques lucioles fixes en bas du rail. Infobulle à droite.
+Le chat (`/chatON-logo.svg`) mène aux messages privés, puis les communautés en tuiles carrées lg, puis « + ». Sélection = un anneau vert de 2 px autour de la tuile, détaché par 2 px de cadre, sans lueur. L'image n'est jamais recouverte. Quelques lucioles fixes en bas du rail. Infobulle à droite.
 
 ### Barre de titre (`app-titlebar`)
 Desktop seulement : les décorations natives sont désactivées (`decorations: false`), l'app dessine ses propres contrôles. Transparente, elle flotte au-dessus de la page (au-dessus des dialogues aussi) ; les layouts réservent `--titlebar-height` en `padding-top` (0 sans barre, ce qui laisse téléphone et navigateur intacts), leur fond passe donc dessous ; tout le vide sert à déplacer la fenêtre (double-clic : agrandir). À droite, Réduire, Agrandir, Fermer en `.btn-ghost.btn-icon.btn-sm` (Lucide `Minus`, `Square`, `X`) ; Fermer survole en corail.
@@ -302,5 +302,5 @@ npub, nsec, invitations : mono, puits, coupure n'importe où, sélection en un c
 - **Don't** de `--content-tertiary` pour du texte lisible.
 - **Don't** d'ombre sur ce qui ne flotte pas.
 - **Don't** de glyphe Unicode ou d'émoji comme icône : Lucide uniquement (`PawPrint` et `Cat` compris).
-- **Don't** de motif de chat sans sens : des oreilles marquent « moi », « ouvert » ou « à l'écoute » ; des pattes, une absence ou une attente.
+- **Don't** de motif de chat sans sens : des oreilles marquent « moi » ou « à l'écoute » ; des pattes, une absence ou une attente.
 - **Don't** de `100vh` (préférer `100dvh`), ni de largeur en `%` dans un dialogue.
