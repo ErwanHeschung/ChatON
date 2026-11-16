@@ -155,7 +155,7 @@ Un réseau fédéré expose des identités qui se ressemblent : `erwan@a.fr` et 
 
 ## Colors
 
-Nuit bleu-violet en six paliers, un vert franc, un rouge doux pour le danger. Le cadre porte un crépuscule discret en bas à gauche (`--frame-glow`).
+Nuit bleu-violet en six paliers, un vert franc, un rouge doux pour le danger. Le cadre est uni : une seule couleur de fond autour de la feuille, barre de titre comprise.
 
 ### Primary
 - **Vert** (#3ee07f) `--accent` : bouton principal (un par écran au plus), anneau et oreilles de la communauté ouverte, focus clavier. Texte posé dessus : `--accent-ink` (#04230f, 10:1). `--accent-rgb` pour les transparences (`rgb(var(--accent-rgb) / .3)`).
@@ -166,7 +166,7 @@ Nuit bleu-violet en six paliers, un vert franc, un rouge doux pour le danger. Le
 - **Cadre** (#09081a) `--surface-frame` : rail des communautés et colonne de navigation, autour de la feuille.
 - **Puits** (#0c0b20) `--surface-sunken` : intérieur des champs, barre de saisie, panneau du compte, clés affichées.
 - **Panneau** (#100f27) `--surface-panel` : membres, dans la feuille, un cran sous la conversation.
-- **Nuit** (#14132e) `--surface-base` : la feuille (conversation ouverte) et les pages publiques.
+- **Nuit** (#14132e) `--surface-base` : les pages publiques. La feuille (conversation ouverte) garde le fond du cadre : une seule couleur de fond, la bordure dessine la feuille.
 - **Nuit levée** (#211f45) `--surface-raised` : boutons, cartes de fichier, dialogues, menus, infobulles, sélecteur d'émojis.
 - **Nuit survolée** (#2b2956) `--surface-hover` : survol d'un élément levé.
 - **Lune** (#f2f0ff) `--content-primary` : texte (16:1).
@@ -210,7 +210,7 @@ Nuit bleu-violet en six paliers, un vert franc, un rouge doux pour le danger. Le
 
 - **Grille de 4 px** : `--space-1` (4) à `--space-12` (48). Petit écart dans un groupe (`--space-1`/`-2`), grand entre les groupes (`--space-4`/`-6`).
 - **Coquille de chat** (`chat.layout`) : `rail` (`--rail-width`, 4,5rem) | `sidebar` (`--sidebar-width`, 15rem) | feuille, hauteur `100dvh`, sur `--surface-frame`. La feuille a une marge `--space-2`, un rayon lg et une bordure `--border-subtle` ; elle contient l'en-tête (`--header-height`, 3rem), la conversation et les membres (`--members-width`, 15rem). Le haut de la colonne (nom de la communauté ou recherche) s'aligne sur l'en-tête de la feuille.
-- **Ce qui est ouvert** : `ShellService` (`core/services`) tient la conversation ouverte (pour l'en-tête, l'intro, le placeholder), `chatOpen` (téléphone) et `members` (panneau affiché, par défaut à partir de 1280 px).
+- **Ce qui est ouvert** : `ShellService` (`core/services`) tient la conversation ouverte (pour l'en-tête, l'intro, le placeholder), `chatOpen` (téléphone) et `members` (panneau affiché, par défaut à partir de 1024 px, là où il ne recouvre pas la conversation).
 - **Listes** : lignes de 32 à 40 px, 2 px entre elles, `--space-2` de marge intérieure ; regroupées sous des `.section-label`.
 - **Messages** : à plat, avatar 40 px + texte, puis la pièce jointe. Une image s'affiche seule (Enregistrer dans la barre d'actions au survol) ; un autre fichier, en carte. Heure seule : le séparateur donne le jour. Un message du même auteur à moins de 7 min, le même jour, continue le groupe (ni avatar ni nom, heure au survol dans la gouttière). `--space-4` avant chaque groupe. Mon nom en `--accent-text`. Séparateur de jour entre deux paires de moustaches. Intro en tête de l'historique. Liste ancrée en bas (`column-reverse`).
 - **Téléphone (< 768)** : une vue à la fois. Rail + colonne ; un tap sur un salon ou une conversation ouvre la feuille en plein écran, avec ← dans l'en-tête.
@@ -262,11 +262,17 @@ Avec `CdkMenu` : actions de la communauté (Inviter, Changer l'image, Quitter). 
 ### Rail (`app-community-rail`)
 Le chat (`/chatON-logo.svg`) mène aux messages privés, puis les communautés en tuiles carrées lg, puis « + ». Sélection = la tuile devient une **tête de chat** : un seul contour vert de 2 px (masque SVG dans `community-rail.scss`), détaché par 2 px de cadre, dont les oreilles sortent des côtés comme sur le logo. Il remplace l'anneau carré, sans lueur. L'image n'est jamais recouverte. Quelques lucioles fixes en bas du rail. Infobulle à droite.
 
+### Barre de titre (`app-titlebar`)
+Desktop seulement : les décorations natives sont désactivées (`decorations: false`), l'app dessine ses propres contrôles. Transparente, elle flotte au-dessus de la page (au-dessus des dialogues aussi) ; les layouts réservent `--titlebar-height` en `padding-top` (0 sans barre, ce qui laisse téléphone et navigateur intacts), leur fond passe donc dessous ; tout le vide sert à déplacer la fenêtre (double-clic : agrandir). À droite, Réduire, Agrandir, Fermer en `.btn-ghost.btn-icon.btn-sm` (Lucide `Minus`, `Square`, `X`) ; Fermer survole en corail.
+
 ### En-tête de conversation (`app-chat-header`)
 `#` + nom pour un salon ; avatar + handle + pastille « Chiffré de bout en bout » (cadenas vert) pour un MP ; nom + nombre de personnes pour un groupe. À droite, bascule des membres (`aria-pressed`). ← sur téléphone.
 
 ### Messages (`app-chat-bubble`)
 Pas de bulle. Survol = `--state-hover` sur toute la ligne, barre d'actions flottante en haut à droite (supprimer, confirmation au second clic). Fichiers en carte levée, images rayon md.
+
+### Sélecteur d'émojis (`app-emoji-select`)
+Émojis **Twemoji** (dépôt officiel maintenu `jdecked/twemoji`), en images SVG servies par l'app : `scripts/twemoji.mjs` les récupère avant `start` et `build` (tag épinglé et sha256) dans `public/twemoji`, non versionné. Pas de CDN (CSP, vie privée, hors ligne). Même dessin sur tous les systèmes. Dans les messages, `EmojiTextPipe` (`@twemoji/parser`) découpe le texte et remplace chaque émoji par son image (taille d'un glyphe, `alt` = l'émoji) ; le champ de saisie, lui, garde l'émoji du système. Le sélecteur ne propose que ce que Twemoji dessine. Noms et recherche dans la langue de l'app (`emojibase-data` fr/en, chargé à la première ouverture). Recherche en tête, onglets en icônes Lucide (jamais un émoji comme icône) qui suivent le défilement, sections sous des `.section-label` collants, aperçu du survol en pied. Un clic insère au curseur ; le sélecteur reste ouvert (dehors ou Échap le ferment). Crédit Twemoji (CC BY 4.0) dans les paramètres du compte.
 
 ### Avatar (`app-avatar`)
 Image de l'instance (via core) ou initiale sur une teinte dérivée de `seed` (clé publique, id de communauté) : la même clé garde toujours la même couleur. `size` sm / md / lg / xl, `shape` circle / square.

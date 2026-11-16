@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
+    "prestart": "node scripts/twemoji.mjs",
     "start": "ng serve",
+    "prebuild": "node scripts/twemoji.mjs",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
@@ -39,7 +41,7 @@
     "@ngrx/signals": "^22.0.1",
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-dialog": "^2.8.4",
-    "@twemoji/api": "^17.0.3",
+    "@twemoji/parser": "17.0.2",
     "emojibase-data": "^18.0.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.9.1"

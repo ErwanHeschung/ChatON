@@ -159,6 +159,12 @@
     "chat.message-to-channel": "Message dans #{$name}",
     "chat.message-to": "Message à {$name}",
     "leave.cancel": "Annuler",
-    "chat.nothing": " Le chat fait la sieste. Choisissez une conversation à gauche, ou trouvez quelqu’un par son @pseudo@instance. "
+    "chat.nothing": " Le chat fait la sieste. Choisissez une conversation à gauche, ou trouvez quelqu’un par son @pseudo@instance. ",
+    "window.minimize": "Réduire",
+    "window.maximize": "Agrandir",
+    "window.close": "Fermer",
+    "emoji.search": "Rechercher",
+    "emoji.none": "Aucun émoji trouvé.",
+    "credits.emoji": "Émojis : Twemoji, par Twitter, Inc. et ses contributeurs, CC BY 4.0."
   }
 }

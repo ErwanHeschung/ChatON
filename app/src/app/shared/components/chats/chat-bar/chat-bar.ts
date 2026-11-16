@@ -46,6 +46,12 @@ export class ChatBar {
     }
   }
 
+  /** At the caret (replacing a selection); the picker stays open for more. */
+  public insert(input: HTMLInputElement, emoji: string): void {
+    const end = input.value.length;
+    input.setRangeText(emoji, input.selectionStart ?? end, input.selectionEnd ?? end, 'end');
+  }
+
   public submit(input: HTMLInputElement): void {
     if (input.value.trim()) {
       this.send.emit(input.value);

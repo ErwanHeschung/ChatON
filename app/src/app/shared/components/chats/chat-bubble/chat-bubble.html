@@ -29,7 +29,17 @@
       </p>
     }
     @if (message().text) {
-      <p class="text">{{ message().text }}</p>
+      <!-- Emoji as Twemoji images (alt = the emoji, so copying keeps it); ng-container keeps
+           the text exact under pre-wrap. -->
+      <p class="text">
+        @for (part of message().text | emojiText; track $index) {
+          @if (part.src) {
+            <img class="emoji" [src]="part.src" [alt]="part.text" draggable="false" />
+          } @else {
+            <ng-container>{{ part.text }}</ng-container>
+          }
+        }
+      </p>
     }
     @if (message().attachment; as file) {
       @let src = isImage(file) ? (media.image(file) | async) : null;

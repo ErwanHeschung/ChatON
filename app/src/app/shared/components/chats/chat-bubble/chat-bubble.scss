@@ -77,6 +77,14 @@ time {
   overflow-wrap: anywhere;
 }
 
+// A Twemoji image the size of a glyph, on the baseline.
+img.emoji {
+  width: 1.375em;
+  height: 1.375em;
+  margin: 0 0.05em;
+  vertical-align: -0.3em;
+}
+
 img.attachment {
   max-width: min(24rem, 100%);
   max-height: 20rem;

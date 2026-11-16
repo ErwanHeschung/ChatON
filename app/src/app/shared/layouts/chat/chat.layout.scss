@@ -9,7 +9,8 @@
   grid-template-rows: minmax(0, 1fr) auto;
   grid-template-columns: var(--rail-width) var(--sidebar-width) minmax(0, 1fr);
   height: 100dvh;
-  background: var(--frame-glow), var(--surface-frame);
+  padding-top: var(--titlebar-height);
+  background: var(--surface-frame);
 }
 
 .rail {
@@ -47,7 +48,9 @@
   overflow: hidden;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  background-color: var(--surface-base);
+  background-color: var(
+    --surface-frame
+  ); /* one background for the whole app; the border draws the sheet */
 }
 
 .sheet-header {

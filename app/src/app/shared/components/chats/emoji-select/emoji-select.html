@@ -1,39 +1,58 @@
-<div class="emoji-picker-container">
-  <div class="emoji-tabs">
-    @for (category of emojiData(); track category.name) {
-      <button
-        (click)="activeCategory.set(category.name)"
-        [class.active]="category.name === activeCategory()"
-        class="tab-btn"
-        type="button"
-        appTooltip="{{ category.name }}"
-      >
-        <img
-          ngSrc="{{ category.icon.hexcode | twemojiUrl }}"
-          class="emoji-img"
-          width="32"
-          height="32"
-          alt="{{ category.name }}"
-        />
-      </button>
-    }
-  </div>
+<input
+  #search
+  type="search"
+  i18n-placeholder="@@emoji.search"
+  placeholder="Search"
+  i18n-aria-label="@@emoji.search"
+  aria-label="Search"
+  [value]="query()"
+  (input)="query.set(search.value); list.scrollTop = 0"
+/>
 
-  <div class="emoji-list">
-    <cdk-virtual-scroll-viewport itemSize="48" class="emoji-viewport">
-      <div *cdkVirtualFor="let row of emojiRows()" class="emoji-row">
-        @for (emoji of row; track emoji.hexcode) {
-          <button type="button" class="emoji-btn" (click)="emojiSelect.emit(emoji)">
-            <img
-              [ngSrc]="emoji.hexcode | twemojiUrl"
-              class="emoji-img"
-              width="32"
-              height="32"
-              [alt]="emoji.label"
-            />
+<nav class="tabs">
+  @for (group of groups(); track group.key) {
+    <button
+      type="button"
+      class="btn btn-ghost btn-icon btn-sm"
+      [appTooltip]="group.name"
+      [attr.aria-label]="group.name"
+      [attr.aria-pressed]="group.key === active()"
+      (click)="jump(group.key)"
+    >
+      <svg [lucideIcon]="icons[group.key]" size="18"></svg>
+    </button>
+  }
+</nav>
+
+<div #list class="list" (scroll)="track(list)" (mouseleave)="hovered.set(null)">
+  @for (group of shown(); track group.key) {
+    <section [attr.data-group]="group.key">
+      <h3 class="section-label">{{ group.name }}</h3>
+      <div class="grid">
+        @for (emoji of group.emojis; track emoji.unicode) {
+          <button
+            type="button"
+            class="emoji"
+            [attr.aria-label]="emoji.label"
+            (mouseenter)="hovered.set(emoji)"
+            (focus)="hovered.set(emoji)"
+            (click)="pick.emit(emoji.unicode)"
+          >
+            <img [src]="emoji.src" alt="" loading="lazy" draggable="false" />
           </button>
         }
       </div>
-    </cdk-virtual-scroll-viewport>
-  </div>
+    </section>
+  } @empty {
+    @if (groups().length) {
+      <p class="empty" i18n="@@emoji.none">No emoji found.</p>
+    }
+  }
 </div>
+
+<footer>
+  @if (hovered(); as emoji) {
+    <img class="preview" [src]="emoji.src" alt="" />
+    <span class="label">{{ emoji.label }}</span>
+  }
+</footer>

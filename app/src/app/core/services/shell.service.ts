@@ -23,8 +23,8 @@ export class ShellService {
 
   /** Phones: the conversation instead of the lists, after a tap on a row. */
   public readonly chatOpen = signal(false);
-  /** Members panel: shown by default on wide screens only. */
-  public readonly members = signal(globalThis.matchMedia?.('(min-width: 1280px)').matches ?? true);
+  /** Members panel: shown by default wherever it sits beside the conversation (not over it). */
+  public readonly members = signal(globalThis.matchMedia?.('(min-width: 1024px)').matches ?? true);
 
   public readonly conversation = computed<OpenConversation | null>(() => {
     const id = this.community.channel();

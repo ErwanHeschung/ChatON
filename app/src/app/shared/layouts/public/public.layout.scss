@@ -4,6 +4,7 @@
   align-items: center;
   justify-content: center;
   min-height: 100dvh;
+  padding-top: var(--titlebar-height);
   width: 100%;
   background: linear-gradient(to bottom, var(--surface-base) 70%, var(--accent) 150%);
 }

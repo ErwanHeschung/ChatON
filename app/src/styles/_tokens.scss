@@ -12,11 +12,6 @@
   --surface-raised: #211f45; /* file cards, dialogs, popovers, tooltips, menus */
   --surface-hover: #2b2956; /* hover on a raised surface */
   --surface-overlay: rgb(4 3 16 / 0.75); /* modal backdrop */
-  --frame-glow: radial-gradient(
-    70rem 30rem at 0% 100%,
-    #11203a,
-    transparent 60%
-  ); /* dusk, bottom left */
 
   /* --- ACCENT (green #3ee07f, the cat's eyes): primary actions, selection, focus. Never decoration. --- */
   --accent: #3ee07f;
@@ -86,6 +81,7 @@
   --sidebar-width: 15rem;
   --members-width: 15rem;
   --header-height: 3rem; /* sidebar header and sheet header line up */
+  --titlebar-height: 0rem; /* desktop window controls, see below */
 
   /* --- RADIUS --- */
   --radius-sm: 6px;
@@ -103,4 +99,9 @@
 
   /* --- LAYERS --- */
   --z-modal: 1000;
+}
+
+/* The desktop app draws its own window controls (app-titlebar); pages fit under them. */
+:root:has(app-titlebar) {
+  --titlebar-height: calc(var(--control-sm) + var(--space-1));
 }

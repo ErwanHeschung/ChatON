@@ -37,6 +37,8 @@
   [cdkConnectedOverlayPush]="true"
   [cdkConnectedOverlayPositions]="pickerPositions"
   (overlayOutsideClick)="isPickerOpen = false"
+  (detach)="isPickerOpen = false"
+  (overlayKeydown)="$event.key === 'Escape' && (isPickerOpen = false)"
 >
-  <app-emoji-select></app-emoji-select>
+  <app-emoji-select (pick)="insert(text, $event)" />
 </ng-template>

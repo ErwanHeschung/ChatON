@@ -159,6 +159,12 @@
     "chat.message-to-channel": "Message #{$name}",
     "chat.message-to": "Message {$name}",
     "leave.cancel": "Cancel",
-    "chat.nothing": " The cat is napping. Pick a conversation on the left, or find someone by their @handle@instance. "
+    "chat.nothing": " The cat is napping. Pick a conversation on the left, or find someone by their @handle@instance. ",
+    "window.minimize": "Minimize",
+    "window.maximize": "Maximize",
+    "window.close": "Close",
+    "emoji.search": "Search",
+    "emoji.none": "No emoji found.",
+    "credits.emoji": " Emoji: Twemoji by Twitter, Inc. and contributors, CC BY 4.0. "
   }
 }

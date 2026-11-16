@@ -14,10 +14,11 @@ import { splitHandle } from '@models/Dm.model';
 import { Attachment } from '@models/Media.model';
 import { Message } from '@models/Message.model';
 import { MediaService } from '@services/media.service';
+import { EmojiTextPipe } from '@pipes/emoji-text.pipe';
 
 @Component({
   selector: 'app-chat-bubble',
-  imports: [Avatar, AsyncPipe, DatePipe, LucideDynamicIcon],
+  imports: [Avatar, AsyncPipe, DatePipe, LucideDynamicIcon, EmojiTextPipe],
   templateUrl: './chat-bubble.html',
   styleUrl: './chat-bubble.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
