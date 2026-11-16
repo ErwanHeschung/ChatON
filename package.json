@@ -4,16 +4,15 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "npm run build:server && { npm run serve & S=$!; trap 'kill $S' EXIT; npm run dev:app; }",
-    "dev:android": "npm run build:server && { npm run serve & S=$!; trap 'kill $S' EXIT; npm --prefix app run tauri android dev; }",
-    "dev:server": "npm run build:server && npm run serve",
+    "dev": "concurrently -k -n server,app \"npm run dev:server\" \"npm run dev:app\"",
+    "dev:android": "concurrently -k -n server,app \"npm run dev:server\" \"npm --prefix app run tauri android dev\"",
+    "dev:server": "cd server && go run ./cmd/server",
     "dev:app": "npm --prefix app run tauri dev",
-    "serve": "cd server && SERVER_PORT=${SERVER_PORT:-:8080} SERVER_PUBLICURL=${SERVER_PUBLICURL:-http://localhost:8080} exec ./chaton-server",
     "build": "npm run build:server && npm run build:app",
-    "build:server": "cd server && go build -o chaton-server ./cmd/server",
+    "build:server": "cd server && go build -o bin/ ./cmd/server",
     "build:app": "npm --prefix app run tauri build",
     "build:android": "npm --prefix app run tauri android build -- --apk --debug --target aarch64",
-    "test": "(cd core && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test) && (cd server && go vet ./... && go test ./...) && npm --prefix app run build",
+    "test": "cd core && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && cd ../server && go vet ./... && go test ./... && cd .. && npm --prefix app run build",
     "prepare": "npx husky"
   },
   "lint-staged": {
@@ -27,6 +26,7 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "concurrently": "^9.2.5",
     "lint-staged": "^16.2.7"
   }
 }

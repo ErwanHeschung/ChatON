@@ -27,6 +27,9 @@ func main() {
 	if s.DBPath == "" {
 		s.DBPath = "chaton.bolt"
 	}
+	if s.Port == "" {
+		s.Port = ":8080"
+	}
 	if s.PublicURL == "" {
 		s.PublicURL = "http://localhost" + s.Port
 	}

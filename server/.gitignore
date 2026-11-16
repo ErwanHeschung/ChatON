@@ -30,5 +30,5 @@ relay.key
 blobs/
 vapid.key
 
-# binary built by `npm run build:server`
-/chaton-server
+# binary built by `npm run build:server` (bin/server, bin/server.exe on Windows)
+/bin/
