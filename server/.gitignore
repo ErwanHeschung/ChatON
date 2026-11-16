@@ -29,3 +29,6 @@ go.work
 relay.key
 blobs/
 vapid.key
+
+# binary built by `npm run build:server`
+/chaton-server
