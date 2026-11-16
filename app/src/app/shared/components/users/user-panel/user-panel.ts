@@ -1,9 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
 import { LucideDynamicIcon, LucideSettings } from '@lucide/angular';
-import { AccountSettings } from '@components/account-settings/account-settings';
 import { UserCard } from '@components/users/user-card/user-card';
 import { UserShort } from '@models/User.model';
-import { ModalService } from '@services/modal.service';
+import { ShellService } from '@services/shell.service';
 import { ConnectedUserStore } from '@stores/connected-user.store';
 import { DmStore } from '@stores/dm.store';
 
@@ -18,7 +17,7 @@ import { DmStore } from '@stores/dm.store';
 export class UserPanel {
   private readonly account = inject(ConnectedUserStore);
   private readonly dm = inject(DmStore);
-  private readonly modal = inject(ModalService);
+  private readonly shell = inject(ShellService);
   protected readonly settingsIcon = LucideSettings;
 
   protected readonly me = computed<UserShort>(() => {
@@ -39,6 +38,6 @@ export class UserPanel {
   }
 
   public openAccount(): void {
-    this.modal.open(AccountSettings);
+    this.shell.settings.set(true);
   }
 }

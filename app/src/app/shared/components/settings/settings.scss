@@ -1,0 +1,257 @@
+@use 'variables' as vars;
+
+// The chat shell's grammar: sections where the rail and the sidebar were, the open one in the sheet.
+:host {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal); // under the window controls, which stay usable
+  display: grid;
+  grid-template-columns: calc(var(--rail-width) + var(--sidebar-width)) minmax(0, 1fr);
+  padding-top: var(--titlebar-height);
+  background-color: var(--surface-frame);
+  animation: settings-in var(--duration-base) var(--ease-out);
+}
+
+// One moment: the shell steps back and settings settle in its place.
+@keyframes settings-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+
+/* --- SECTIONS --- */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  padding: var(--space-6) var(--space-3) var(--space-4) var(--space-4);
+  overflow-y: auto;
+
+  h1 {
+    margin: 0 0 var(--space-4) var(--space-2);
+    font-size: var(--text-xl);
+  }
+}
+
+/* --- SHEET --- */
+.sheet {
+  display: grid;
+  grid-template-rows: var(--header-height) minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  margin: var(--space-2) var(--space-2) var(--space-2) 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-6);
+  border-bottom: 1px solid var(--border-subtle);
+
+  h2 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--text-md);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.back {
+  display: none;
+}
+
+.close {
+  gap: var(--space-2);
+  padding-inline: var(--space-2);
+}
+
+kbd {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--content-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.5;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-height: 0;
+  padding: var(--space-8) var(--space-6) var(--space-12);
+  overflow-y: auto;
+
+  > * {
+    width: 100%;
+    max-width: var(--settings-width);
+    margin-inline: auto;
+  }
+}
+
+/* --- ROWS: what it is on the left, what to do on the right --- */
+.group {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background-color: var(--surface-panel);
+
+  &.danger {
+    border-color: var(--danger-border);
+  }
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-5);
+
+  & + & {
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  &.stack {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-4);
+  }
+
+  > .btn,
+  > .badge,
+  > app-language-toggle {
+    flex: none;
+  }
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 60ch;
+
+  .label {
+    color: var(--content-primary);
+    font-size: var(--text-body);
+    font-weight: var(--weight-medium);
+  }
+
+  .error {
+    display: block;
+  }
+}
+
+.ok {
+  color: var(--accent-text);
+}
+
+.value {
+  flex: none;
+  font-weight: var(--weight-medium);
+}
+
+.instance {
+  color: var(--content-secondary);
+}
+
+// The public key: one line, cut in the middle of nowhere, copied whole.
+.key {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 50%;
+
+  code {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--content-secondary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.secret {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.code-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+// Read aloud to the other device.
+.code {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  letter-spacing: 0.15em;
+  user-select: all;
+}
+
+.confirm {
+  margin: 0;
+}
+
+/* --- PHONES: the list, then one section with ← --- */
+@media (max-width: #{vars.$breakpoint-md - 1px}) {
+  :host {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :host(.list-open) .sheet,
+  :host(:not(.list-open)) .list {
+    display: none;
+  }
+
+  .sheet {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+  }
+
+  header {
+    padding-left: var(--space-2);
+  }
+
+  .back {
+    display: inline-flex;
+  }
+
+  kbd {
+    display: none;
+  }
+
+  .content {
+    padding: var(--space-4) var(--space-4) var(--space-8);
+  }
+
+  .row:not(.stack) {
+    flex-wrap: wrap;
+  }
+
+  .key {
+    max-width: 100%;
+  }
+}

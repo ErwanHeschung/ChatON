@@ -27,8 +27,10 @@
   </h3>
   <ul>
     @for (pubkey of roomMembers(); track pubkey) {
-      <li class="list-row">
-        <app-user-card [user]="cardOf(pubkey)" [ears]="pubkey === me()"></app-user-card>
+      <li>
+        <button type="button" class="list-row" [appProfile]="pubkey">
+          <app-user-card [user]="cardOf(pubkey)" [ears]="pubkey === me()"></app-user-card>
+        </button>
       </li>
     }
   </ul>
@@ -51,9 +53,9 @@
   <ul>
     @for (member of section.members; track member.pubkey) {
       <li class="member">
-        <div class="list-row">
+        <button type="button" class="list-row" [appProfile]="member.pubkey">
           <app-user-card [user]="card(member)" [ears]="isMe(member)"></app-user-card>
-        </div>
+        </button>
         @if (canPromote(member) || canRemove(member)) {
           <div class="actions">
             @if (canPromote(member)) {

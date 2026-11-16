@@ -9,20 +9,27 @@
         message().timestamp | date: 'shortTime'
       }}</time>
     } @else {
-      <app-avatar
-        [picture]="message().senderPicture"
-        [name]="message().senderName"
-        [seed]="message().senderId"
-        [ears]="!!message().mine"
-      ></app-avatar>
+      <button type="button" class="profile" [appProfile]="message().senderId">
+        <app-avatar
+          [picture]="message().senderPicture"
+          [name]="message().senderName"
+          [seed]="message().senderId"
+          [ears]="!!message().mine"
+        ></app-avatar>
+      </button>
     }
   </div>
   <div class="body">
     @if (!continued()) {
       <p class="meta">
-        <span class="author" [class.mine]="message().mine"
-          >{{ author()[0] }}<span class="instance">{{ author()[1] }}</span></span
+        <button
+          type="button"
+          class="author"
+          [class.mine]="message().mine"
+          [appProfile]="message().senderId"
         >
+          {{ author()[0] }}<span class="instance">{{ author()[1] }}</span>
+        </button>
         <time [attr.datetime]="message().timestamp.toISOString()">{{
           message().timestamp | date: 'shortTime'
         }}</time>

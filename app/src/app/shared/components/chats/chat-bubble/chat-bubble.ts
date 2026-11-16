@@ -15,10 +15,11 @@ import { Attachment } from '@models/Media.model';
 import { Message } from '@models/Message.model';
 import { MediaService } from '@services/media.service';
 import { EmojiTextPipe } from '@pipes/emoji-text.pipe';
+import { ProfileDirective } from '@directives/profile';
 
 @Component({
   selector: 'app-chat-bubble',
-  imports: [Avatar, AsyncPipe, DatePipe, LucideDynamicIcon, EmojiTextPipe],
+  imports: [Avatar, AsyncPipe, DatePipe, LucideDynamicIcon, EmojiTextPipe, ProfileDirective],
   templateUrl: './chat-bubble.html',
   styleUrl: './chat-bubble.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

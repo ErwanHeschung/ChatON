@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { LucideDynamicIcon, LucideUserPlus } from '@lucide/angular';
 import { UserCard } from '@components/users/user-card/user-card';
+import { ProfileDirective } from '@directives/profile';
 import { GroupDialog } from '@components/chats/group-dialog/group-dialog';
 import { Member, ROLE_ADMIN, ROLE_MODERATOR } from '@models/Community.model';
 import { UserShort } from '@models/User.model';
@@ -12,7 +13,7 @@ import { DmStore } from '@stores/dm.store';
 /** Members panel: the open community's members by role, or the open conversation's people. */
 @Component({
   selector: 'app-users-list',
-  imports: [UserCard, LucideDynamicIcon],
+  imports: [UserCard, LucideDynamicIcon, ProfileDirective],
   templateUrl: './users-list.html',
   styleUrl: './users-list.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -5,6 +5,8 @@ import { ChatHeader } from '@components/chats/chat-header/chat-header';
 import { CommunityRail } from '@components/community-rail/community-rail';
 import { UserPanel } from '@components/users/user-panel/user-panel';
 import { UsersList } from '@components/users/users-list/users-list';
+import { Settings } from '@components/settings/settings';
+import { ShellService } from '@services/shell.service';
 import { ChatLayout } from '@layouts/chat/chat.layout';
 import { Attachment } from '@models/Media.model';
 import { Message, MessageStatus } from '@models/Message.model';
@@ -15,13 +17,23 @@ import { DmStore } from '@stores/dm.store';
 /** The chat shows the open channel in the server view, else the open DM. */
 @Component({
   selector: 'app-root-chat',
-  imports: [ChatLayout, CommunityRail, ChatHeader, RouterOutlet, UsersList, UserPanel, Chat],
+  imports: [
+    ChatLayout,
+    CommunityRail,
+    ChatHeader,
+    RouterOutlet,
+    UsersList,
+    UserPanel,
+    Chat,
+    Settings,
+  ],
   templateUrl: './root-chat.page.html',
   styleUrl: './root-chat.page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RootChat {
   public readonly dm = inject(DmStore);
+  protected readonly shell = inject(ShellService);
   public readonly community = inject(CommunityStore);
   private readonly user = inject(ConnectedUserStore);
 

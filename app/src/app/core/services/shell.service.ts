@@ -23,6 +23,8 @@ export class ShellService {
 
   /** Phones: the conversation instead of the lists, after a tap on a row. */
   public readonly chatOpen = signal(false);
+  /** Settings, full screen over the shell. */
+  public readonly settings = signal(false);
   /** Members panel: shown by default wherever it sits beside the conversation (not over it). */
   public readonly members = signal(globalThis.matchMedia?.('(min-width: 1024px)').matches ?? true);
 

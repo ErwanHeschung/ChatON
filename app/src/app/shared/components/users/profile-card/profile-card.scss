@@ -1,0 +1,94 @@
+// A sheet of its own: raised a step above the settings page, flat at rest.
+:host {
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background-color: var(--surface-panel);
+}
+
+.banner {
+  height: var(--banner-height);
+  background-color: var(--surface-frame); // the app's own night, until a custom banner
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: 0 var(--space-6) var(--space-6);
+}
+
+// Half over the banner.
+.avatar {
+  position: relative;
+  display: grid;
+  margin-top: calc(var(--avatar-2xl) / -2);
+  margin-bottom: var(--space-3);
+  border-radius: var(--radius-full);
+}
+
+button.avatar {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+
+  > * {
+    grid-area: 1 / 1;
+  }
+
+  &:disabled {
+    cursor: progress;
+  }
+}
+
+// A camera over the picture on hover: the picture is the control. Sized to the head under the
+// ears (the avatar's mask: a circle of 88% centered at 56%), and above the masked avatar, which
+// paints as its own layer.
+.overlay {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  place-self: start center;
+  width: 88%;
+  aspect-ratio: 1;
+  margin-top: 12%;
+  border-radius: var(--radius-full);
+  background-color: var(--surface-overlay);
+  color: var(--content-primary);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+
+  .edit:hover &,
+  .edit:focus-visible &,
+  .edit:disabled & {
+    opacity: 1;
+  }
+}
+
+.name {
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--text-xl);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The instance stays readable but quieter, in the reading face: two people can share a pseudo.
+// Bricolage's @ is ringed: the handle's @ stays in the reading face.
+.at {
+  font-family: var(--font-sans);
+  font-weight: var(--weight-semibold);
+}
+
+.instance {
+  color: var(--content-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0;
+}

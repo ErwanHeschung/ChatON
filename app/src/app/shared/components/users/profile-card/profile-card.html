@@ -1,0 +1,46 @@
+<div class="banner" aria-hidden="true"></div>
+
+<div class="body">
+  @if (editable()) {
+    <button
+      type="button"
+      class="avatar edit"
+      [disabled]="busy()"
+      [attr.aria-busy]="busy()"
+      (click)="editPicture.emit()"
+      i18n-title="@@picture.change-short"
+      title="Change picture"
+    >
+      <app-avatar
+        [picture]="picture()"
+        [name]="handle()"
+        [seed]="pubkey()"
+        size="2xl"
+        [ears]="true"
+      ></app-avatar>
+      <span class="overlay" aria-hidden="true">
+        <svg [lucideIcon]="cameraIcon" size="22"></svg>
+      </span>
+    </button>
+  } @else {
+    <div class="avatar">
+      <app-avatar
+        [picture]="picture()"
+        [name]="handle()"
+        [seed]="pubkey()"
+        size="2xl"
+        [ears]="mine()"
+      ></app-avatar>
+    </div>
+  }
+
+  <h2 class="name" [title]="handle()">
+    @if (parts()[1]) {
+      <span class="at">&#64;</span>{{ parts()[0].slice(1)
+      }}<span class="instance">{{ parts()[1] }}</span>
+    } @else {
+      {{ parts()[0] }}
+    }
+  </h2>
+  <ng-content></ng-content>
+</div>

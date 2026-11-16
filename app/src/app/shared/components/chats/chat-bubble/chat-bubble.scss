@@ -53,8 +53,28 @@
   line-height: var(--leading-tight);
 }
 
+// Avatar and name open the author's card.
+.profile,
+.author {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.profile {
+  display: flex;
+  border-radius: var(--radius-full);
+}
+
 .author {
   font-weight: var(--weight-semibold);
+
+  &:hover {
+    text-decoration: underline;
+  }
 
   &.mine {
     color: var(--accent-text);

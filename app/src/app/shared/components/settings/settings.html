@@ -1,0 +1,361 @@
+<nav class="list" aria-labelledby="settings-title">
+  <h1 id="settings-title" i18n="@@settings.title">Settings</h1>
+  @for (s of sections(); track s.id) {
+    <button
+      type="button"
+      class="list-row"
+      [attr.aria-current]="s.id === section() ? 'true' : null"
+      (click)="open(s.id)"
+    >
+      <svg [lucideIcon]="s.icon" size="18"></svg>
+      <span>{{ s.label }}</span>
+    </button>
+  }
+</nav>
+
+<main class="sheet">
+  <header>
+    <button
+      type="button"
+      class="btn btn-ghost btn-icon btn-sm back"
+      (click)="listOpen.set(true)"
+      i18n-title="@@shell.back"
+      title="Back"
+    >
+      <svg [lucideIcon]="icons.back" size="18"></svg>
+    </button>
+    <h2>{{ current()?.label }}</h2>
+    <button
+      type="button"
+      class="btn btn-ghost btn-sm close"
+      (click)="close()"
+      i18n-title="@@modal.close"
+      title="Close"
+    >
+      <svg [lucideIcon]="icons.close" size="18"></svg>
+      <kbd>Esc</kbd>
+    </button>
+  </header>
+
+  <div class="content">
+    @switch (section()) {
+      @case ('profile') {
+        @if (me(); as me) {
+          <input #picture type="file" accept="image/*" hidden (change)="setPicture(picture)" />
+          <app-profile-card
+            [handle]="'@' + me.handle"
+            [pubkey]="me.pubkey"
+            [picture]="me.picture"
+            [mine]="true"
+            [editable]="true"
+            [busy]="pictureState() === 'sending'"
+            (editPicture)="picture.click()"
+          ></app-profile-card>
+
+          <div class="group">
+            <div class="row">
+              <div class="text">
+                <span class="label" i18n="@@picture-title">Picture</span>
+                @switch (pictureState()) {
+                  @case ('done') {
+                    <span class="hint ok" i18n="@@picture.done">Picture updated.</span>
+                  }
+                  @case ('too_large') {
+                    <span class="error" i18n="@@chat.too-large">File too large (25 MB max)</span>
+                  }
+                  @case ('idle') {
+                    <span class="hint" i18n="@@picture.hint">Public, stored on your instance.</span>
+                  }
+                  @case ('sending') {
+                    <span class="hint" i18n="@@picture.sending">Uploading…</span>
+                  }
+                  @default {
+                    <span class="error" i18n="@@form.unknown-error"
+                      >Something went wrong. Try again, it works on my machine.</span
+                    >
+                  }
+                }
+              </div>
+              <button
+                type="button"
+                class="btn"
+                [disabled]="pictureState() === 'sending'"
+                (click)="picture.click()"
+                i18n="@@picture.change"
+              >
+                Change my picture
+              </button>
+            </div>
+          </div>
+        }
+      }
+
+      @case ('account') {
+        @if (me(); as me) {
+          <div class="group">
+            <div class="row">
+              <div class="text">
+                <span class="label" i18n="@@settings.handle">Handle</span>
+                <span class="hint" i18n="@@settings.handle-hint"
+                  >How people find you. It belongs to this instance.</span
+                >
+              </div>
+              <span class="value"
+                >{{ me.parts[0] }}<span class="instance">{{ me.parts[1] }}</span></span
+              >
+            </div>
+            <div class="row">
+              <div class="text">
+                <span class="label" i18n="@@settings.public-key">Public key</span>
+                <span class="hint" i18n="@@settings.public-key-hint"
+                  >Your identity. It stays yours if you move to another instance.</span
+                >
+              </div>
+              <div class="key">
+                <code [title]="me.npub">{{ me.npub }}</code>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-icon btn-sm"
+                  (click)="copy(me.npub)"
+                  i18n-title="@@settings.copy"
+                  title="Copy"
+                >
+                  <svg
+                    [lucideIcon]="copied() === me.npub ? icons.copied : icons.copy"
+                    size="16"
+                  ></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="row stack">
+              <div class="text">
+                <span class="label" i18n="@@backup-section">Secret key</span>
+                <span class="hint" i18n="@@backup.warning"
+                  >Anyone with this key controls your account. Only show it to save it somewhere
+                  safe.</span
+                >
+              </div>
+              @if (nsec(); as nsec) {
+                <div class="secret">
+                  <code class="key-text">{{ nsec }}</code>
+                  <div class="actions">
+                    <button type="button" class="btn btn-sm" (click)="copy(nsec)">
+                      <svg
+                        [lucideIcon]="copied() === nsec ? icons.copied : icons.copy"
+                        size="16"
+                      ></svg>
+                      <ng-container i18n="@@settings.copy">Copy</ng-container>
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-sm"
+                      (click)="this.nsec.set(null)"
+                      i18n="@@settings.hide"
+                    >
+                      Hide
+                    </button>
+                  </div>
+                </div>
+              } @else {
+                <button type="button" class="btn" (click)="showKey()" i18n="@@backup.show">
+                  Show my secret key
+                </button>
+              }
+            </div>
+          </div>
+
+          <div class="group danger">
+            <div class="row" [class.stack]="confirmLogout()">
+              <div class="text">
+                <span class="label" i18n="@@settings.logout-title">Log out of this device</span>
+                <span class="hint" [class.error]="confirmLogout()" i18n="@@logout.warning"
+                  >This removes your account from this device. Without another signed-in device or
+                  your saved secret key, it's lost for good.</span
+                >
+              </div>
+              @if (confirmLogout()) {
+                <div class="actions">
+                  <button
+                    type="button"
+                    class="btn btn-danger"
+                    (click)="logout()"
+                    i18n="@@logout.confirm"
+                  >
+                    Log out
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-ghost"
+                    (click)="confirmLogout.set(false)"
+                    i18n="@@logout.cancel"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              } @else {
+                <button
+                  type="button"
+                  class="btn btn-danger"
+                  (click)="confirmLogout.set(true)"
+                  i18n="@@logout.button"
+                >
+                  Log out
+                </button>
+              }
+            </div>
+          </div>
+        }
+      }
+
+      @case ('devices') {
+        <div class="group">
+          <div class="row stack">
+            <div class="text">
+              <span class="label" i18n="@@link-title">Link a device</span>
+              <span class="hint" i18n="@@link.how"
+                >On the new device, choose “Sign in with another device” and type your handle and
+                the code shown here.</span
+              >
+            </div>
+            @switch (step()) {
+              @case ('idle') {
+                <button type="button" class="btn" (click)="offer()" i18n="@@link.show-code">
+                  Show a code
+                </button>
+              }
+              @case ('code') {
+                <div class="code-box">
+                  <span class="code">{{ code() }}</span>
+                  <span class="hint" i18n="@@link.code-valid"
+                    >Valid for 5 minutes, for one attempt.</span
+                  >
+                </div>
+              }
+              @case ('confirm') {
+                <p class="confirm" i18n="@@link.confirm">
+                  Give access to your account to “{{ device() }}”?
+                </p>
+                <div class="actions">
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    (click)="answer(true)"
+                    i18n="@@link.accept"
+                  >
+                    Link
+                  </button>
+                  <button type="button" class="btn" (click)="answer(false)" i18n="@@link.refuse">
+                    Refuse
+                  </button>
+                </div>
+              }
+              @case ('done') {
+                <p class="hint ok" i18n="@@link.done">“{{ device() }}” is now signed in.</p>
+              }
+              @case ('failed') {
+                <p class="error">
+                  @switch (error()) {
+                    @case ('wrong_code') {
+                      <ng-container i18n="@@link.wrong-code-a"
+                        >The other device typed a wrong code</ng-container
+                      >
+                    }
+                    @case ('code_expired') {
+                      <ng-container i18n="@@link.expired">The code expired</ng-container>
+                    }
+                    @case ('link_refused') {
+                      <ng-container i18n="@@link.refused-a">You refused the link</ng-container>
+                    }
+                    @default {
+                      <ng-container i18n="@@form.unknown-error"
+                        >Something went wrong. Try again, it works on my machine.</ng-container
+                      >
+                    }
+                  }
+                </p>
+                <button type="button" class="btn" (click)="offer()" i18n="@@link.new-code">
+                  New code
+                </button>
+              }
+            }
+          </div>
+        </div>
+      }
+
+      @case ('notifications') {
+        <div class="group">
+          <div class="row">
+            <div class="text">
+              <span class="label" i18n="@@settings.push-label">Push notifications</span>
+              @switch (account.push()) {
+                @case ('on') {
+                  <span class="hint" i18n="@@push.on"
+                    >On. Your instance wakes this phone when a message arrives; the content stays
+                    encrypted.</span
+                  >
+                }
+                @case ('pending') {
+                  <span class="hint" i18n="@@push.pending">Loading the loading screen…</span>
+                }
+                @case ('no_distributor') {
+                  <span class="hint" i18n="@@push.no-distributor"
+                    >Install a UnifiedPush app, such as ntfy, to get notifications. Then try
+                    again.</span
+                  >
+                }
+                @default {
+                  <span class="error" i18n="@@push.failed">Couldn't turn notifications on.</span>
+                }
+              }
+            </div>
+            @if (account.push() === 'on') {
+              <span class="badge badge-accent" i18n="@@settings.on">On</span>
+            } @else if (account.push() !== 'pending') {
+              <button type="button" class="btn" (click)="account.enablePush()" i18n="@@push.retry">
+                Try again
+              </button>
+            }
+          </div>
+        </div>
+      }
+
+      @case ('preferences') {
+        <div class="group">
+          <div class="row">
+            <div class="text">
+              <span class="label" i18n="@@settings.language">Language</span>
+              <span class="hint" i18n="@@settings.language-hint">The app reloads to switch.</span>
+            </div>
+            <app-language-toggle></app-language-toggle>
+          </div>
+        </div>
+      }
+
+      @case ('about') {
+        <div class="group">
+          <div class="row">
+            <div class="text">
+              <span class="label">ChatON</span>
+              <span class="hint" i18n="@@settings.about-hint"
+                >Self-hosted messaging, private messages encrypted end to end. Free software,
+                GPL-3.0.</span
+              >
+            </div>
+            <span class="badge">v{{ version() }}</span>
+          </div>
+          <div class="row">
+            <div class="text">
+              <span class="label" i18n="@@settings.emoji">Emoji</span>
+              <span class="hint" i18n="@@credits.emoji"
+                >Emoji: Twemoji by Twitter, Inc. and contributors, CC BY 4.0.</span
+              >
+            </div>
+          </div>
+        </div>
+      }
+    }
+  </div>
+</main>

@@ -25,7 +25,7 @@ export class Avatar {
   public readonly name = input.required<string>();
   /** A stable id (pubkey, community id); defaults to the name. */
   public readonly seed = input('');
-  public readonly size = input<'sm' | 'md' | 'lg' | 'xl'>('md');
+  public readonly size = input<'sm' | 'md' | 'lg' | 'xl' | '2xl'>('md');
   public readonly shape = input<'circle' | 'square'>('circle');
   /** Cat ears: marks me. */
   public readonly ears = input(false);

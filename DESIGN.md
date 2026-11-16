@@ -274,8 +274,16 @@ Pas de bulle. Survol = `--state-hover` sur toute la ligne, barre d'actions flott
 ### Sélecteur d'émojis (`app-emoji-select`)
 Émojis **Twemoji** (dépôt officiel maintenu `jdecked/twemoji`), en images SVG servies par l'app : `scripts/twemoji.mjs` les récupère avant `start` et `build` (tag épinglé et sha256) dans `public/twemoji`, non versionné. Pas de CDN (CSP, vie privée, hors ligne). Même dessin sur tous les systèmes. Dans les messages, `EmojiTextPipe` (`@twemoji/parser`) découpe le texte et remplace chaque émoji par son image (taille d'un glyphe, `alt` = l'émoji) ; le champ de saisie, lui, garde l'émoji du système. Le sélecteur ne propose que ce que Twemoji dessine. Noms et recherche dans la langue de l'app (`emojibase-data` fr/en, chargé à la première ouverture). Recherche en tête, onglets en icônes Lucide (jamais un émoji comme icône) qui suivent le défilement, sections sous des `.section-label` collants, aperçu du survol en pied. Un clic insère au curseur ; le sélecteur reste ouvert (dehors ou Échap le ferment). Crédit Twemoji (CC BY 4.0) dans les paramètres du compte.
 
+### Paramètres (`app-settings`)
+Plein écran, pas une modale : la grammaire de la coquille. Les sections (Profil, Compte et clé, Appareils, Notifications sur Android, Préférences, À propos) en `.list-row` à la place du rail et de la colonne, la section ouverte dans une feuille. Fermeture par ✕ (avec `Esc` en `kbd`) ou Échap ; les contrôles de fenêtre restent au-dessus. Chaque réglage est une ligne dans un groupe (`--surface-panel`, bordure subtile, rayon lg) : ce que c'est et pourquoi à gauche, l'action à droite ; `.stack` quand l'action prend la largeur (clé secrète, code de liaison). La déconnexion vit dans un groupe à bordure corail, confirmation en place. Téléphone : la liste, puis une section avec ←. Une seule entrée animée (fondu et léger zoom, `--duration-base`). `ShellService.settings` l'ouvre.
+
+### Carte de profil (`app-profile-card`)
+L'objet que l'on personnalisera : bannière, avatar `2xl` (`--avatar-2xl`) à moitié dessus, handle en titre (le `@` en Inter, celui de Bricolage est cerclé ; l'instance en `--content-secondary`). Sans bannière personnalisée, la couleur de fond de l'app (`--surface-frame`). `mine` : oreilles ; `editable` (paramètres) : l'avatar devient le bouton pour changer de photo (appareil photo au survol).
+
+Cliquer sur quelqu'un (membre du panneau, avatar ou nom d'un auteur de message) ouvre sa carte à côté (directive `appProfile`, `app-profile-popover`) : « Envoyer un message » ouvre le MP, « Modifier le profil » sur la sienne ouvre les paramètres. Clic dehors ou Échap ferme, le focus revient au déclencheur.
+
 ### Avatar (`app-avatar`)
-Image de l'instance (via core) ou initiale sur une teinte dérivée de `seed` (clé publique, id de communauté) : la même clé garde toujours la même couleur. `size` sm / md / lg / xl, `shape` circle / square.
+Image de l'instance (via core) ou initiale sur une teinte dérivée de `seed` (clé publique, id de communauté) : la même clé garde toujours la même couleur. `size` sm / md / lg / xl / 2xl, `shape` circle / square.
 
 ### Badges (`.badge`, `.badge-accent`)
 Rôles et comptes. Dans la liste des membres, les rôles sont des sections plutôt que des badges.
