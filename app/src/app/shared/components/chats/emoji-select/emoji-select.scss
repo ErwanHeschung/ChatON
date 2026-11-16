@@ -9,6 +9,8 @@
   border-radius: var(--radius-lg);
   background: var(--surface-raised);
   box-shadow: var(--shadow-popover);
+  transform-origin: bottom right; // above the composer's emoji button
+  animation: pop-in var(--duration-base) var(--ease-out);
 }
 
 .tabs {

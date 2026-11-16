@@ -89,6 +89,7 @@
 
   .members {
     display: block;
+    animation: slide-in var(--duration-base) var(--ease-out);
   }
 }
 
@@ -115,6 +116,7 @@
       padding: 0;
       border: none;
       background-color: var(--surface-overlay);
+      animation: fade-in var(--duration-base) var(--ease-out);
     }
   }
 }
@@ -135,6 +137,12 @@
     border-radius: 0;
   }
 
+  // Forward into a conversation from the right, back to the lists from the left.
+  :host(:not(.chat-open)) .sidebar {
+    --slide: -1.5rem;
+    animation: slide-in var(--duration-base) var(--ease-out);
+  }
+
   :host(.chat-open) {
     grid-template-areas: 'sheet';
     grid-template-rows: minmax(0, 1fr);
@@ -148,6 +156,7 @@
 
     .sheet {
       display: grid;
+      animation: slide-in var(--duration-base) var(--ease-out);
     }
   }
 }

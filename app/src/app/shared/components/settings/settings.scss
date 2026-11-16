@@ -12,7 +12,7 @@
   animation: settings-in var(--duration-base) var(--ease-out);
 }
 
-// One moment: the shell steps back and settings settle in its place.
+// The shell steps back and settings settle in its place.
 @keyframes settings-in {
   from {
     opacity: 0;
@@ -93,10 +93,12 @@ kbd {
   padding: var(--space-8) var(--space-6) var(--space-12);
   overflow-y: auto;
 
+  // Each section comes in as you pick it.
   > * {
     width: 100%;
     max-width: var(--settings-width);
     margin-inline: auto;
+    animation: rise-in var(--duration-base) var(--ease-out);
   }
 }
 
@@ -223,6 +225,16 @@ kbd {
   :host(.list-open) .sheet,
   :host(:not(.list-open)) .list {
     display: none;
+  }
+
+  // Forward from the right, back from the left.
+  .sheet {
+    animation: slide-in var(--duration-base) var(--ease-out);
+  }
+
+  .list {
+    --slide: -1.5rem;
+    animation: slide-in var(--duration-base) var(--ease-out);
   }
 
   .sheet {

@@ -9,8 +9,8 @@
   padding: var(--space-4);
   background-color: var(--surface-overlay);
 
-  @include anim.animate-enter-fade(0.2s);
-  @include anim.animate-leave-fade(0.15s);
+  @include anim.animate-enter-fade;
+  @include anim.animate-leave-fade;
 }
 
 .modal-frame {
@@ -27,6 +27,7 @@
   border-radius: var(--radius-lg);
   background-color: var(--surface-raised);
   box-shadow: var(--shadow-popover);
+  animation: pop-in var(--duration-base) var(--ease-out);
 }
 
 .close {

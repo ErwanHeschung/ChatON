@@ -1,29 +1,51 @@
+// Motion (DESIGN.md § Mouvement): short, ease-out, coming from where things come from.
+// Entrances only: what closes leaves at once, the next action never waits.
+// Global keyframes: component styles reference them by name.
+
+// Popovers, menus, dialogs: out of their trigger.
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+}
+
+// Content that changes in place: a settings section, a new message.
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+// Panels: from the side they live on (--slide, right by default).
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(var(--slide, 1.5rem));
+  }
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
   }
-  to {
-    opacity: 1;
-  }
 }
 
 @keyframes fade-out {
-  from {
-    opacity: 1;
-  }
   to {
     opacity: 0;
   }
 }
 
-@mixin animate-enter-fade($duration: 0.5s) {
+@mixin animate-enter-fade {
   &.enter-animation {
-    animation: fade-in $duration ease-out forwards;
+    animation: fade-in var(--duration-base) var(--ease-out);
   }
 }
 
-@mixin animate-leave-fade($duration: 0.5s) {
+@mixin animate-leave-fade {
   &.leave-animation {
-    animation: fade-out $duration ease-in forwards;
+    animation: fade-out var(--duration-fast) var(--ease-in) forwards;
   }
 }

@@ -43,6 +43,7 @@ import { DmStore } from '@stores/dm.store';
       width: min(20rem, 100vw - 2 * var(--space-4));
       border-radius: var(--radius-lg);
       box-shadow: var(--shadow-popover);
+      animation: pop-in var(--duration-base) var(--ease-out);
     }
 
     .actions {

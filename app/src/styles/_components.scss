@@ -22,14 +22,17 @@
   transition:
     background-color var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 
   &:hover:not(:disabled) {
     background-color: var(--surface-hover);
   }
 
+  // Pressed: the button gives a little under the finger.
   &:active:not(:disabled) {
     border-color: var(--content-tertiary);
+    transform: scale(0.97);
   }
 
   &:disabled {
@@ -308,6 +311,8 @@ button.list-row {
   border-radius: var(--radius-md);
   background-color: var(--surface-raised);
   box-shadow: var(--shadow-popover);
+  transform-origin: top;
+  animation: pop-in var(--duration-fast) var(--ease-out);
 }
 
 .menu-item {
