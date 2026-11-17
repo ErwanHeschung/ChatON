@@ -84,6 +84,17 @@ L'instance réveille les téléphones de ses utilisateurs quand un MP leur arriv
 - **Vie privée** : le service de push ne voit qu'un message chiffré et son heure, jamais l'auteur ni le contenu. L'instance savait déjà qui reçoit un gift wrap.
 - Le serveur refuse les adresses qui mènent à une IP non publique, à chaque envoi (pas de SSRF). Pour le développement seulement, `SERVER_PUSHALLOWPRIVATE=1` lève cette règle.
 
+### Voix (LiveKit)
+
+L'instance peut faire tourner un serveur LiveKit à côté d'elle (`protocol.md` § 11). Sans configuration, la voix est coupée.
+
+- **Configuration** : `SERVER_LIVEKITURL` (l'adresse `wss://` que les clients joignent), `SERVER_LIVEKITKEY` et `SERVER_LIVEKITSECRET` (la paire de clés d'API du fichier de LiveKit, secret de 32 caractères au moins, jamais journalisé). Les trois, ou aucun.
+- **Routes** : `GET /.well-known/nip29/livekit` (voix activée ?), `POST /.well-known/nip29/livekit/<salon>` (jeton d'un salon vocal), `POST /api/voice/call` (jeton d'un appel en MP), et `POST /api/voice/webhook`, que seul LiveKit appelle (signé par son JWT, avec l'empreinte du corps).
+- **Présence** : les webhooks de LiveKit (`participant_joined`, `participant_left`, `room_finished`) tiennent à jour la liste des participants, que le relais publie en `39004`. Au démarrage, l'instance la relit chez LiveKit.
+- **Éjection** : quand un membre est retiré ou part, l'instance le sort des salons vocaux de la communauté (API de LiveKit).
+- **Vie privée** : pour un salon vocal, LiveKit relaie un audio en clair, comme les messages de la communauté. Pour un appel en MP, l'audio est chiffré par les clients ; l'instance apprend qui appelle qui, pas ce qui se dit.
+- **Déploiement** : LiveKit (binaire ou image Docker, arm64 compris) à côté du serveur. Le proxy (Caddy) sert `wss://` vers le port 7880 ; ouvrir TCP 7881 et UDP 7882 (`rtc.use_external_ip: true`). Le webhook de LiveKit pointe vers `http://<serveur>:8080/api/voice/webhook`. Pour que l'anneau « parle » suive la voix, régler `audio: { update_interval: 100, smooth_intervals: 1 }` (par défaut 400 ms et 2 échantillons, soit jusqu'à 0,8 s de retard ; voir `server/livekit.dev.yaml`). Un TURN/TLS pour les réseaux stricts viendra plus tard.
+
 ## 4. Migration de compte
 
 L'utilisateur garde sa clé et change d'instance :

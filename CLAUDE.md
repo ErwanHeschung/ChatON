@@ -119,6 +119,10 @@ Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé
 #   → doit renvoyer …/collection/login
 # Notifications sur WSL : pas de serveur de notifications. `sudo apt install dunst libnotify-bin`, puis `dunst &` dans un
 # terminal à chaque démarrage de WSL (lancé par systemd, il ne voit pas l’écran et plante).
+# L'app embarque LiveKit (voix) : clang requis pour compiler (Linux/WSL : `sudo apt install clang libclang-dev`).
+# Voix en dev : `npm run dev:livekit` (Docker) dans un autre terminal, et server/.env (ignoré par git) avec les
+# SERVER_LIVEKIT* listées plus bas ; le serveur lit ce fichier au démarrage.
+# Windows : `.cargo/config.toml` de src-tauri met le CRT en statique (libwebrtc).
 cd app && npm ci && npm run tauri dev
 # Android (téléphone en débogage USB ou adb Wi-Fi ; le SDK et le NDK 28 dans ~/Android/Sdk). Le téléphone
 # joint l'instance par l'adresse LAN du PC : WSL en réseau « mirrored » ou redirection de port.
@@ -138,6 +142,8 @@ cd server && SERVER_PORT=:8080 SERVER_PUBLICURL=http://localhost:8080 go run ./c
 # SERVER_BLOBDIR (fichiers envoyés, Blossom ; sinon blobs/ à côté de la base, index dans blobs.bolt),
 # SERVER_VAPIDKEY (base64url, signe les push ; sinon vapid.key à côté de la base, à sauvegarder avec elle),
 # SERVER_PUSHALLOWPRIVATE=1 (dev seulement : push vers des adresses privées, requis par les tests e2e)
+# SERVER_LIVEKITURL, SERVER_LIVEKITKEY, SERVER_LIVEKITSECRET (voix, les trois ou aucun ; en dev : ws://localhost:7880,
+#   devkey, chaton-dev-secret-not-for-production, avec `npm run dev:livekit` à la racine, qui demande Docker)
 
 # vecteurs de test (spec/test-vectors), à régénérer après tout changement de cas
 cd server && go run ./cmd/genvectors > ../spec/test-vectors/events.json
@@ -148,6 +154,9 @@ cd server && go run ./cmd/genvectors > ../spec/test-vectors/events.json
 cd core && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 # bout en bout, serveur lancé sur :8099 (SERVER_PORT=:8099 SERVER_PUBLICURL=http://localhost:8099 SERVER_PUSHALLOWPRIVATE=1)
 cd core && CHATON_TEST_SERVER=http://localhost:8099 cargo test --test e2e -- --ignored
+# voix (feature `voice`, LiveKit compilé : clang requis, voir plus haut). LiveKit + serveur sur :8080 avec SERVER_LIVEKIT*
+cd core && cargo clippy --all-targets --features voice -- -D warnings
+cd core && CHATON_TEST_SERVER=http://localhost:8080 cargo test --features voice --test e2e voice -- --ignored
 ```
 
 iOS (`npm run tauri ios dev`) attend un Mac.

@@ -1,0 +1,107 @@
+@if (voice.state(); as state) {
+  <div class="status">
+    <p class="connection" role="status" [class.live]="state.connection === 'connected'">
+      @if (state.connection === 'connected') {
+        <ng-container i18n="@@voice.connected">Voice connected</ng-container>
+      } @else {
+        <ng-container i18n="@@voice.reconnecting">Reconnecting…</ng-container>
+      }
+      @if (state.encrypted) {
+        <span class="lock" [title]="e2e">
+          <svg [lucideIcon]="icons.lock" size="12"></svg>
+          <span class="sr-only">{{ e2e }}</span>
+        </span>
+      }
+    </p>
+    <p class="place" [title]="place()">{{ place() }}</p>
+    @if (ringingOut()) {
+      <p class="hint" i18n="@@voice.ringing-out">Ringing…</p>
+    }
+    @if (!state.microphone) {
+      <p class="hint" i18n="@@voice.listen-only">Listening only: no microphone</p>
+    }
+  </div>
+  <div class="actions">
+    @if (state.microphone) {
+      <button
+        type="button"
+        class="btn btn-ghost btn-icon btn-sm"
+        [attr.aria-pressed]="state.muted || state.deafened"
+        (click)="voice.toggleMute()"
+        i18n-title="@@voice.mute"
+        title="Mute"
+      >
+        <svg
+          [lucideIcon]="state.muted || state.deafened ? icons.micOff : icons.mic"
+          size="18"
+        ></svg>
+      </button>
+    }
+    <button
+      type="button"
+      class="btn btn-ghost btn-icon btn-sm"
+      [attr.aria-pressed]="state.deafened"
+      (click)="voice.toggleDeafen()"
+      i18n-title="@@voice.deafen"
+      title="Deafen"
+    >
+      <svg [lucideIcon]="state.deafened ? icons.headphonesOff : icons.headphones" size="18"></svg>
+    </button>
+    <button
+      type="button"
+      class="btn btn-ghost btn-icon btn-sm hang-up"
+      [disabled]="voice.busy()"
+      (click)="voice.leave()"
+      [title]="state.target.type === 'call' ? hangUpTitle : leaveTitle"
+    >
+      <svg [lucideIcon]="icons.hangUp" size="18"></svg>
+    </button>
+  </div>
+  @if (callPeople().length) {
+    <ul class="people" aria-label="In the call" i18n-aria-label="@@voice.in-call">
+      @for (person of callPeople(); track person.id) {
+        <li>
+          <button type="button" class="person" [appProfile]="person.id" [title]="person.username">
+            <span class="ring" [class.on]="person.speaking">
+              <app-avatar
+                [picture]="person.picture"
+                [name]="person.username"
+                [seed]="person.id"
+                size="sm"
+              ></app-avatar>
+            </span>
+          </button>
+        </li>
+      }
+    </ul>
+  }
+}
+@if (voice.error(); as error) {
+  <p class="error" role="alert">
+    @switch (error) {
+      @case ('voice_disabled') {
+        <span i18n="@@voice.error-disabled"
+          >Voice is off on this instance. Its admin can turn it on.</span
+        >
+      }
+      @case ('not_allowed') {
+        <span i18n="@@voice.error-not-allowed">Members only: you're not in this one.</span>
+      }
+      @default {
+        <span i18n="@@voice.error">Couldn't reach the voice server.</span>
+        <button type="button" class="link" (click)="voice.retry()" i18n="@@voice.retry">
+          Retry
+        </button>
+      }
+    }
+    <button
+      type="button"
+      class="btn btn-ghost btn-icon btn-sm"
+      (click)="voice.clearError()"
+      i18n-title="@@voice.dismiss"
+      title="Dismiss"
+    >
+      <svg [lucideIcon]="icons.close" size="14"></svg>
+    </button>
+  </p>
+}

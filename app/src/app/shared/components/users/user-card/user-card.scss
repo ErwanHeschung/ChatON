@@ -17,3 +17,18 @@
   color: var(--content-secondary);
   font-weight: var(--weight-regular);
 }
+
+// Around the avatar, not on it: the ears' mask would cut it. Detached by the frame, like the rail.
+.ring {
+  display: inline-flex;
+  flex: none;
+  border-radius: var(--radius-full);
+  transition: box-shadow var(--duration-fast) var(--ease-out) var(--speaking-hold);
+
+  &.on {
+    box-shadow:
+      0 0 0 2px var(--surface-frame),
+      0 0 0 4px var(--accent);
+    transition-delay: 0s;
+  }
+}

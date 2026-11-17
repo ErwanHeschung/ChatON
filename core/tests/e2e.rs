@@ -4,6 +4,15 @@
 //! cd server && SERVER_PORT=:8099 SERVER_PUBLICURL=http://localhost:8099 SERVER_PUSHALLOWPRIVATE=1 go run ./cmd/server
 //! cd core && CHATON_TEST_SERVER=http://localhost:8099 cargo test --test e2e -- --ignored
 //! ```
+//!
+//! Voice (feature `voice`): LiveKit's webhooks go to :8080 (`server/livekit.dev.yaml`).
+//!
+//! ```sh
+//! npm run dev:livekit
+//! cd server && SERVER_LIVEKITURL=ws://localhost:7880 SERVER_LIVEKITKEY=devkey \
+//!   SERVER_LIVEKITSECRET=chaton-dev-secret-not-for-production go run ./cmd/server
+//! cd core && CHATON_TEST_SERVER=http://localhost:8080 cargo test --features voice --test e2e voice -- --ignored
+//! ```
 
 use std::path::PathBuf;
 use std::sync::{Arc, Once};
@@ -262,7 +271,10 @@ async fn a_community_with_channels_invites_and_moderation() {
         c.channels.iter().map(|ch| ch.name.clone()).collect()
     };
     assert_eq!(names(&community), ["general"]);
-    let random = alice.create_channel(&community.id, "random").await.unwrap();
+    let random = alice
+        .create_channel(&community.id, "random", false)
+        .await
+        .unwrap();
     let general = community.channels[0].clone();
 
     // Bob can't join without the right code; with the invite he sees both channels.
@@ -652,4 +664,121 @@ async fn a_dm_wakes_the_other_device_by_push() {
     assert!(bob_dir.join("push.json").exists());
     bob.logout().await.unwrap();
     assert!(!bob_dir.join("push.json").exists());
+}
+
+#[cfg(feature = "voice")]
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a running server with LiveKit, see the module docs"]
+async fn voice_channel_presence_and_an_encrypted_call() {
+    use chaton_core::voice::VoiceTarget;
+
+    let (server, _) = setup();
+    let register = |name: &'static str| {
+        let server = server.clone();
+        async move {
+            Arc::new(
+                Session::register(&temp_dir(name), &server, &unique(name))
+                    .await
+                    .unwrap(),
+            )
+        }
+    };
+    let (alice, bob) = (register("alice").await, register("bob").await);
+    let listen = |s: &Arc<Session>| {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let listener = s.clone();
+        tokio::spawn(async move { listener.listen(move |u| drop(tx.send(u))).await });
+        rx
+    };
+    let (mut alice_rx, mut bob_rx) = (listen(&alice), listen(&bob));
+
+    // A voice channel; Bob sees who's in it without joining.
+    let community = alice.create_community("Vocal").await.unwrap();
+    assert!(alice.voice_available(&community.id).await.unwrap());
+    let channel = alice
+        .create_channel(&community.id, "Salon", true)
+        .await
+        .unwrap();
+    bob.join(&alice.invite(&community.id).await.unwrap())
+        .await
+        .unwrap();
+    let state = alice
+        .join_voice_channel(&community.id, &channel.id, false)
+        .await
+        .unwrap();
+    assert!(!state.encrypted && !state.microphone);
+    assert_eq!(state.participants, [alice.account().pubkey]);
+    let in_channel = |s: Arc<Session>| {
+        let (community, channel) = (community.id.clone(), channel.id.clone());
+        async move {
+            let all = s.communities().await.ok()?;
+            let c = all.into_iter().find(|c| c.id == community)?;
+            let ch = c.channels.into_iter().find(|ch| ch.id == channel)?;
+            assert!(ch.voice);
+            Some(ch.participants)
+        }
+    };
+    let present = eventually("alice in the channel", || {
+        let bob = bob.clone();
+        async move { in_channel(bob).await.filter(|p| !p.is_empty()) }
+    })
+    .await;
+    assert_eq!(present, [alice.account().pubkey]);
+
+    // Bob joins: Alice hears of him, mute and deafen are hers alone.
+    bob.join_voice_channel(&community.id, &channel.id, false)
+        .await
+        .unwrap();
+    next_matching(
+        &mut alice_rx,
+        "bob in alice's room",
+        |u| matches!(u, Update::Voice { state: Some(s) } if s.participants.len() == 2),
+    )
+    .await;
+    let st = alice.set_deafened(true).await.unwrap();
+    assert!(st.deafened && !bob.voice_state().await.unwrap().deafened);
+    alice.leave_voice().await.unwrap();
+    bob.leave_voice().await.unwrap();
+    assert!(alice.voice_state().await.is_none());
+
+    // An encrypted call: it rings for Bob, he joins, the last one out ends it.
+    let state = alice
+        .start_call(&[bob.account().pubkey], false)
+        .await
+        .unwrap();
+    assert!(state.encrypted);
+    let VoiceTarget::Call { room, id } = state.target.clone() else {
+        panic!("{state:?}")
+    };
+    let Update::Ring { message, .. } = next_matching(&mut bob_rx, "the call rings", |u| {
+        matches!(u, Update::Ring { .. })
+    })
+    .await
+    else {
+        unreachable!()
+    };
+    assert_eq!(message.call.as_ref().unwrap().id, id);
+    let joined = bob.join_call(&room, &id, false).await.unwrap();
+    assert!(joined.encrypted);
+    next_matching(
+        &mut alice_rx,
+        "bob in the call",
+        |u| matches!(u, Update::Voice { state: Some(s) } if s.participants.len() == 2),
+    )
+    .await;
+    // A 1:1 call ends for both when one hangs up: Alice gets the end and leaves.
+    bob.leave_voice().await.unwrap();
+    next_matching(&mut alice_rx, "the call ended", |u| {
+        matches!(u, Update::Dm { message } if message.call.as_ref().is_some_and(|c| c.ended && c.id == id))
+    })
+    .await;
+    next_matching(&mut alice_rx, "alice out of the call", |u| {
+        matches!(u, Update::Voice { state: None })
+    })
+    .await;
+    assert!(alice.voice_state().await.is_none());
+    next_matching(&mut bob_rx, "bob's copy of the end", |u| {
+        matches!(u, Update::Dm { message } if message.call.as_ref().is_some_and(|c| c.ended && c.id == id))
+    })
+    .await;
 }

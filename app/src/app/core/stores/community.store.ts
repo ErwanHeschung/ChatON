@@ -149,9 +149,13 @@ export const CommunityStore = signalStore(
         }
       },
 
-      async createChannel(name: string) {
+      async createChannel(name: string, voice = false) {
         const community = store.selected();
-        if (community && name.trim() && (await run('create_channel', { community, name })).ok) {
+        if (
+          community &&
+          name.trim() &&
+          (await run('create_channel', { community, name, voice })).ok
+        ) {
           await load();
         }
       },

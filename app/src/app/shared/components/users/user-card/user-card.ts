@@ -16,5 +16,7 @@ export class UserCard {
   public readonly size = input<'sm' | 'md'>('sm');
   /** Cat ears on the avatar: it's me. */
   public readonly ears = input(false);
+  /** In a voice room, talking right now: a green ring. */
+  public readonly speaking = input(false);
   protected readonly parts = computed(() => splitHandle(this.user().username));
 }

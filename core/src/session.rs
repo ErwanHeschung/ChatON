@@ -73,6 +73,11 @@ pub struct Session {
     pub(crate) relay_keys: Mutex<HashMap<String, PublicKey>>,
     /// Serializes `community::resubscribe` (close, then open the same id).
     pub(crate) resubscribing: tokio::sync::Mutex<()>,
+    /// Updates not coming from a relay (voice), merged into `listen`.
+    pub(crate) updates: tokio::sync::broadcast::Sender<Update>,
+    /// The voice channel or call I'm in (one at a time).
+    #[cfg(feature = "voice")]
+    pub(crate) voice: crate::voice::Slot,
 }
 
 impl Session {
@@ -202,6 +207,9 @@ impl Session {
             peers: Mutex::new(HashMap::new()),
             relay_keys: Mutex::new(HashMap::new()),
             resubscribing: tokio::sync::Mutex::new(()),
+            updates: tokio::sync::broadcast::channel(64).0,
+            #[cfg(feature = "voice")]
+            voice: Default::default(),
         };
         session.sync_communities().await?;
         Ok(session)
@@ -414,7 +422,7 @@ impl Session {
     /// Each member's gift wrap to their relays, then my copy to mine. The copy
     /// goes out if anyone got the message; then an error names who didn't.
     // ponytail: one member after the other (≤ 9). Send in parallel if it gets slow.
-    async fn deliver(&self, wraps: dm::Wraps) -> Result<Message> {
+    pub(crate) async fn deliver(&self, wraps: dm::Wraps) -> Result<Message> {
         let mut failed = Vec::new();
         for (to, gift) in &wraps.members {
             if let Err(e) = self.send_to_inbox(*to, gift).await {
@@ -489,17 +497,42 @@ impl Session {
         Ok(all)
     }
 
-    /// Calls `on_update` for each new DM, channel message or community change
-    /// received, until the session closes.
+    /// Calls `on_update` for each new DM, channel message, community change,
+    /// incoming call or voice change, until the session closes.
     pub async fn listen(&self, on_update: impl Fn(Update)) {
         let mut notifications = self.client.notifications();
-        while let Some(notification) = notifications.next().await {
+        let mut local = self.updates.subscribe();
+        loop {
+            let notification = tokio::select! {
+                n = notifications.next() => match n {
+                    Some(n) => n,
+                    None => return,
+                },
+                Ok(update) = local.recv() => {
+                    on_update(update);
+                    continue;
+                }
+            };
             let ClientNotification::Event { event, .. } = notification else {
                 continue;
             };
             if event.kind == Kind::GiftWrap {
                 if let Ok(message) = dm::unwrap(&self.keys, &event) {
-                    on_update(Update::Dm { message });
+                    let ring = dm::rings(&message, self.account.pubkey, Timestamp::now())
+                        && self.invited_by_caller_instance(&message).await;
+                    #[cfg(feature = "voice")]
+                    if let Some(call) = message.call.as_ref().filter(|c| c.ended)
+                        && message.sender != self.account.pubkey
+                    {
+                        drop(self.call_ended(&call.id).await);
+                    }
+                    on_update(Update::Dm {
+                        message: message.clone(),
+                    });
+                    if ring {
+                        let until = message.created_at + dm::RING_SECS;
+                        on_update(Update::Ring { message, until });
+                    }
                 }
             } else if let Some(update) = self.community_update(&event).await {
                 on_update(update);
@@ -507,7 +540,49 @@ impl Session {
         }
     }
 
+    /// A call invite must point at its sender's instance (domain of their
+    /// verified handle), so no one can make me contact a server of their choice.
+    pub(crate) async fn invited_by_caller_instance(&self, message: &Message) -> bool {
+        let Some(invite) = message.call.as_ref().and_then(|c| c.invite.as_ref()) else {
+            return false;
+        };
+        let handle = self.peer(message.sender).await.handle;
+        handle.as_deref().and_then(instance_url) == Some(invite.url.clone())
+    }
+
+    /// A NIP-98 signed request, built by hand: rust-nostr's HttpMethod has no DELETE.
+    pub(crate) async fn nip98(
+        &self,
+        method: reqwest::Method,
+        url: &str,
+        body: String,
+    ) -> Result<reqwest::Response> {
+        let auth = event::build(
+            &self.keys,
+            Kind::HttpAuth,
+            [
+                Tag::parse(["u", url])?,
+                Tag::parse(["method", method.as_str()])?,
+                Tag::parse(["payload", &hex::encode(Sha256::digest(&body))])?,
+            ],
+            "",
+        )?;
+        let auth = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            serde_json::to_string(&auth)?,
+        );
+        Ok(http()
+            .request(method, url)
+            .header("Authorization", format!("Nostr {auth}"))
+            .header("Content-Type", "application/json")
+            .body(body)
+            .send()
+            .await?)
+    }
+
     pub async fn close(&self) {
+        #[cfg(feature = "voice")]
+        drop(self.leave_voice().await);
         self.client.shutdown().await;
     }
 
@@ -627,6 +702,18 @@ fn npub(pubkey: &PublicKey) -> String {
         Ok(npub) => npub,
         Err(never) => match never {},
     }
+}
+
+/// The base URL of the instance of `pseudo@instance`: `https://instance`,
+/// plain HTTP for a local dev instance.
+pub(crate) fn instance_url(handle: &str) -> Option<String> {
+    let domain = handle.split_once('@')?.1;
+    let scheme = if is_local_host(domain) {
+        "http"
+    } else {
+        "https"
+    };
+    Some(format!("{scheme}://{domain}"))
 }
 
 /// `localhost` or `127.0.0.1`, with or without a port: plain HTTP/WS allowed (dev).

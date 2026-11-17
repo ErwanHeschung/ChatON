@@ -442,6 +442,11 @@ func (g *Groups) publish(ctx context.Context, id string) {
 	if group.Parent == "" {
 		events = append(events, group.ToAdminsEvent(), group.ToMembersEvent(), group.ToRolesEvent())
 	}
+	g.emit(ctx, id, events...)
+}
+
+// emit signs, stores and broadcasts state events of group id (g.mu held).
+func (g *Groups) emit(ctx context.Context, id string, events ...nostr.Event) {
 	stamp := max(nostr.Now(), g.stamps[id]+1)
 	g.stamps[id] = stamp
 	for _, ev := range events {
@@ -454,6 +459,43 @@ func (g *Groups) publish(ctx context.Context, id string) {
 		}
 		g.relay.BroadcastEvent(ev)
 	}
+}
+
+// VoiceAccess tells whether id is a voice channel (spec § 11) and pk a member of its community.
+func (g *Groups) VoiceAccess(id string, pk nostr.PubKey) (voice, member bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	group := g.groups[id]
+	if group == nil || !group.LiveKit || group.Parent == "" {
+		return false, false
+	}
+	c := g.community(id)
+	return true, c != nil && isMember(c, pk)
+}
+
+// VoiceChannels lists the voice channels of a community, or of every community when it's "".
+func (g *Groups) VoiceChannels(community string) []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	var ids []string
+	for id, group := range g.groups {
+		if group.LiveKit && group.Parent != "" && (community == "" || group.Parent == community) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// SetVoiceParticipants publishes who is in voice channel id (39004, signed by the relay).
+func (g *Groups) SetVoiceParticipants(ctx context.Context, id string, pks []nostr.PubKey) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	group := g.groups[id]
+	if group == nil || !group.LiveKit {
+		return
+	}
+	group.LiveKitParticipants = pks
+	g.emit(ctx, id, group.ToLiveKitParticipantsEvent())
 }
 
 func (g *Groups) sign(ev *nostr.Event) {

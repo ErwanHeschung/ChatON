@@ -16,6 +16,11 @@ pub const FILE_MESSAGE: Kind = Kind::Custom(15);
 pub const MAX_ROOM: usize = 10;
 /// Group name length (NIP-17 `subject`), in characters.
 pub const MAX_SUBJECT: usize = 100;
+/// What other NIP-17 clients show for a call invite and its end (spec § 11).
+pub const CALL_TEXT: &str = "📞 Appel vocal";
+pub const CALL_END_TEXT: &str = "Appel terminé";
+/// An invite rings this long after it was sent.
+pub const RING_SECS: u64 = 60;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Message {
@@ -31,6 +36,42 @@ pub struct Message {
     pub subject: Option<String>,
     /// A file (NIP-17 kind 15); `text` is then empty.
     pub attachment: Option<Attachment>,
+    /// A call invite or its end (spec § 11); `text` is then empty.
+    pub call: Option<Call>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Call {
+    /// 16 bytes, hex.
+    pub id: String,
+    /// `call-end`: the call is over.
+    pub ended: bool,
+    /// Where to join and the audio key: never sent to the UI.
+    #[serde(skip)]
+    pub(crate) invite: Option<CallInvite>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct CallInvite {
+    /// The caller's instance, which hands out the tokens.
+    pub url: String,
+    /// LiveKit E2EE shared key.
+    pub key: [u8; 32],
+}
+
+impl std::fmt::Debug for CallInvite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CallInvite")
+            .field("url", &self.url)
+            .finish_non_exhaustive()
+    }
+}
+
+/// An invite from someone else, sent less than `RING_SECS` ago.
+pub fn rings(message: &Message, me: PublicKey, now: Timestamp) -> bool {
+    message.sender != me
+        && message.call.as_ref().is_some_and(|c| c.invite.is_some())
+        && now.as_secs().saturating_sub(message.created_at.as_secs()) < RING_SECS
 }
 
 /// The room of `me` with `members`: sorted, deduplicated, me included.
@@ -71,6 +112,74 @@ pub fn wrap_subject(sender: &Keys, to: &[PublicKey], subject: &str) -> Result<Wr
     }
     let tag = Tag::parse(["subject", subject])?;
     wrap_rumor(sender, to, Kind::PrivateDirectMessage, vec![tag], "")
+}
+
+/// Invites `to` to call `id`, joined through `url` (my instance), audio encrypted with `key`.
+pub fn wrap_call(
+    sender: &Keys,
+    to: &[PublicKey],
+    id: &str,
+    url: &str,
+    key: &[u8; 32],
+) -> Result<Wraps> {
+    let tag = Tag::parse(["call", id, url, &hex::encode(key)])?;
+    wrap_rumor(sender, to, Kind::PrivateDirectMessage, vec![tag], CALL_TEXT)
+}
+
+pub fn wrap_call_end(sender: &Keys, to: &[PublicKey], id: &str) -> Result<Wraps> {
+    let tag = Tag::parse(["call-end", id])?;
+    wrap_rumor(
+        sender,
+        to,
+        Kind::PrivateDirectMessage,
+        vec![tag],
+        CALL_END_TEXT,
+    )
+}
+
+/// The `call` or `call-end` tag; `Err` when malformed.
+fn call(tags: &nostr::prelude::Tags) -> std::result::Result<Option<Call>, ()> {
+    let hex32 = |s: &str, len: usize| {
+        s.len() == len
+            && s.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    };
+    for tag in tags.iter() {
+        match tag.as_slice() {
+            [k, id, url, key, ..] if k == "call" => {
+                let key: [u8; 32] = hex::decode(key)
+                    .ok()
+                    .and_then(|k| k.try_into().ok())
+                    .ok_or(())?;
+                if !hex32(id, 32) || !url.starts_with("http") {
+                    return Err(());
+                }
+                let invite = CallInvite {
+                    url: url.trim_end_matches('/').to_string(),
+                    key,
+                };
+                return Ok(Some(Call {
+                    id: id.clone(),
+                    ended: false,
+                    invite: Some(invite),
+                }));
+            }
+            [k, id, ..] if k == "call-end" => {
+                return if hex32(id, 32) {
+                    Ok(Some(Call {
+                        id: id.clone(),
+                        ended: true,
+                        invite: None,
+                    }))
+                } else {
+                    Err(())
+                };
+            }
+            [k, ..] if k == "call" => return Err(()),
+            _ => {}
+        }
+    }
+    Ok(None)
 }
 
 fn wrap_rumor(
@@ -117,11 +226,19 @@ pub fn unwrap(keys: &Keys, gift_wrap: &Event) -> Result<Message> {
         .find(|t| t.as_slice().first().map(String::as_str) == Some("subject"))
         .and_then(|t| t.content())
         .map(|s| s.chars().take(MAX_SUBJECT).collect::<String>());
+    let call = if rumor.kind == Kind::PrivateDirectMessage {
+        call(&rumor.tags).map_err(|()| reject())?
+    } else {
+        None
+    };
     let attachment = if rumor.kind == FILE_MESSAGE {
         let file =
             Attachment::from_dm_tags(&rumor.content, rumor.tags.iter()).ok_or_else(reject)?;
         rumor.content = String::new();
         Some(file)
+    } else if call.is_some() {
+        rumor.content = String::new(); // shown by other clients, not by ChatON
+        None
     } else if rumor.kind == Kind::PrivateDirectMessage {
         if rumor.content.is_empty() && subject.is_none() {
             return Err(reject());
@@ -143,6 +260,7 @@ pub fn unwrap(keys: &Keys, gift_wrap: &Event) -> Result<Message> {
         created_at: rumor.created_at,
         subject,
         attachment,
+        call,
     })
 }
 
@@ -151,6 +269,70 @@ mod tests {
     use super::*;
     use nostr::nips::nip44::{self, Version};
     use nostr::prelude::EventBuilder;
+
+    #[test]
+    fn call_round_trip_keeps_the_key_from_the_ui() {
+        let (alice, bob) = (Keys::generate(), Keys::generate());
+        let (id, key) = ("0f".repeat(16), [0xef; 32]);
+        let wraps =
+            wrap_call(&alice, &[bob.public_key()], &id, "https://a.example/", &key).unwrap();
+        let got = unwrap(&bob, &wraps.members[0].1).unwrap();
+        let call = got.call.clone().unwrap();
+        assert_eq!(
+            (call.id.as_str(), call.ended, got.text.as_str()),
+            (id.as_str(), false, "")
+        );
+        let invite = call.invite.unwrap();
+        assert_eq!(
+            (invite.url.as_str(), invite.key),
+            ("https://a.example", key)
+        );
+        let json = serde_json::to_string(&got).unwrap();
+        assert!(
+            !json.contains(&"ef".repeat(32)) && !json.contains("a.example"),
+            "{json}"
+        );
+        assert!(!format!("{got:?}").contains("239, 239"));
+
+        // Rings for Bob for a minute, never for Alice.
+        let now = got.created_at;
+        assert!(rings(&got, bob.public_key(), now));
+        assert!(!rings(&got, alice.public_key(), now));
+        assert!(!rings(&got, bob.public_key(), now + RING_SECS));
+
+        let end = wrap_call_end(&bob, &[alice.public_key()], &id).unwrap();
+        let end = unwrap(&alice, &end.members[0].1).unwrap();
+        assert_eq!(end.call.as_ref().map(|c| c.ended), Some(true));
+        assert!(!rings(&end, alice.public_key(), end.created_at));
+    }
+
+    #[test]
+    fn malformed_calls_are_ignored() {
+        let (alice, bob) = (Keys::generate(), Keys::generate());
+        let id = "0f".repeat(16);
+        for tag in [
+            vec!["call", "short", "https://a.example", &"ef".repeat(32)],
+            vec!["call", &id, "https://a.example", "nothex"],
+            vec!["call", &id, "ftp://a.example", &"ef".repeat(32)],
+            vec!["call", &id],
+            vec!["call-end", "NOTHEX"],
+        ] {
+            let rumor = event::builder(
+                Kind::PrivateDirectMessage,
+                [
+                    Tag::public_key(bob.public_key()),
+                    Tag::parse(tag.clone()).unwrap(),
+                ],
+                CALL_TEXT,
+            )
+            .unwrap()
+            .finalize_unsigned(alice.public_key());
+            let gift = GiftWrapBuilder::new(bob.public_key(), rumor)
+                .finalize(&alice)
+                .unwrap();
+            assert!(unwrap(&bob, &gift).is_err(), "{tag:?} accepted");
+        }
+    }
 
     #[test]
     fn file_round_trip() {

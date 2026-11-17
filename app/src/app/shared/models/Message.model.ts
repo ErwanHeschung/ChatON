@@ -12,6 +12,8 @@ export interface Message {
   attachment?: Attachment | null;
   /** A group (re)naming: shown as a note, not a bubble. */
   subject?: string | null;
+  /** A call started or ended: a note. `joinable`: started, not ended, and I'm not in it. */
+  call?: { id: string; ended: boolean; joinable: boolean } | null;
   /** Sent by me: my name shows in green. */
   mine?: boolean;
   /** Shows a delete button: my own message, or I moderate the community. */

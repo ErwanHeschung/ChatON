@@ -2,15 +2,11 @@
 //! WebPush endpoint, kept by my own instance, which wakes the device when a DM
 //! arrives. Requests are NIP-98 signed.
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
-use nostr::prelude::{Kind, Tag};
 use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use crate::session::{Session, http};
-use crate::{Error, Result, event, media};
+use crate::{Error, Result, media};
 
 const PATH: &str = "/api/push";
 /// The endpoint registered from this device, to unregister it on logout.
@@ -64,29 +60,8 @@ impl Session {
     }
 
     async fn push_call(&self, method: Method, endpoint: &Endpoint) -> Result<()> {
-        let url = self.push_url();
         let body = serde_json::to_string(endpoint)?;
-        // NIP-98 by hand: rust-nostr's HttpMethod has no DELETE.
-        let auth = event::build(
-            &self.keys,
-            Kind::HttpAuth,
-            [
-                Tag::parse(["u", url.as_str()])?,
-                Tag::parse(["method", method.as_str()])?,
-                Tag::parse(["payload", &hex::encode(Sha256::digest(&body))])?,
-            ],
-            "",
-        )?;
-        let resp = http()
-            .request(method, &url)
-            .header(
-                "Authorization",
-                format!("Nostr {}", STANDARD.encode(serde_json::to_string(&auth)?)),
-            )
-            .header("Content-Type", "application/json")
-            .body(body)
-            .send()
-            .await?;
+        let resp = self.nip98(method, &self.push_url(), body).await?;
         match resp.status() {
             StatusCode::NO_CONTENT => Ok(()),
             StatusCode::FORBIDDEN => Err(Error::NotAllowed),

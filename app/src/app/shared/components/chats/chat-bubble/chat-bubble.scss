@@ -160,3 +160,23 @@ img.attachment {
   font-size: var(--text-sm);
   text-align: center;
 }
+
+.note.call {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+
+  svg {
+    color: var(--content-tertiary);
+  }
+
+  time {
+    font-size: var(--text-xs);
+  }
+
+  // A call going on: its phone is live (green), Join is a real button.
+  &.live svg {
+    color: var(--accent-text);
+  }
+}

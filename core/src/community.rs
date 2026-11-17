@@ -21,11 +21,12 @@ use crate::{Error, Result, event, link};
 pub const ROLE_ADMIN: &str = "admin";
 pub const ROLE_MODERATOR: &str = "moderator";
 
-const STATE_KINDS: [Kind; 4] = [
+const STATE_KINDS: [Kind; 5] = [
     Kind::GroupMetadata,
     Kind::GroupAdmins,
     Kind::GroupMembers,
     Kind::GroupRoles,
+    Kind::GroupLivekitParticipants,
 ];
 const ID_LEN: usize = 12;
 const INVITE_LEN: usize = 8;
@@ -47,6 +48,10 @@ pub struct Community {
 pub struct Channel {
     pub id: String,
     pub name: String,
+    /// A voice channel (NIP-29 `livekit`, spec § 11).
+    pub voice: bool,
+    /// Who is in it, by the relay's 39004 (voice channels only).
+    pub participants: Vec<PublicKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -128,6 +133,16 @@ pub enum Update {
     },
     /// My communities, their channels or members changed: read them again.
     Communities,
+    /// Someone calls me (spec § 11): ring until `until`, a `call-end` for
+    /// this call, or I join or decline.
+    Ring {
+        message: crate::dm::Message,
+        until: Timestamp,
+    },
+    /// The voice channel or call I'm in changed; `None`: I'm in none.
+    Voice {
+        state: Option<crate::voice::VoiceState>,
+    },
 }
 
 impl Session {
@@ -137,17 +152,23 @@ impl Session {
         let id = random_id()?;
         self.group_event(&relay, Kind::GroupCreateGroup, &id, [], "")
             .await?;
-        self.edit_metadata(&relay, &id, name, None, None, &[])
+        self.edit_metadata(&relay, &id, name, None, None, &[], false)
             .await?;
         self.add_to_list(&id, &relay).await?;
-        self.create_channel(&id, "general").await?;
+        self.create_channel(&id, "general", false).await?;
         self.community(&id)
             .await?
             .ok_or_else(|| Error::Server("community not published".into()))
     }
 
-    /// Adds a channel at the end of the community (admins only).
-    pub async fn create_channel(&self, community: &str, name: &str) -> Result<Channel> {
+    /// Adds a channel at the end of the community (admins only). A voice
+    /// channel stays one: its type is set here, once (spec § 11).
+    pub async fn create_channel(
+        &self,
+        community: &str,
+        name: &str,
+        voice: bool,
+    ) -> Result<Channel> {
         let relay = self.relay_of(community).await?;
         // Fresh state: 9002 replaces every tag, so it must list every child.
         self.fetch_state(&relay, &[community.to_string()]).await?;
@@ -160,7 +181,7 @@ impl Session {
         let id = random_id()?;
         self.group_event(&relay, Kind::GroupCreateGroup, &id, [], "")
             .await?;
-        self.edit_metadata(&relay, &id, name, None, Some(community), &[])
+        self.edit_metadata(&relay, &id, name, None, Some(community), &[], voice)
             .await?;
         let mut children = meta.children;
         children.push(id.clone());
@@ -171,12 +192,15 @@ impl Session {
             meta.picture.as_deref(),
             None,
             &children,
+            false,
         )
         .await?;
         self.sync_community(community, &relay).await?;
         Ok(Channel {
             id,
             name: name.into(),
+            voice,
+            participants: Vec::new(),
         })
     }
 
@@ -360,6 +384,7 @@ impl Session {
             Some(&url),
             None,
             &meta.children,
+            false,
         )
         .await?;
         self.sync_community(community, &relay).await
@@ -528,9 +553,19 @@ impl Session {
         let mut channels = Vec::new();
         for child in meta.children {
             if let Some(m) = self.metadata(key, &child).await? {
+                let participants = match m.voice {
+                    true => self
+                        .state(key, Kind::GroupLivekitParticipants, &child)
+                        .await?
+                        .map(|ev| participants(&ev))
+                        .unwrap_or_default(),
+                    false => Vec::new(),
+                };
                 channels.push(Channel {
                     id: child,
                     name: m.name,
+                    voice: m.voice,
+                    participants,
                 });
             }
         }
@@ -568,6 +603,7 @@ impl Session {
     }
 
     /// 9002 replaces every tag (NIP-29): always send them all.
+    #[allow(clippy::too_many_arguments)]
     async fn edit_metadata(
         &self,
         relay: &str,
@@ -576,6 +612,7 @@ impl Session {
         picture: Option<&str>,
         parent: Option<&str>,
         children: &[String],
+        voice: bool,
     ) -> Result<()> {
         let mut tags = vec![Tag::parse(["name", name])?];
         if let Some(picture) = picture {
@@ -586,6 +623,9 @@ impl Session {
         }
         for child in children {
             tags.push(Tag::parse(["child", child])?);
+        }
+        if voice {
+            tags.push(Tag::parse(["livekit"])?);
         }
         self.group_event(relay, Kind::GroupEditMetadata, group, tags, "")
             .await
@@ -680,7 +720,7 @@ impl Session {
             .is_ok_and(|keys| keys.values().any(|k| *k == pubkey))
     }
 
-    async fn relay_of(&self, community: &str) -> Result<String> {
+    pub(crate) async fn relay_of(&self, community: &str) -> Result<String> {
         self.group_list()
             .await?
             .into_iter()
@@ -746,6 +786,7 @@ struct Metadata {
     name: String,
     picture: Option<String>,
     children: Vec<String>,
+    voice: bool,
 }
 
 fn metadata(ev: &Event) -> Metadata {
@@ -755,6 +796,7 @@ fn metadata(ev: &Event) -> Metadata {
             [k, v, ..] if k == "name" => meta.name = v.clone(),
             [k, v, ..] if k == "picture" => meta.picture = Some(v.clone()),
             [k, v, ..] if k == "child" => meta.children.push(v.clone()),
+            [k, ..] if k == "livekit" => meta.voice = true,
             _ => {}
         }
     }
@@ -772,6 +814,16 @@ fn admins(ev: &Event) -> HashMap<PublicKey, Vec<String>> {
             _ => None,
         })
         .collect()
+}
+
+/// Keys in a voice channel, from a 39004 (each once).
+fn participants(ev: &Event) -> Vec<PublicKey> {
+    let mut all: Vec<PublicKey> = tag_values(ev, "participant")
+        .filter_map(|pk| PublicKey::from_hex(pk).ok())
+        .collect();
+    all.sort();
+    all.dedup();
+    all
 }
 
 /// `(id, relay)` of each `group` tag of a 10009.
@@ -896,8 +948,31 @@ mod tests {
                 name: "Les chats".into(),
                 picture: None,
                 children: vec!["g7w2p5n1c4bb".into(), "a1b2c3d4e5f6".into()],
+                voice: false,
             }
         );
+        let voice = ev(
+            &relay,
+            Kind::GroupMetadata,
+            &[&["d", "v8t3r6m2d5cc"], &["name", "Vocal"], &["livekit"]],
+            1,
+        );
+        assert!(metadata(&voice).voice);
+        let present = ev(
+            &relay,
+            Kind::GroupLivekitParticipants,
+            &[
+                &["d", "v8t3r6m2d5cc"],
+                &["participant", &bob.to_hex()],
+                &["participant", &alice.to_hex()],
+                &["participant", &bob.to_hex()],
+                &["participant", "nope"],
+            ],
+            1,
+        );
+        let mut both = vec![alice, bob];
+        both.sort();
+        assert_eq!(participants(&present), both);
         let roles = ev(
             &relay,
             Kind::GroupAdmins,

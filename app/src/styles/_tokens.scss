@@ -97,12 +97,14 @@
 
   /* --- MOTION --- */
   --duration-fast: 120ms;
+  --speaking-hold: 300ms; /* the speaking ring outlasts a pause between words */
   --duration-base: 200ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1); /* entrances */
   --ease-in: cubic-bezier(0.4, 0, 1, 1); /* exits */
 
   /* --- LAYERS --- */
   --z-modal: 1000;
+  --z-call: 1010; /* incoming call banner: above dialogs and settings */
 }
 
 /* The desktop app draws its own window controls (app-titlebar); pages fit under them. */

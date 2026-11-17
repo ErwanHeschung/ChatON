@@ -10,6 +10,8 @@ futures-core = "0.3"
 getrandom = "0.3"
 hex = "0.4"
 keyring-core = "1"
+# Voice (spec § 11): only the app joins rooms; `cargo test` stays light without it.
+livekit = { version = "=0.11.0", default-features = false, features = ["native", "rustls-tls-webpki-roots"], optional = true }
 nostr = { version = "0.45", default-features = false, features = ["std", "nip44", "nip49", "nip59", "nip98", "os-rng"] }
 nostr-blossom = "0.45"
 nostr-sdk = "0.45"
@@ -21,6 +23,9 @@ sha2 = "0.11"
 spake2 = "0.4"
 thiserror = "2.0.21"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+
+[features]
+voice = ["dep:livekit"]
 
 [dev-dependencies]
 secp256k1 = "0.30"

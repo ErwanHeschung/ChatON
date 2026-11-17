@@ -5,6 +5,10 @@ import { Attachment } from '@models/Media.model';
 export interface Channel {
   id: string;
   name: string;
+  /** A voice channel (spec § 11). */
+  voice: boolean;
+  /** Who is in it (voice channels), by the relay. */
+  participants: string[];
 }
 
 export interface Community {

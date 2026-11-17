@@ -1,0 +1,13 @@
+# libwebrtc (LiveKit, voice) is prebuilt with a static CRT on Windows, and needs
+# its Objective-C categories kept on Apple targets (livekit/rust-sdks README).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-args=-ObjC"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-args=-ObjC"]
+
+[target.aarch64-apple-ios]
+rustflags = ["-C", "link-args=-ObjC"]

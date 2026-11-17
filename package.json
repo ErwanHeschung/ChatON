@@ -8,6 +8,7 @@
     "dev:android": "concurrently -k -n server,app \"npm run dev:server\" \"npm --prefix app run tauri android dev\"",
     "dev:server": "cd server && go run ./cmd/server",
     "dev:app": "npm --prefix app run tauri dev",
+    "dev:livekit": "docker run --rm --network host -v ./server/livekit.dev.yaml:/livekit.yaml livekit/livekit-server:v1.13 --config /livekit.yaml",
     "build": "npm run build:server && npm run build:app",
     "build:server": "cd server && go build -o bin/ ./cmd/server",
     "build:app": "npm --prefix app run tauri build",

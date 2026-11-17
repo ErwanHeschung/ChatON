@@ -1,4 +1,25 @@
-@if (message().subject && !message().text && !message().attachment) {
+@if (message().call; as call) {
+  <p class="note call" [class.live]="call.joinable">
+    <svg [lucideIcon]="call.ended ? icons.callEnded : icons.call" size="14"></svg>
+    @if (call.ended) {
+      <span i18n="@@call.ended">Call ended</span>
+    } @else if (message().mine) {
+      <span i18n="@@call.started-mine">You started a call</span>
+    } @else {
+      <span i18n="@@call.started"
+        >{{ author()[0] }}<span class="instance">{{ author()[1] }}</span> started a call</span
+      >
+    }
+    @if (call.joinable) {
+      <button type="button" class="btn btn-sm" (click)="join.emit()" i18n="@@call.join">
+        Join
+      </button>
+    }
+    <time [attr.datetime]="message().timestamp.toISOString()">{{
+      message().timestamp | date: 'shortTime'
+    }}</time>
+  </p>
+} @else if (message().subject && !message().text && !message().attachment) {
   <p class="note" i18n="@@group.named">
     {{ message().senderName }} named the group « {{ message().subject }} »
   </p>

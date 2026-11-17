@@ -8,7 +8,14 @@ import {
   signal,
 } from '@angular/core';
 import { AsyncPipe, DatePipe } from '@angular/common';
-import { LucideDownload, LucideDynamicIcon, LucideFile, LucideTrash2 } from '@lucide/angular';
+import {
+  LucideDownload,
+  LucideDynamicIcon,
+  LucideFile,
+  LucidePhone,
+  LucidePhoneOff,
+  LucideTrash2,
+} from '@lucide/angular';
 import { Avatar } from '@components/avatar/avatar';
 import { splitHandle } from '@models/Dm.model';
 import { Attachment } from '@models/Media.model';
@@ -31,10 +38,18 @@ export class ChatBubble {
   /** Same author as the message above, shortly after: no avatar or name. */
   public readonly continued = input(false);
   public readonly remove = output<void>();
+  /** Join the call this note announces. */
+  public readonly join = output<void>();
   /** First click asks, second deletes. */
   public readonly confirming = signal(false);
   public readonly saveFailed = signal(false);
-  protected readonly icons = { file: LucideFile, delete: LucideTrash2, save: LucideDownload };
+  protected readonly icons = {
+    file: LucideFile,
+    delete: LucideTrash2,
+    save: LucideDownload,
+    call: LucidePhone,
+    callEnded: LucidePhoneOff,
+  };
   protected readonly author = computed(() => splitHandle(this.message().senderName));
   /** The time today, the day and time before. */
   public isImage(file: Attachment): boolean {

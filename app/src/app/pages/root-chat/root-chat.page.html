@@ -1,7 +1,8 @@
-<app-chat-layout>
+<app-chat-layout [voice]="!!voice.state() || !!voice.error()">
   <app-community-rail rail></app-community-rail>
 
   <router-outlet sidebar name="left-sidebar"></router-outlet>
+  <app-voice-bar voice></app-voice-bar>
   <app-user-panel account></app-user-panel>
 
   <app-chat-header header></app-chat-header>
@@ -14,6 +15,7 @@
     (send)="send($event)"
     (file)="sendFile($event)"
     (remove)="remove($event)"
+    (join)="joinCall($event)"
   ></app-chat>
 
   <app-users-list members></app-users-list>
@@ -21,4 +23,8 @@
 
 @if (shell.settings()) {
   <app-settings />
+}
+
+@if (voice.ring()) {
+  <app-call-banner />
 }

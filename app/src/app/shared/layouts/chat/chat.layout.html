@@ -5,7 +5,10 @@
   <ng-content select="[sidebar]"></ng-content>
 </aside>
 <div class="account">
-  <ng-content select="[account]"></ng-content>
+  <ng-content select="[voice]"></ng-content>
+  <div class="me">
+    <ng-content select="[account]"></ng-content>
+  </div>
 </div>
 <main class="sheet">
   <header class="sheet-header">

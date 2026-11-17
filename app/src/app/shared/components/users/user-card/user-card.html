@@ -1,10 +1,12 @@
-<app-avatar
-  [picture]="user().picture"
-  [name]="user().username"
-  [seed]="user().id"
-  [size]="size()"
-  [ears]="ears()"
-></app-avatar>
+<span class="ring" [class.on]="speaking()">
+  <app-avatar
+    [picture]="user().picture"
+    [name]="user().username"
+    [seed]="user().id"
+    [size]="size()"
+    [ears]="ears()"
+  ></app-avatar>
+</span>
 <span class="name" [title]="user().username"
   >{{ parts()[0] }}<span class="instance">{{ parts()[1] }}</span></span
 >

@@ -1,0 +1,27 @@
+@if (caller(); as caller) {
+  <div class="who" id="call-who">
+    <app-user-card [user]="caller" size="md"></app-user-card>
+    <p class="what">
+      @if (group(); as group) {
+        <ng-container i18n="@@call.ringing-group">calls you in “{{ group }}”</ng-container>
+      } @else if (others(); as others) {
+        <ng-container i18n="@@call.ringing-with">calls you, with {{ others }}</ng-container>
+      } @else {
+        <ng-container i18n="@@call.ringing">is calling you</ng-container>
+      }
+    </p>
+    @if (voice.state()) {
+      <p class="what" i18n="@@call.leaves">Answering leaves your current voice.</p>
+    }
+  </div>
+  <div class="actions">
+    <button type="button" class="btn btn-danger" (click)="voice.decline()">
+      <svg [lucideIcon]="icons.decline" size="18"></svg>
+      <ng-container i18n="@@call.decline">Decline</ng-container>
+    </button>
+    <button type="button" class="btn btn-primary" [disabled]="voice.busy()" (click)="answer()">
+      <svg [lucideIcon]="icons.answer" size="18"></svg>
+      <ng-container i18n="@@call.answer">Answer</ng-container>
+    </button>
+  </div>
+}

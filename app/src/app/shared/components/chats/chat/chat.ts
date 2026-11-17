@@ -40,6 +40,8 @@ export class Chat {
   public readonly file = output<File>();
   /** Id of a message to delete. */
   public readonly remove = output<string>();
+  /** Join the call a note announces (its message). */
+  public readonly join = output<Message>();
 
   /** Each message, whether it continues its author's run, and the day it opens (if any). */
   protected readonly rows = computed(() => {
@@ -53,6 +55,8 @@ export class Chat {
         older.senderId === message.senderId &&
         !older.subject &&
         !message.subject &&
+        !older.call &&
+        !message.call &&
         message.timestamp.getTime() - older.timestamp.getTime() < GROUP_GAP_MS;
       return { message, continued, day: newDay ? dayLabel(message.timestamp) : null };
     });

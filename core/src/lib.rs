@@ -14,6 +14,7 @@ pub mod link;
 pub mod media;
 pub mod push;
 pub mod session;
+pub mod voice;
 
 pub use nostr;
 
@@ -59,6 +60,10 @@ pub enum Error {
     TooLarge,
     #[error("this file is on a server you haven't allowed")]
     NotAllowed,
+    #[error("voice is off on this instance")]
+    VoiceDisabled,
+    #[error("voice: {0}")]
+    Voice(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

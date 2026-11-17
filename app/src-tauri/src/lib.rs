@@ -12,6 +12,7 @@ use chaton_core::link::{self, LinkOffer};
 use chaton_core::media::Attachment;
 use chaton_core::nostr::prelude::{EventId, PublicKey};
 use chaton_core::session::{Account, Conversation, Peer, Session};
+use chaton_core::voice::VoiceState;
 use serde::Serialize;
 use tauri::async_runtime::JoinHandle;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -45,6 +46,8 @@ impl From<Error> for CmdError {
             Error::InvalidInvite => "invalid_invite",
             Error::TooLarge => "too_large",
             Error::NotAllowed => "not_allowed",
+            Error::VoiceDisabled => "voice_disabled",
+            Error::Voice(_) => "voice",
             Error::Invalid(_) | Error::Nostr(_) => "invalid",
             // The relay answered no (permissions, unknown account): not a network problem.
             Error::NotDelivered(ref reason)
@@ -86,7 +89,8 @@ fn data_dir(app: &AppHandle) -> Res<PathBuf> {
 }
 
 /// Keeps the session and forwards what comes in to the UI: `dm` events for
-/// private messages, `community` events for the rest (see `Update`).
+/// private messages, `voice` for calls ringing and the room I'm in,
+/// `community` events for the rest (see `Update`).
 async fn start(app: &AppHandle, state: &App, session: Session) -> Account {
     let session = Arc::new(session);
     let account = session.account().clone();
@@ -99,6 +103,12 @@ async fn start(app: &AppHandle, state: &App, session: Session) -> Account {
                         notify(&handle, &listener, &message);
                         handle.emit("dm", message)
                     }
+                    Update::Ring { ref message, .. } => {
+                        let body = chaton_core::dm::CALL_TEXT.to_string();
+                        alert(&handle, &listener, message.sender, body);
+                        handle.emit("voice", update)
+                    }
+                    voice @ Update::Voice { .. } => handle.emit("voice", voice),
                     other => handle.emit("community", other),
                 };
             })
@@ -111,19 +121,25 @@ async fn start(app: &AppHandle, state: &App, session: Session) -> Account {
 /// Desktop: an OS notification for a message from someone else while the
 /// window isn't focused. Android shows a generic one on push instead.
 fn notify(app: &AppHandle, session: &Arc<Session>, message: &Message) {
+    let body = match &message.attachment {
+        Some(file) => format!("📎 {}", file.name),
+        // A call notifies when it rings (`Update::Ring`), not as a message.
+        None if message.call.is_some() => return,
+        None if message.text.is_empty() => return, // a group rename
+        None => message.text.chars().take(200).collect(),
+    };
+    alert(app, session, message.sender, body);
+}
+
+fn alert(app: &AppHandle, session: &Arc<Session>, sender: PublicKey, body: String) {
     let focused = app
         .get_webview_window("main")
         .and_then(|w| w.is_focused().ok())
         .unwrap_or(true);
-    if cfg!(mobile) || focused || message.sender == session.account().pubkey {
+    if cfg!(mobile) || focused || sender == session.account().pubkey {
         return;
     }
-    let body = match &message.attachment {
-        Some(file) => format!("📎 {}", file.name),
-        None if message.text.is_empty() => return, // a group rename
-        None => message.text.chars().take(200).collect(),
-    };
-    let (app, session, sender) = (app.clone(), session.clone(), message.sender);
+    let (app, session) = (app.clone(), session.clone());
     tauri::async_runtime::spawn(async move {
         use tauri_plugin_notification::NotificationExt;
         let peer = session.peer(sender).await;
@@ -322,12 +338,77 @@ async fn leave_community(state: State<'_, App>, community: String) -> Res<()> {
 }
 
 #[tauri::command]
-async fn create_channel(state: State<'_, App>, community: String, name: String) -> Res<()> {
+async fn create_channel(
+    state: State<'_, App>,
+    community: String,
+    name: String,
+    voice: bool,
+) -> Res<()> {
     session(&state)
         .await?
-        .create_channel(&community, &name)
+        .create_channel(&community, &name, voice)
         .await?;
     Ok(())
+}
+
+#[tauri::command]
+async fn voice_available(state: State<'_, App>, community: String) -> Res<bool> {
+    Ok(session(&state).await?.voice_available(&community).await?)
+}
+
+/// Whether to open the microphone. Desktop: yes (the OS asks if it must);
+/// a device without one listens only (core checks).
+fn microphone() -> bool {
+    true
+}
+
+#[tauri::command]
+async fn join_voice_channel(
+    state: State<'_, App>,
+    community: String,
+    channel: String,
+) -> Res<VoiceState> {
+    Ok(session(&state)
+        .await?
+        .join_voice_channel(&community, &channel, microphone())
+        .await?)
+}
+
+/// Calls the conversation `room` (its members, me included or not).
+#[tauri::command]
+async fn start_call(state: State<'_, App>, room: Vec<PublicKey>) -> Res<VoiceState> {
+    Ok(session(&state)
+        .await?
+        .start_call(&room, microphone())
+        .await?)
+}
+
+#[tauri::command]
+async fn join_call(state: State<'_, App>, room: Vec<PublicKey>, id: String) -> Res<VoiceState> {
+    Ok(session(&state)
+        .await?
+        .join_call(&room, &id, microphone())
+        .await?)
+}
+
+#[tauri::command]
+async fn leave_voice(state: State<'_, App>) -> Res<()> {
+    Ok(session(&state).await?.leave_voice().await?)
+}
+
+#[tauri::command]
+async fn set_muted(state: State<'_, App>, muted: bool) -> Res<VoiceState> {
+    Ok(session(&state).await?.set_muted(muted).await?)
+}
+
+#[tauri::command]
+async fn set_deafened(state: State<'_, App>, deafened: bool) -> Res<VoiceState> {
+    Ok(session(&state).await?.set_deafened(deafened).await?)
+}
+
+#[tauri::command]
+async fn voice_state(state: State<'_, App>) -> Res<Option<VoiceState>> {
+    Ok(session(&state).await?.voice_state().await)
 }
 
 #[tauri::command]
@@ -595,6 +676,14 @@ pub fn run() {
             join_community,
             leave_community,
             create_channel,
+            voice_available,
+            join_voice_channel,
+            start_call,
+            join_call,
+            leave_voice,
+            set_muted,
+            set_deafened,
+            voice_state,
             create_invite,
             members,
             set_roles,

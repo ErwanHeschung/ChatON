@@ -53,21 +53,22 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 | 0 | Profil (`name`, `display_name`, `picture`, `nip05`) | 01 | oui | 4 |
 | 10002 | Liste de relais (outbox) | 65 | oui | 4 |
 | 10050 | Relais préférés pour les MP | 17 | oui | 4 |
-| 14 | Message privé (« rumeur ») | 17 | **non** | 4 |
+| 14 | Message privé (« rumeur »), y compris l'invitation à un appel (`call`, `call-end`, § 11) | 17 | **non** | 4, 9 |
 | 15 | Fichier en message privé (« rumeur », § 10) | 17 | **non** | 6b |
 | 13 | Sceau (contenu chiffré NIP-44) | 59 | oui | 4 |
 | 1059 | Emballage (clé jetable) | 59 | oui | 4 |
 | 22242 | Authentification au relais | 42 | oui | 3 |
-| 27235 | Authentification HTTP (annuaire, envois) | 98 | oui | 3 |
+| 27235 | Authentification HTTP (annuaire, push, jetons de voix) | 98 | oui | 3 |
 | **24135** | **Liaison d'appareils** (éphémère, propre à ChatON, § 8) | — | oui (clé jetable) | 5 |
 | 9 | Message dans un salon (`h` = salon) | 29 | oui | 6 |
 | 9000, 9001, 9002, 9005, 9007, 9008, 9009 | Modération : rôles, retrait, métadonnées, suppression, création, invitation (§ 9) | 29 | oui | 6 |
 | 9021, 9022 | Demande pour rejoindre, quitter | 29 | oui | 6 |
 | 39000–39003 | État d'un groupe : métadonnées, admins, membres, rôles. **Signés par le relais** | 29 | oui (relais) | 6 |
+| 39004 | Participants d'un salon vocal (`participant`, § 11). **Signé par le relais** | 29 | oui (relais) | 9 |
 | 10009 | Mes communautés (`group`) | 51 | oui | 6 |
 | 24242 | Autorisation Blossom (envoi d'un fichier, § 10) | Blossom BUD-01 | oui | 6b |
 
-**Kinds propres à ChatON** : autorisés seulement quand aucune NIP ne convient (par exemple la configuration d'un salon vocal). Ils sont **documentés ici avant tout code**, avec un vecteur. Les autres clients Nostr les ignorent.
+**Kinds propres à ChatON** : autorisés seulement quand aucune NIP ne convient (aujourd'hui, seule la liaison d'appareils). Ils sont **documentés ici avant tout code**, avec un vecteur. Les autres clients Nostr les ignorent.
 
 ## 4. NIP prises en charge
 
@@ -87,6 +88,7 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 | 09, 25 | Suppression d'un message privé, réactions | plus tard |
 | 92 | Pièce jointe dans un message (`imeta`, § 10) | 6b |
 | Blossom (BUD-01, 02) | Fichiers et médias (§ 10) | 6b |
+| 29 (salons « livekit ») | Salons vocaux et leurs participants (§ 11) | 9 |
 
 Rejetées : **04** (ancien format de MP, qui fuit les métadonnées : remplacé par 17), **28** et **72** (remplacées par 29), **07** (les clés vivent dans `core`, pas dans une extension de navigateur).
 
@@ -264,3 +266,35 @@ Les fichiers ne passent pas par le relais. Chaque instance expose un serveur **B
 - `core` télécharge (25 Mio au plus, empreinte vérifiée) et l'interface n'affiche que des octets rendus par `core` : la vue web ne charge jamais une URL distante.
 - Automatique seulement depuis **mon instance** et **l'instance de la communauté** ; ailleurs, il faut cliquer. Un expéditeur ne peut donc pas apprendre l'adresse IP de ses destinataires avec son propre serveur.
 - Le cache local garde le fichier **chiffré** ; il est déchiffré à la lecture.
+
+## 11. Voix (LiveKit)
+
+L'audio ne passe ni par le relais ni par Nostr. Chaque instance qui active la voix a, à côté d'elle, un serveur **LiveKit** (un SFU : il relaie les flux sans les mélanger). Nostr ne sert qu'à dire **où** parler et **qui** est là ; l'instance délivre les **jetons** LiveKit, après une authentification NIP-98. Voix seule en v0 : ni vidéo ni partage d'écran.
+
+### Salons vocaux
+
+- Un **salon vocal** est un salon (§ 9) dont le `9002` porte aussi `["livekit"]` (drapeau NIP-29), donc son `39000` aussi. Il se crée comme un salon texte (§ 9, étape 3). Son type est fixé à la création : le client renvoie `livekit` dans chaque `9002`, comme les autres tags (vecteur `voice_channel_edit_metadata`).
+- Pas de messages texte dans un salon vocal en v0 (l'interface n'en propose pas ; le relais ne l'interdit pas).
+- **Instance compatible** : `GET https://<instance>/.well-known/nip29/livekit` répond `204` si la voix est activée, `404` sinon.
+- **Jeton** : `POST https://<instance>/.well-known/nip29/livekit/<salon>`, signé en NIP-98 (`u` = cette URL exacte, `method` = `POST`, `payload` = sha256 du corps), corps `{}`. Réponse `201` `{"server_url": "wss://…", "participant_token": "<JWT>"}`. `401` si l'authentification échoue, `403` si la clé n'est pas membre de la communauté, `404` si le groupe est inconnu, n'est pas un salon vocal, ou si la voix est coupée.
+- Le jeton est un JWT LiveKit (HS256, signé avec le secret d'API de l'instance) : `iss` = clé d'API, `sub` = `<clé publique hex>:<8 hex au hasard>` (les 64 premiers caractères sont la clé ; le suffixe permet plusieurs appareils), `nbf` et `exp` (10 minutes ; LiveKit le renouvelle pendant la session), et `video` = `{"room": <salon>, "roomJoin": true, "canPublish": true, "canSubscribe": true, "canPublishData": false, "canPublishSources": ["microphone"]}`.
+- **Présence** : le relais publie un `39004` signé par sa clé, `["d", <salon>]` puis un `["participant", <clé>]` par clé présente (plusieurs appareils comptent une fois) (vecteur `group_voice_participants`). Il le met à jour à chaque entrée et sortie, et il est lisible comme les `39000`–`39003`. Un client ne l'accepte que signé par la clé `self` du relais. On voit donc qui est dans un salon sans le rejoindre.
+- Un membre retiré (`9001`) ou parti (`9022`) est éjecté des salons vocaux de la communauté.
+- La voix des communautés **n'est pas chiffrée de bout en bout**, comme leurs messages : le serveur LiveKit de l'instance relaie un audio qu'il pourrait écouter.
+
+### Appels en message privé (chiffrés de bout en bout)
+
+Un MP ou un groupe (§ 5) peut lancer un appel. Le serveur LiveKit relaie l'audio **chiffré par les clients** (LiveKit E2EE, AES-GCM) avec une clé qu'il ne voit jamais.
+
+- **Invitation** : une rumeur **kind 14** envoyée comme un MP, à tous les membres du salon (§ 5), contenu `📞 Appel vocal` (ce que montrent les autres clients NIP-17 ; ChatON l'ignore), avec le tag `["call", <id>, <url>, <clé>]` (vecteur `call_rumor`) :
+  - `id` : 16 octets au hasard, en hexadécimal ;
+  - `url` : l'adresse `https` de **l'instance de l'appelant**, qui délivre les jetons ;
+  - `clé` : 32 octets au hasard, en hexadécimal, la clé de chiffrement de l'audio.
+- **Fin** : une rumeur kind 14 `["call-end", <id>]`, contenu `Appel terminé` (vecteur `call_end_rumor`). Dans un appel à deux, envoyée par celui qui raccroche le premier (ou par l'appelant sans réponse) ; l'autre, en la recevant, quitte l'appel sans en renvoyer. Dans un groupe, envoyée par le dernier participant qui part, ou par l'appelant sans réponse. Les deux côtés ont ainsi le début (l'invitation) et la fin de l'appel dans la conversation.
+- **Sonnerie** : une invitation venue de quelqu'un d'autre, dont le `created_at` a moins de **60 s**, sonne jusqu'à ce que je rejoigne, refuse, reçoive son `call-end` ou que 60 s passent. Rejoindre demande toujours un geste de l'utilisateur.
+- Le client refuse une invitation dont `url` n'est pas l'instance de l'appelant (domaine de son NIP-05), pour la même raison qu'au § 10 : un expéditeur ne doit pas pouvoir faire contacter son propre serveur.
+- **Jeton** : `POST <url>/api/voice/call`, signé en NIP-98, corps `{"id": <id>, "members": [<clé hex>…]}` (tout le salon, moi compris). L'instance vérifie que la clé signataire est dans `members`, qu'il y a de 2 à 10 clés distinctes, et qu'**au moins une a un handle** chez elle. La salle LiveKit est `call-` + hex(sha256(`"chaton-call-v0|" + id + "|" + clés triées jointes par ","`)) : la même pour tous, sans rien stocker. Réponse au même format que pour un salon vocal.
+- **Chiffrement** : les 32 octets de `clé` sont la clé partagée de LiveKit E2EE (AES-GCM, options par défaut). **La clé ne voyage que dans la rumeur NIP-17** : elle n'est jamais dans la demande de jeton, ni nulle part ailleurs côté serveur.
+- **Ce que l'instance apprend** : qui appelle qui (`members`), quand et depuis quelles adresses IP. Jamais le contenu. Les participants ne voient pas les adresses IP les uns des autres (tout passe par le SFU).
+- Un appelé sur une autre instance utilise l'instance de l'appelant (`url`) : la règle « au moins un membre local » le couvre (étape 10).
+

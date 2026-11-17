@@ -144,8 +144,10 @@
   }
 
   :host(.chat-open) {
-    grid-template-areas: 'sheet';
-    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas:
+      'sheet'
+      'account';
+    grid-template-rows: minmax(0, 1fr) auto;
     grid-template-columns: minmax(0, 1fr);
 
     .rail,
@@ -157,6 +159,18 @@
     .sheet {
       display: grid;
       animation: slide-in var(--duration-base) var(--ease-out);
+    }
+  }
+
+  // In voice: mute and hang up stay at hand under the conversation, without my account.
+  :host(.chat-open.voice) {
+    .account {
+      display: block;
+      padding-bottom: var(--space-2);
+    }
+
+    .me {
+      display: none;
     }
   }
 }

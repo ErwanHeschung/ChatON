@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/ErwanHeschung/ChatON/server/internal/media"
 	"github.com/ErwanHeschung/ChatON/server/internal/push"
 	"github.com/ErwanHeschung/ChatON/server/internal/relay"
+	"github.com/ErwanHeschung/ChatON/server/internal/voice"
 )
 
 func main() {
@@ -87,6 +89,20 @@ func main() {
 	}
 	pusher.Bind(rl)
 	pusher.Register(mux)
+
+	// Voice (spec § 11): only next to a LiveKit server.
+	lk := voice.Config{URL: s.LiveKitURL, Key: s.LiveKitKey, Secret: s.LiveKitSecret}
+	switch {
+	case lk == voice.Config{}:
+		log.Println("Voice off: set SERVER_LIVEKITURL, SERVER_LIVEKITKEY and SERVER_LIVEKITSECRET")
+	case lk.URL == "" || lk.Key == "" || lk.Secret == "":
+		log.Fatal("Voice: set all of SERVER_LIVEKITURL, SERVER_LIVEKITKEY and SERVER_LIVEKITSECRET, or none")
+	default:
+		v := voice.New(lk, groups, dir, s.PublicURL)
+		v.Bind(rl)
+		v.Register(mux)
+		go v.Reconcile(context.Background())
+	}
 
 	// Files (spec § 10): own index store, never the relay's.
 	dataDir := filepath.Dir(s.DBPath)

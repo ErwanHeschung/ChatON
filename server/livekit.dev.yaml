@@ -1,0 +1,18 @@
+# LiveKit next to the dev server (npm run dev:livekit). Dev only: the secret is public.
+# Server side: SERVER_LIVEKITURL=ws://localhost:7880 SERVER_LIVEKITKEY=devkey
+# SERVER_LIVEKITSECRET=chaton-dev-secret-not-for-production
+port: 7880
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+keys:
+  devkey: chaton-dev-secret-not-for-production
+webhook:
+  api_key: devkey
+  urls:
+    - http://localhost:8080/api/voice/webhook
+# Who's speaking, near live: a level every 100 ms, not smoothed (defaults: 400 ms, 2 samples,
+# so up to 0.8 s late). The app holds the ring 300 ms, which absorbs the jitter.
+audio:
+  update_interval: 100
+  smooth_intervals: 1

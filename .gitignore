@@ -18,6 +18,9 @@ desktop.ini
 *.pem
 *.key
 
+# --- Rust build output (every crate) ---
+target/
+
 # --- Dependencies (Root level) ---
 node_modules/
 npm-debug.log*

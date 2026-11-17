@@ -44,6 +44,18 @@
     }
   </div>
 
+  @if (view.kind !== 'channel') {
+    @let inCall = voice.call()?.key === dm.selected();
+    <button
+      type="button"
+      class="btn btn-ghost btn-icon btn-sm"
+      [disabled]="inCall || voice.busy()"
+      (click)="voice.startCall(dm.room())"
+      [attr.title]="inCall ? inCallTitle : callTitle"
+    >
+      <svg [lucideIcon]="icons.call" size="20"></svg>
+    </button>
+  }
   <button
     type="button"
     class="btn btn-ghost btn-icon btn-sm"

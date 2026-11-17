@@ -149,7 +149,9 @@ func valid(name string, k keypair, kind int, tags nostr.Tags, content string) Va
 func generate() []byte {
 	payload := sha256.Sum256([]byte(`{"name":"alice"}`))
 	channel := sha256.Sum256([]byte("chaton-link-v0|alice@chaton.example|K7F4"))
-	const community, channel1 = "k3j9x2m8q0aa", "g7w2p5n1c4bb"
+	const community, channel1, voice = "k3j9x2m8q0aa", "g7w2p5n1c4bb", "v8t3r6m2d5cc"
+	// Call (spec § 11): fixed id and key, the E2EE itself is LiveKit's.
+	callID, callKey := strings.Repeat("0f", 16), strings.Repeat("ef", 32)
 	// Seal/gift wrap content is NIP-44 ciphertext: opaque here, NIP-44 has its own vectors.
 	const opaque = "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	// Attachment fields: fixed values, the AES-GCM itself is tested in core.
@@ -187,6 +189,11 @@ func generate() []byte {
 		valid("group_file_message", bob, 9, nostr.Tags{v0, {"h", channel1}, {"imeta", "url https://chaton.example/" + fileX, "m image/png",
 			"x " + fileX, "ox " + fileOX, "size 1234", "name chat.png", "encryption-algorithm aes-gcm",
 			"decryption-key " + fileKey, "decryption-nonce " + fileNonce}}, "Regardez !"),
+		// voice (spec § 11): voice channel, its participants (relay), DM call and its end (rumors)
+		valid("voice_channel_edit_metadata", alice, 9002, nostr.Tags{v0, {"h", voice}, {"name", "Vocal"}, {"parent", community}, {"livekit"}}, ""),
+		valid("group_voice_participants", relay, 39004, nostr.Tags{v0, {"d", voice}, {"participant", alice.pk}, {"participant", bob.pk}}, ""),
+		valid("call_rumor", alice, 14, nostr.Tags{v0, {"p", bob.pk}, {"call", callID, "https://chaton.example", callKey}}, "📞 Appel vocal"),
+		valid("call_end_rumor", alice, 14, nostr.Tags{v0, {"p", bob.pk}, {"call-end", callID}}, "Appel terminé"),
 		// serialization edge cases (rumors: id only)
 		valid("escapes", alice, 14, nostr.Tags{v0}, "quote \" backslash \\ newline \n tab \t cr \r bs \b ff \f"),
 		valid("unicode_raw", alice, 14, nostr.Tags{v0}, "émoji 🎉 日本語 ñ"),

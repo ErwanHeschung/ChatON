@@ -26,6 +26,9 @@ type ServerConfig struct {
 	BlobDir          string   // SERVER_BLOBDIR, uploaded files; default blobs/ next to the DB
 	VAPIDKey         string   // SERVER_VAPIDKEY, base64url P-256: signs pushes; default vapid.key next to the DB
 	PushAllowPrivate bool     // SERVER_PUSHALLOWPRIVATE, dev only: push to private IPs and plain http
+	LiveKitURL       string   // SERVER_LIVEKITURL, wss:// address clients join; voice is off when unset
+	LiveKitKey       string   // SERVER_LIVEKITKEY, LiveKit API key
+	LiveKitSecret    string   // SERVER_LIVEKITSECRET, LiveKit API secret: signs tokens, checks webhooks
 }
 
 func LoadConfig() (*Config, error) {

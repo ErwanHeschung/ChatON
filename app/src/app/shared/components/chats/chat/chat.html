@@ -4,6 +4,7 @@
       [message]="row.message"
       [continued]="row.continued"
       (remove)="remove.emit(row.message.id)"
+      (join)="join.emit(row.message)"
     ></app-chat-bubble>
     @if (row.day; as day) {
       <div class="day" role="separator">

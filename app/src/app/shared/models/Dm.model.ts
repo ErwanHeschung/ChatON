@@ -12,6 +12,8 @@ export interface DmMessage {
   /** Group name set by this message (empty text then). */
   subject: string | null;
   attachment: Attachment | null;
+  /** A call invite or its end (empty text then). */
+  call: { id: string; ended: boolean } | null;
 }
 
 export interface Peer {
