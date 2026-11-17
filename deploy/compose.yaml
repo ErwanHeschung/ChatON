@@ -1,0 +1,53 @@
+# A ChatON instance: the server behind Caddy (HTTPS), LiveKit for voice with --profile voice.
+# Setup and backups: README.md.
+services:
+  chaton:
+    image: ${CHATON_IMAGE:-erwanheschung/chaton-server}:${CHATON_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      SERVER_PUBLICURL: https://${DOMAIN:?set DOMAIN in .env}
+      SERVER_NAME: ${SERVER_NAME:-}
+      SERVER_COUNTRY: ${SERVER_COUNTRY:-}
+      # Voice when LIVEKIT_SECRET is set: LiveKit answers on the same domain (Caddyfile).
+      SERVER_LIVEKITURL: ${LIVEKIT_SECRET:+wss://${DOMAIN}}
+      SERVER_LIVEKITKEY: ${LIVEKIT_SECRET:+chaton}
+      SERVER_LIVEKITSECRET: ${LIVEKIT_SECRET:-}
+    volumes:
+      - data:/data
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+      - 443:443/udp
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+    networks:
+      default:
+        # Inside, the instance's domain is Caddy too: the server reaches LiveKit's API through it
+        # without leaving the machine (a home router may not loop back to its public address).
+        aliases:
+          - ${DOMAIN}
+
+  livekit:
+    image: livekit/livekit-server:v1.13
+    profiles: [voice]
+    restart: unless-stopped
+    command: --config /livekit.yaml
+    environment:
+      LIVEKIT_KEYS: "chaton: ${LIVEKIT_SECRET:-}"
+    ports:
+      - 7881:7881
+      - 7882:7882/udp
+    volumes:
+      - ./livekit.yaml:/livekit.yaml:ro
+
+volumes:
+  # The whole instance: back it up (README.md).
+  data:
+  caddy:

@@ -1,10 +1,13 @@
 @if (modalService.isOpen()) {
+  <!-- A click on the backdrop is a mouse shortcut: the keyboard has Escape (host) and the close button. -->
+  <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
   <div
     class="backdrop"
     (click)="modalService.close()"
     animate.enter="enter-animation"
     animate.leave="leave-animation"
   >
+    <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events -->
     <div class="modal-frame" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
       <div class="modal-container">
         <button

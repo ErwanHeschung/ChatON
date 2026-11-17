@@ -101,9 +101,11 @@ Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé
 ├── app/                     # Tauri 2
 │   ├── src/                 # UI web (TS)
 │   └── src-tauri/           # commandes Tauri → core ; gen/android versionné (Kotlin du push)
-└── server/                  # Go
-    ├── cmd/server/
-    └── internal/{relay,directory,nip98,push,community,media,federation}/
+├── server/                  # Go
+│   ├── cmd/server/
+│   └── internal/{relay,directory,nip98,push,community,media,federation}/
+├── deploy/                  # héberger une instance : compose (serveur, Caddy, LiveKit), README
+└── .github/workflows/       # ci.yml (main et PR : lint, tests, e2e) ; release.yml (tag v* → Docker Hub + release brouillon)
 ```
 
 ## Commandes
@@ -151,6 +153,15 @@ cd server && SERVER_PORT=:8080 SERVER_PUBLICURL=http://localhost:8080 go run ./c
 # SERVER_RULES (rules.yaml : liste noire/blanche, clés, débits ; sinon à côté de la base ; relu sur SIGHUP, spec/federation.md § 6)
 # SERVER_LIVEKITURL, SERVER_LIVEKITKEY, SERVER_LIVEKITSECRET (voix, les trois ou aucun ; en dev : ws://localhost:7880,
 #   devkey, chaton-dev-secret-not-for-production, avec `npm run dev:livekit` à la racine, qui demande Docker)
+
+# release : `version` dans app/src-tauri/tauri.conf.json (seule source ; Android en dérive), commit, puis
+#   git tag v0.1.0 && git push origin v0.1.0
+# La CI (.github/workflows/release.yml) vérifie, pousse <DOCKERHUB_USERNAME>/chaton-server:0.1.0, 0.1 et latest
+# (amd64 + arm64), et remplit une release brouillon (.msi, .exe, .deb, .AppImage, .apk signé) à relire puis publier.
+# Secrets GitHub : DOCKERHUB_USERNAME, DOCKERHUB_TOKEN, ANDROID_KEYSTORE (jks en base64), ANDROID_KEYSTORE_PASSWORD,
+# ANDROID_KEY_ALIAS. Garder le keystore : le perdre empêche de mettre à jour l'APK installé.
+# APK release signé en local : gen/android/keystore.properties (password, keyAlias, storeFile ; ignoré par git).
+# Héberger une instance : deploy/README.md (docker compose up -d).
 
 # vecteurs de test (spec/test-vectors), à régénérer après tout changement de cas
 cd server && go run ./cmd/genvectors > ../spec/test-vectors/events.json

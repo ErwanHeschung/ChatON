@@ -1,0 +1,93 @@
+# Every push to main and every PR: lint, tests, and the end-to-end tests against two servers.
+# Also run by release.yml before anything is published.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go test ./...
+
+  core:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
+  # core against real servers: A on :8099, B on :8098 (federation). Voice needs LiveKit: not here.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - name: Servers
+        run: |
+          cd server && go build -o "$RUNNER_TEMP/chaton-server" ./cmd/server
+          for p in 8099 8098; do
+            mkdir -p "$RUNNER_TEMP/$p"
+            SERVER_PORT=:$p SERVER_PUBLICURL=http://localhost:$p SERVER_PUSHALLOWPRIVATE=1 \
+              SERVER_DBPATH="$RUNNER_TEMP/$p/chaton.bolt" "$RUNNER_TEMP/chaton-server" > "$RUNNER_TEMP/$p.log" 2>&1 &
+          done
+          for p in 8099 8098; do timeout 30 sh -c "until curl -s -o /dev/null localhost:$p; do sleep 0.5; done"; done
+      - run: cargo test --test e2e -- --ignored --test-threads=1
+        working-directory: core
+        env:
+          CHATON_TEST_SERVER: http://localhost:8099
+          CHATON_TEST_SERVER_B: http://localhost:8098
+      - if: failure()
+        run: tail -n 50 "$RUNNER_TEMP"/*.log
+
+  app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npx eslint src
+      - run: npx prettier --check src
+      - run: npm run build

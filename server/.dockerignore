@@ -35,3 +35,8 @@ helm-*.tgz
 *.test
 *.out
 vendor/
+# Local state of a dev server
+*.bolt
+*.db
+*.db-*
+blobs/

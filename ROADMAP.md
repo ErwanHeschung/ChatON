@@ -159,6 +159,15 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 - **Terminé quand :** quelqu'un de A écrit à quelqu'un de B, qui le reçoit comme demande avec l'instance affichée et lui répond même après un redémarrage ; chacun bloque une personne ou une instance ; l'admin de A bloque B et les membres de B n'entrent plus dans ses communautés ; un compte passe de A à B sans perdre ses contacts. Validé par `server/internal/rules` et `internal/relay/rules_test.go`, `core/tests/e2e.rs` (`two_instances_requests_blocks_and_a_move`, deux serveurs) et le rendu de l'app.
 - Plus tard : libérer l'ancien handle et faire rediriger son `.well-known` ; lire l'ancien relais quelque temps après une migration ; garder sa photo en migrant (elle est sur l'ancienne instance) ; appels entre instances ; blocage par mots ; refuser une demande sans bloquer ; téléchargement automatique des fichiers d'autres instances.
 
+## Distribution ✅
+
+- Image du serveur sur Docker Hub (`chaton-server`, amd64 et arm64), distroless, cross-compilée par Go.
+- `deploy/` : compose avec Caddy (HTTPS automatique) et LiveKit en option sur le même domaine ; README d'hébergement (sauvegarde, règles, mises à jour).
+- Release sur tag `v*` : vérifications, puis release GitHub brouillon avec les clients Windows (`.msi`, `.exe`), Linux (`.deb`, `.AppImage`) et Android (APK arm64 signé).
+- Le client publié ne propose plus d'instance par défaut.
+- CI (`ci.yml`) sur `main` et chaque PR : gofmt, vet et tests Go, fmt, clippy et tests du core, e2e contre deux serveurs, ESLint, Prettier et build de l'app. La release la lance avant de publier.
+- Plus tard : macOS et iOS (signature Apple payante), signature Windows (SmartScreen), mise à jour automatique (`tauri-plugin-updater`), F-Droid, Play Store, APK armv7 et x86_64, build Tauri (libwebrtc) et e2e voix en CI.
+
 ## Étape 11 : (plus tard) P2P direct
 
 - iroh dans core, avec les relais en secours.

@@ -1,0 +1,6 @@
+{$DOMAIN} {
+	# Voice (--profile voice): LiveKit's signalling and API, on the same domain.
+	@livekit path /rtc /rtc/* /twirp/*
+	reverse_proxy @livekit livekit:7880
+	reverse_proxy chaton:8080
+}

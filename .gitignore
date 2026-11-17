@@ -30,3 +30,6 @@ yarn-error.log*
 
 # --- Husky ---
 .husky/_
+# --- Android release keystore (gen/android/keystore.properties points to it) ---
+*.jks
+*.keystore

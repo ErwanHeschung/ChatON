@@ -1,0 +1,160 @@
+# A release: the server image on Docker Hub, and a draft GitHub release with the Windows, Linux
+# and Android clients. Triggered by a tag v<version> (version from app/src-tauri/tauri.conf.json),
+# or by hand to try it out. The draft is read, then published by hand.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: release-${{ github.ref }}
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          v=$(jq -r .version app/src-tauri/tauri.conf.json)
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$v" ]; then
+            echo "::error::tag $GITHUB_REF_NAME but tauri.conf.json says $v"; exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  draft:
+    needs: [ci, check]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: v${{ needs.check.outputs.version }}
+    steps:
+      - run: |
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
+              --title "ChatON ${TAG#v}" --generate-notes
+
+  server-image:
+    needs: [ci, check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/chaton-server
+          tags: |
+            type=semver,pattern={{version}},value=v${{ needs.check.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ needs.check.outputs.version }}
+            type=raw,value=latest
+      # Cross-compiled by Go (Dockerfile): arm64 for a Raspberry Pi without emulation.
+      - uses: docker/build-push-action@v6
+        with:
+          context: server
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  desktop:
+    needs: [check, draft]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: msi,nsis
+            files: msi/*.msi nsis/*.exe
+          - os: ubuntu-22.04
+            bundles: deb,appimage
+            files: deb/*.deb appimage/*.AppImage
+    runs-on: ${{ matrix.os }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: v${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - if: runner.os == 'Linux'
+        # Tauri (WebKitGTK), then libwebrtc for voice (LiveKit, built with clang).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            clang libclang-dev libva-dev libdrm-dev libgbm-dev libx11-dev libxext-dev libxfixes-dev \
+            libxdamage-dev libxrandr-dev libxcomposite-dev libxtst-dev libglib2.0-dev \
+            libpulse-dev libasound2-dev libpipewire-0.3-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci && npm run tauri build -- --bundles ${{ matrix.bundles }}
+        working-directory: app
+      - run: gh release upload "$TAG" ${{ matrix.files }} --clobber -R "$GITHUB_REPOSITORY"
+        shell: bash
+        working-directory: app/src-tauri/target/release/bundle
+
+  android:
+    needs: [check, draft]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: NDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;28.2.13676358" >/dev/null
+          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Signing key
+        working-directory: app/src-tauri/gen/android
+        # Through env, never pasted into the script: a quote in the password can't break it.
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/chaton.jks"
+          printf 'password=%s\nkeyAlias=%s\nstoreFile=%s\n' "$PASSWORD" "$ALIAS" "$RUNNER_TEMP/chaton.jks" \
+            > keystore.properties
+      - run: npm ci && npm run tauri android build -- --apk --target aarch64
+        working-directory: app
+      - run: |
+          apk=$(find app/src-tauri/gen/android/app/build/outputs/apk -name '*-release.apk' | head -1)
+          cp "$apk" "ChatON-$VERSION-arm64.apk"
+          gh release upload "v$VERSION" "ChatON-$VERSION-arm64.apk" --clobber -R "$GITHUB_REPOSITORY"
