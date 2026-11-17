@@ -269,7 +269,7 @@ Les fichiers ne passent pas par le relais. Chaque instance expose un serveur **B
 
 ## 11. Voix (LiveKit)
 
-L'audio ne passe ni par le relais ni par Nostr. Chaque instance qui active la voix a, à côté d'elle, un serveur **LiveKit** (un SFU : il relaie les flux sans les mélanger). Nostr ne sert qu'à dire **où** parler et **qui** est là ; l'instance délivre les **jetons** LiveKit, après une authentification NIP-98. Voix seule en v0 : ni vidéo ni partage d'écran.
+L'audio et les écrans partagés ne passent ni par le relais ni par Nostr. Chaque instance qui active la voix a, à côté d'elle, un serveur **LiveKit** (un SFU : il relaie les flux sans les mélanger). Nostr ne sert qu'à dire **où** parler et **qui** est là ; l'instance délivre les **jetons** LiveKit, après une authentification NIP-98. Voix et partage d'écran en v0 ; pas de caméra.
 
 ### Salons vocaux
 
@@ -277,14 +277,15 @@ L'audio ne passe ni par le relais ni par Nostr. Chaque instance qui active la vo
 - Pas de messages texte dans un salon vocal en v0 (l'interface n'en propose pas ; le relais ne l'interdit pas).
 - **Instance compatible** : `GET https://<instance>/.well-known/nip29/livekit` répond `204` si la voix est activée, `404` sinon.
 - **Jeton** : `POST https://<instance>/.well-known/nip29/livekit/<salon>`, signé en NIP-98 (`u` = cette URL exacte, `method` = `POST`, `payload` = sha256 du corps), corps `{}`. Réponse `201` `{"server_url": "wss://…", "participant_token": "<JWT>"}`. `401` si l'authentification échoue, `403` si la clé n'est pas membre de la communauté, `404` si le groupe est inconnu, n'est pas un salon vocal, ou si la voix est coupée.
-- Le jeton est un JWT LiveKit (HS256, signé avec le secret d'API de l'instance) : `iss` = clé d'API, `sub` = `<clé publique hex>:<8 hex au hasard>` (les 64 premiers caractères sont la clé ; le suffixe permet plusieurs appareils), `nbf` et `exp` (10 minutes ; LiveKit le renouvelle pendant la session), et `video` = `{"room": <salon>, "roomJoin": true, "canPublish": true, "canSubscribe": true, "canPublishData": false, "canPublishSources": ["microphone"]}`.
+- Le jeton est un JWT LiveKit (HS256, signé avec le secret d'API de l'instance) : `iss` = clé d'API, `sub` = `<clé publique hex>:<8 hex au hasard>` (les 64 premiers caractères sont la clé ; le suffixe permet plusieurs appareils), `nbf` et `exp` (10 minutes ; LiveKit le renouvelle pendant la session), et `video` = `{"room": <salon>, "roomJoin": true, "canPublish": true, "canSubscribe": true, "canPublishData": false, "canPublishSources": ["microphone", "screen_share"]}`.
 - **Présence** : le relais publie un `39004` signé par sa clé, `["d", <salon>]` puis un `["participant", <clé>]` par clé présente (plusieurs appareils comptent une fois) (vecteur `group_voice_participants`). Il le met à jour à chaque entrée et sortie, et il est lisible comme les `39000`–`39003`. Un client ne l'accepte que signé par la clé `self` du relais. On voit donc qui est dans un salon sans le rejoindre.
 - Un membre retiré (`9001`) ou parti (`9022`) est éjecté des salons vocaux de la communauté.
 - La voix des communautés **n'est pas chiffrée de bout en bout**, comme leurs messages : le serveur LiveKit de l'instance relaie un audio qu'il pourrait écouter.
+- **Partage d'écran** : une piste vidéo LiveKit de source `screen_share`, dans la même salle. Qui partage se lit dans les pistes de la salle, pas dans Nostr : il faut avoir rejoint pour le voir. Un client ne s'abonne qu'à l'écran qu'on regarde. Comme l'audio, il n'est pas chiffré de bout en bout dans un salon, et l'est dans un appel.
 
 ### Appels en message privé (chiffrés de bout en bout)
 
-Un MP ou un groupe (§ 5) peut lancer un appel. Le serveur LiveKit relaie l'audio **chiffré par les clients** (LiveKit E2EE, AES-GCM) avec une clé qu'il ne voit jamais.
+Un MP ou un groupe (§ 5) peut lancer un appel. Le serveur LiveKit relaie l'audio et les écrans partagés **chiffrés par les clients** (LiveKit E2EE, AES-GCM) avec une clé qu'il ne voit jamais.
 
 - **Invitation** : une rumeur **kind 14** envoyée comme un MP, à tous les membres du salon (§ 5), contenu `📞 Appel vocal` (ce que montrent les autres clients NIP-17 ; ChatON l'ignore), avec le tag `["call", <id>, <url>, <clé>]` (vecteur `call_rumor`) :
   - `id` : 16 octets au hasard, en hexadécimal ;

@@ -1,0 +1,43 @@
+<h2 i18n="@@screen.pick">Share your screen</h2>
+@if (screens().length) {
+  <section>
+    <h3 class="section-label" i18n="@@screen.screens">Screens</h3>
+    <ul>
+      @for (source of screens(); track source.id; let i = $index) {
+        <li>
+          <button type="button" class="source" (click)="pick(source)">
+            <span class="preview">
+              @if (source.thumbnail) {
+                <img [src]="source.thumbnail" alt="" />
+              } @else {
+                <svg [lucideIcon]="icons.screen" size="28"></svg>
+              }
+            </span>
+            <span class="title" i18n="@@screen.screen">Screen {{ i + 1 }}</span>
+          </button>
+        </li>
+      }
+    </ul>
+  </section>
+}
+@if (windows().length) {
+  <section>
+    <h3 class="section-label" i18n="@@screen.windows">Windows</h3>
+    <ul>
+      @for (source of windows(); track source.id) {
+        <li>
+          <button type="button" class="source" (click)="pick(source)" [title]="source.title">
+            <span class="preview">
+              @if (source.thumbnail) {
+                <img [src]="source.thumbnail" alt="" />
+              } @else {
+                <svg [lucideIcon]="icons.window" size="28"></svg>
+              }
+            </span>
+            <span class="title">{{ source.title }}</span>
+          </button>
+        </li>
+      }
+    </ul>
+  </section>
+}

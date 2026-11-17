@@ -220,6 +220,24 @@
     "voice.ringing-out": "Ça sonne…",
     "voice.in-call": "Dans l’appel",
     "voice.retry": " Réessayer ",
-    "voice.leave": "Quitter le vocal"
+    "voice.leave": "Quitter le vocal",
+    "screen.live": "En direct",
+    "screen.watch-title": "Regarder l’écran",
+    "screen.pick": "Partager votre écran",
+    "screen.screens": "Écrans",
+    "screen.screen": "Écran {$INTERPOLATION}",
+    "screen.windows": "Fenêtres",
+    "screen.fullscreen": "Plein écran",
+    "screen.close": "Retour à la conversation",
+    "screen.sharing-mine": "Vous partagez votre écran",
+    "screen.shared": "Écrans partagés",
+    "screen.stop-watching": "Ne plus regarder {$INTERPOLATION}",
+    "screen.watch": "Regarder l’écran de {$INTERPOLATION}",
+    "screen.share": "Partager votre écran",
+    "screen.stop": "Arrêter le partage",
+    "screen.error-capture": "Capture de l’écran impossible : rien n’a été choisi, ou ce système ne le permet pas.",
+    "screen.hide-mine": "Masquer",
+    "screen.see-mine": "Voir",
+    "screen.mine": "Votre écran"
   }
 }

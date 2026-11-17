@@ -89,6 +89,19 @@
                     [speaking]="speaking(person.id)"
                   ></app-user-card>
                 </button>
+                @if (here && live(person.id)) {
+                  <button
+                    type="button"
+                    class="badge badge-accent"
+                    [attr.aria-pressed]="voice.state()?.watching === person.id"
+                    (click)="voice.watch(person.id)"
+                    i18n-title="@@screen.watch-title"
+                    title="Watch the screen"
+                    i18n="@@screen.live"
+                  >
+                    Live
+                  </button>
+                }
               </li>
             }
           </ul>

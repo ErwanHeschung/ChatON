@@ -1,12 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import {
   LucideDynamicIcon,
+  LucideEye,
   LucideHeadphoneOff,
   LucideHeadphones,
   LucideLock,
   LucideMic,
   LucideMicOff,
   LucidePhoneOff,
+  LucideScreenShare,
+  LucideScreenShareOff,
   LucideX,
 } from '@lucide/angular';
 import { Avatar } from '@components/avatar/avatar';
@@ -14,6 +17,8 @@ import { ProfileDirective } from '@directives/profile';
 import { CommunityStore } from '@stores/community.store';
 import { ConnectedUserStore } from '@stores/connected-user.store';
 import { DmStore } from '@stores/dm.store';
+import { ModalService } from '@services/modal.service';
+import { ScreenPicker } from '@components/voice/screen-picker/screen-picker';
 import { VoiceStore } from '@stores/voice.store';
 
 /** Above my account while I'm in a voice channel or a call: where, and mute, deafen, hang up. */
@@ -30,6 +35,7 @@ export class VoiceBar {
   private readonly community = inject(CommunityStore);
   private readonly dm = inject(DmStore);
   private readonly user = inject(ConnectedUserStore);
+  private readonly modal = inject(ModalService);
   protected readonly icons = {
     mic: LucideMic,
     micOff: LucideMicOff,
@@ -38,7 +44,37 @@ export class VoiceBar {
     hangUp: LucidePhoneOff,
     lock: LucideLock,
     close: LucideX,
+    share: LucideScreenShare,
+    shareOff: LucideScreenShareOff,
+    watch: LucideEye,
   };
+  protected readonly shareTitle = $localize`:@@screen.share:Share your screen`;
+  protected readonly stopShareTitle = $localize`:@@screen.stop:Stop sharing`;
+
+  protected readonly me = computed(() => this.user.user()?.pubkey);
+  /** Capturing the previews for the picker. */
+  protected readonly picking = signal(false);
+
+  /** The others' shared screens, to watch. */
+  protected readonly screens = computed(() => {
+    const state = this.voice.state();
+    const me = this.user.user()?.pubkey;
+    return (state?.sharing ?? [])
+      .filter((pk) => pk !== me)
+      .map((pk) => ({ id: pk, username: this.dm.label(pk), watched: state?.watching === pk }));
+  });
+
+  protected async toggleShare(): Promise<void> {
+    if (this.voice.sharingMe()) {
+      await this.voice.stopShare();
+      return;
+    }
+    this.picking.set(true);
+    await this.voice.share().finally(() => this.picking.set(false));
+    if (this.voice.sources()) {
+      this.modal.open(ScreenPicker);
+    }
+  }
   protected readonly e2e = $localize`:@@voice.e2e:End-to-end encrypted: your instance can't listen.`;
   protected readonly hangUpTitle = $localize`:@@voice.hang-up:Hang up`;
   protected readonly leaveTitle = $localize`:@@voice.leave:Leave voice`;

@@ -766,6 +766,39 @@ async fn voice_channel_presence_and_an_encrypted_call() {
         |u| matches!(u, Update::Voice { state: Some(s) } if s.participants.len() == 2),
     )
     .await;
+
+    // Alice shares her screen (a test pattern): Bob watches it, encrypted too.
+    let me = alice.account().pubkey;
+    alice.share_test_pattern().await.unwrap();
+    next_matching(
+        &mut bob_rx,
+        "alice shares",
+        |u| matches!(u, Update::Voice { state: Some(s) } if s.sharing == [me]),
+    )
+    .await;
+    let (tx, mut images) = tokio::sync::mpsc::unbounded_channel();
+    let sink: chaton_core::voice::Sink = Arc::new(move |jpeg| drop(tx.send(jpeg)));
+    let st = bob.watch_screen(Some((me, sink))).await.unwrap();
+    assert_eq!(st.watching, Some(me));
+    let jpeg = tokio::time::timeout(Duration::from_secs(20), images.recv())
+        .await
+        .expect("an image of alice's screen")
+        .unwrap();
+    assert_eq!(jpeg[..2], [0xFF, 0xD8]);
+    // Alice sees her own share.
+    let (tx, mut mine) = tokio::sync::mpsc::unbounded_channel();
+    let sink: chaton_core::voice::Sink = Arc::new(move |jpeg| drop(tx.send(jpeg)));
+    alice.watch_screen(Some((me, sink))).await.unwrap();
+    let jpeg = tokio::time::timeout(Duration::from_secs(20), mine.recv())
+        .await
+        .expect("an image of her own screen")
+        .unwrap();
+    assert_eq!(jpeg[..2], [0xFF, 0xD8]);
+    alice.stop_screen_share().await.unwrap();
+    next_matching(&mut bob_rx, "alice stopped sharing", |u| {
+        matches!(u, Update::Voice { state: Some(s) } if s.sharing.is_empty() && s.watching.is_none())
+    })
+    .await;
     // A 1:1 call ends for both when one hangs up: Alice gets the end and leaves.
     bob.leave_voice().await.unwrap();
     next_matching(&mut alice_rx, "the call ended", |u| {

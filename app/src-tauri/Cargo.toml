@@ -42,3 +42,7 @@ apple-native-keyring-store = "1"
 # NIP-49 (scrypt) is ~50x slower unoptimized.
 [profile.dev.package.scrypt]
 opt-level = 3
+
+# Screen share images are JPEG-encoded per frame: too slow unoptimized.
+[profile.dev.package.jpeg-encoder]
+opt-level = 3

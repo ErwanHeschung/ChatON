@@ -91,6 +91,11 @@ export class ServerChannels implements OnInit, OnDestroy {
     }));
   }
 
+  /** Shares a screen (known once I'm in the channel). */
+  public live(pubkey: string): boolean {
+    return !!this.voice.state()?.sharing.includes(pubkey);
+  }
+
   public speaking(pubkey: string): boolean {
     return !!this.voice.state()?.speaking.includes(pubkey);
   }

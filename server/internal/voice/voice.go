@@ -239,7 +239,7 @@ func (v *Voice) respond(w http.ResponseWriter, pubkey nostr.PubKey, room string)
 	yes, no := true, false
 	token, err := v.token(pubkey.Hex()+":"+hex.EncodeToString(suffix), grant{
 		Room: room, RoomJoin: true, CanPublish: &yes, CanSubscribe: &yes, CanPublishData: &no,
-		CanPublishSources: []string{"microphone"},
+		CanPublishSources: []string{"microphone", "screen_share"},
 	})
 	if err != nil {
 		handlers.HandleError(w, err)

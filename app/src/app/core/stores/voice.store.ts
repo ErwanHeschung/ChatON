@@ -1,4 +1,4 @@
-import { computed } from '@angular/core';
+import { computed, inject } from '@angular/core';
 import {
   patchState,
   signalStore,
@@ -7,11 +7,13 @@ import {
   withMethods,
   withState,
 } from '@ngrx/signals';
-import { invoke } from '@tauri-apps/api/core';
+import { Channel, invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { CmdError } from '@models/Auth.model';
 import { DmMessage, roomKey } from '@models/Dm.model';
-import { VoiceState, VoiceUpdate } from '@models/Voice.model';
+import { ScreenSource, VoiceState, VoiceUpdate } from '@models/Voice.model';
+import { ConnectedUserStore } from '@stores/connected-user.store';
+import { ShellService } from '@services/shell.service';
 
 const code = (e: unknown): CmdError['code'] => (e as CmdError).code ?? 'internal';
 
@@ -27,10 +29,16 @@ export const VoiceStore = signalStore(
     /** Joining or leaving. */
     busy: false,
     error: null as CmdError['code'] | null,
+    /** This device can share its screen (desktop). */
+    canShare: false,
+    /** Screens and windows to pick from; null: no picker open. */
+    sources: null as ScreenSource[] | null,
   }),
-  withComputed((store) => {
+  withComputed((store, user = inject(ConnectedUserStore)) => {
     const target = computed(() => store.state()?.target);
     return {
+      /** I share my screen. */
+      sharingMe: computed(() => !!store.state()?.sharing.includes(user.user()?.pubkey ?? '')),
       /** The voice channel I'm in. */
       channel: computed(() => {
         const t = target();
@@ -43,8 +51,10 @@ export const VoiceStore = signalStore(
       }),
     };
   }),
-  withMethods((store) => {
+  withMethods((store, shell = inject(ShellService)) => {
     let ringTimer: ReturnType<typeof setTimeout> | undefined;
+    /** Draws the screen I watch (the stage), JPEG bytes. */
+    let draw: ((jpeg: ArrayBuffer) => void) | null = null;
     /** The last join, for Retry. */
     let last: [string, Record<string, unknown>] | null = null;
 
@@ -72,6 +82,14 @@ export const VoiceStore = signalStore(
       } catch (e) {
         patchState(store, { error: code(e) });
       }
+    };
+
+    /** From the picker: null shares what the OS asks for. */
+    const pick = async (source: ScreenSource | null) => {
+      patchState(store, { sources: null });
+      await invoke('start_screen_share', { source }).catch((e: unknown) =>
+        patchState(store, { error: code(e) }),
+      );
     };
 
     return {
@@ -125,6 +143,43 @@ export const VoiceStore = signalStore(
         patchState(store, { state });
       },
 
+      /** Shares a screen: the picker, or the OS's own when it has one. */
+      async share() {
+        const sources = await invoke<ScreenSource[]>('screen_sources').catch(() => []);
+        if (sources.length) {
+          patchState(store, { sources });
+        } else {
+          await pick(null);
+        }
+      },
+
+      pick,
+
+      closePicker() {
+        patchState(store, { sources: null });
+      },
+
+      stopShare() {
+        return invoke('stop_screen_share').catch(() => undefined);
+      },
+
+      /** Watches `key`'s screen; the stage shows it (on a phone, the sheet opens). */
+      watch(key: string) {
+        shell.openChat();
+        const images = new Channel<ArrayBuffer>();
+        images.onmessage = (jpeg) => draw?.(jpeg);
+        return set('watch_screen', { key, images });
+      },
+
+      stopWatching() {
+        return set('stop_watching', {});
+      },
+
+      /** The stage registers how to draw; null when it goes. */
+      onImage(fn: ((jpeg: ArrayBuffer) => void) | null) {
+        draw = fn;
+      },
+
       clearError() {
         patchState(store, { error: null });
       },
@@ -156,6 +211,9 @@ export const VoiceStore = signalStore(
       void listen<VoiceUpdate>('voice', (event) => store.onUpdate(event.payload));
       void listen<DmMessage>('dm', (event) => store.onDm(event.payload));
       void store.sync();
+      void invoke<boolean>('can_share_screen')
+        .then((canShare) => patchState(store, { canShare }))
+        .catch(() => undefined);
     },
   }),
 );

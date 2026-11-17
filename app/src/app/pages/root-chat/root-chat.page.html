@@ -7,16 +7,20 @@
 
   <app-chat-header header></app-chat-header>
 
-  <app-chat
-    chat
-    [messages]="messages()"
-    [disabled]="inChannel() ? false : !dm.selected()"
-    [error]="inChannel() ? community.sendError() : dm.sendError()"
-    (send)="send($event)"
-    (file)="sendFile($event)"
-    (remove)="remove($event)"
-    (join)="joinCall($event)"
-  ></app-chat>
+  @if (voice.state()?.watching) {
+    <app-screen-stage chat />
+  } @else {
+    <app-chat
+      chat
+      [messages]="messages()"
+      [disabled]="inChannel() ? false : !dm.selected()"
+      [error]="inChannel() ? community.sendError() : dm.sendError()"
+      (send)="send($event)"
+      (file)="sendFile($event)"
+      (remove)="remove($event)"
+      (join)="joinCall($event)"
+    ></app-chat>
+  }
 
   <app-users-list members></app-users-list>
 </app-chat-layout>

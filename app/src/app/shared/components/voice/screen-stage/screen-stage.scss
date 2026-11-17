@@ -1,0 +1,45 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  gap: var(--space-2);
+  animation: rise-in var(--duration-base) var(--ease-out);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.who {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  font-weight: var(--weight-semibold);
+}
+
+.instance {
+  color: var(--content-secondary);
+  font-weight: var(--weight-regular);
+}
+
+canvas {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  height: 0; // the flex height, not the image's
+  border-radius: var(--radius-md);
+  background-color: var(--surface-sunken);
+  object-fit: contain;
+}
+
+canvas:fullscreen {
+  border-radius: 0;
+  background-color: var(--surface-frame);
+}

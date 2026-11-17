@@ -36,6 +36,7 @@ export interface CmdError {
     | 'not_allowed'
     | 'voice_disabled'
     | 'voice'
+    | 'screen_capture'
     | 'no_distributor'
     | 'unsupported'
     | 'invalid'

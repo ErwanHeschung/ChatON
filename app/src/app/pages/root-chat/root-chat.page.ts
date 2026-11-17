@@ -7,6 +7,7 @@ import { UserPanel } from '@components/users/user-panel/user-panel';
 import { UsersList } from '@components/users/users-list/users-list';
 import { Settings } from '@components/settings/settings';
 import { CallBanner } from '@components/voice/call-banner/call-banner';
+import { ScreenStage } from '@components/voice/screen-stage/screen-stage';
 import { VoiceBar } from '@components/voice/voice-bar/voice-bar';
 import { ShellService } from '@services/shell.service';
 import { ChatLayout } from '@layouts/chat/chat.layout';
@@ -31,6 +32,7 @@ import { VoiceStore } from '@stores/voice.store';
     Settings,
     VoiceBar,
     CallBanner,
+    ScreenStage,
   ],
   templateUrl: './root-chat.page.html',
   styleUrl: './root-chat.page.scss',

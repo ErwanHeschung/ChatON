@@ -21,6 +21,20 @@ export interface VoiceState {
   /** Me included. */
   participants: string[];
   speaking: string[];
+  /** Who shares a screen, me included. */
+  sharing: string[];
+  /** Whose screen I watch. */
+  watching: string | null;
+}
+
+/** A screen or window I can share. */
+export interface ScreenSource {
+  id: number;
+  title: string;
+  /** A whole screen, else a window. */
+  screen: boolean;
+  /** What it shows now (a `data:` URL), if it could be captured. */
+  thumbnail: string | null;
 }
 
 /** `voice` events from core's listener. */

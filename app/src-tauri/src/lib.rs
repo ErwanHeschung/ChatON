@@ -13,7 +13,7 @@ use chaton_core::link::{self, LinkOffer};
 use chaton_core::media::Attachment;
 use chaton_core::nostr::prelude::{EventId, PublicKey};
 use chaton_core::session::{Account, Conversation, Peer, Session};
-use chaton_core::voice::VoiceState;
+use chaton_core::voice::{ScreenSource, VoiceState};
 use serde::Serialize;
 use tauri::async_runtime::JoinHandle;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -49,6 +49,7 @@ impl From<Error> for CmdError {
             Error::NotAllowed => "not_allowed",
             Error::VoiceDisabled => "voice_disabled",
             Error::Voice(_) => "voice",
+            Error::ScreenCapture => "screen_capture",
             Error::Invalid(_) | Error::Nostr(_) => "invalid",
             // The relay answered no (permissions, unknown account): not a network problem.
             Error::NotDelivered(ref reason)
@@ -425,6 +426,47 @@ async fn voice_state(state: State<'_, App>) -> Res<Option<VoiceState>> {
 }
 
 #[tauri::command]
+fn can_share_screen() -> bool {
+    chaton_core::voice::can_share_screen()
+}
+
+/// Empty: the OS shows its own picker, start with no source.
+#[tauri::command]
+async fn screen_sources() -> Vec<ScreenSource> {
+    chaton_core::voice::screen_sources().await
+}
+
+#[tauri::command]
+async fn start_screen_share(state: State<'_, App>, source: Option<ScreenSource>) -> Res<()> {
+    Ok(session(&state).await?.start_screen_share(source).await?)
+}
+
+#[tauri::command]
+async fn stop_screen_share(state: State<'_, App>) -> Res<()> {
+    Ok(session(&state).await?.stop_screen_share().await?)
+}
+
+/// Watches `key`'s screen: its images come as JPEG bytes on `images`.
+#[tauri::command]
+async fn watch_screen(
+    state: State<'_, App>,
+    key: PublicKey,
+    images: tauri::ipc::Channel,
+) -> Res<VoiceState> {
+    let sink: chaton_core::voice::Sink =
+        Arc::new(move |jpeg| drop(images.send(tauri::ipc::InvokeResponseBody::Raw(jpeg))));
+    Ok(session(&state)
+        .await?
+        .watch_screen(Some((key, sink)))
+        .await?)
+}
+
+#[tauri::command]
+async fn stop_watching(state: State<'_, App>) -> Res<VoiceState> {
+    Ok(session(&state).await?.watch_screen(None).await?)
+}
+
+#[tauri::command]
 async fn create_invite(state: State<'_, App>, community: String) -> Res<String> {
     Ok(session(&state).await?.invite(&community).await?)
 }
@@ -698,6 +740,12 @@ pub fn run() {
             set_muted,
             set_deafened,
             voice_state,
+            can_share_screen,
+            screen_sources,
+            start_screen_share,
+            stop_screen_share,
+            watch_screen,
+            stop_watching,
             create_invite,
             members,
             set_roles,

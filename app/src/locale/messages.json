@@ -220,6 +220,24 @@
     "voice.ringing-out": "Ringing…",
     "voice.in-call": "In the call",
     "voice.retry": " Retry ",
-    "voice.leave": "Leave voice"
+    "voice.leave": "Leave voice",
+    "screen.live": "Live",
+    "screen.watch-title": "Watch the screen",
+    "screen.pick": "Share your screen",
+    "screen.screens": "Screens",
+    "screen.screen": "Screen {$INTERPOLATION}",
+    "screen.windows": "Windows",
+    "screen.fullscreen": "Full screen",
+    "screen.close": "Back to the conversation",
+    "screen.sharing-mine": "You're sharing your screen",
+    "screen.shared": "Shared screens",
+    "screen.stop-watching": "Stop watching {$INTERPOLATION}",
+    "screen.watch": "Watch {$INTERPOLATION}'s screen",
+    "screen.share": "Share your screen",
+    "screen.stop": "Stop sharing",
+    "screen.error-capture": "Couldn't capture the screen: nothing chosen, or this system doesn't allow it.",
+    "screen.hide-mine": "Hide",
+    "screen.see-mine": "See",
+    "screen.mine": "Your screen"
   }
 }

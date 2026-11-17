@@ -271,7 +271,7 @@ func TestChannelToken(t *testing.T) {
 	video, _ := c["video"].(map[string]any)
 	sub, _ := c["sub"].(string)
 	if !strings.HasPrefix(sub, bob.pk.Hex()+":") || len(sub) != 64+1+8 || video["room"] != room || video["roomJoin"] != true ||
-		video["canPublishData"] != false || !slices.Equal(video["canPublishSources"].([]any), []any{"microphone"}) {
+		video["canPublishData"] != false || !slices.Equal(video["canPublishSources"].([]any), []any{"microphone", "screen_share"}) {
 		t.Errorf("claims: sub %q video %v", sub, video)
 	}
 	if exp, _ := c.GetExpirationTime(); exp == nil || time.Until(exp.Time) > 11*time.Minute {

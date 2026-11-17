@@ -122,6 +122,8 @@ Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé
 # L'app embarque LiveKit (voix) : clang requis pour compiler (Linux/WSL : `sudo apt install clang libclang-dev`).
 # Voix en dev : `npm run dev:livekit` (Docker) dans un autre terminal, et server/.env (ignoré par git) avec les
 # SERVER_LIVEKIT* listées plus bas ; le serveur lit ce fichier au démarrage.
+# Partage d'écran : WSLg ne capture pas le bureau Windows. Pour tester la capture, l'app compilée sous Windows partage,
+# celle de WSL regarde.
 # Windows : `.cargo/config.toml` de src-tauri met le CRT en statique (libwebrtc).
 cd app && npm ci && npm run tauri dev
 # Android (téléphone en débogage USB ou adb Wi-Fi ; le SDK et le NDK 28 dans ~/Android/Sdk). Le téléphone

@@ -47,6 +47,18 @@
     >
       <svg [lucideIcon]="state.deafened ? icons.headphonesOff : icons.headphones" size="18"></svg>
     </button>
+    @if (voice.canShare()) {
+      <button
+        type="button"
+        class="btn btn-ghost btn-icon btn-sm share"
+        [attr.aria-pressed]="voice.sharingMe()"
+        [disabled]="picking()"
+        (click)="toggleShare()"
+        [title]="voice.sharingMe() ? stopShareTitle : shareTitle"
+      >
+        <svg [lucideIcon]="voice.sharingMe() ? icons.shareOff : icons.share" size="18"></svg>
+      </button>
+    }
     <button
       type="button"
       class="btn btn-ghost btn-icon btn-sm hang-up"
@@ -57,6 +69,41 @@
       <svg [lucideIcon]="icons.hangUp" size="18"></svg>
     </button>
   </div>
+  @if (voice.sharingMe()) {
+    <p class="on-air">
+      <span i18n="@@screen.sharing-mine">You're sharing your screen</span>
+      @if (state.watching === me()) {
+        <button type="button" class="link" (click)="voice.stopWatching()" i18n="@@screen.hide-mine">
+          Hide
+        </button>
+      } @else {
+        <button type="button" class="link" (click)="voice.watch(me()!)" i18n="@@screen.see-mine">
+          See
+        </button>
+      }
+    </p>
+  }
+  @if (screens().length) {
+    <ul class="screens" aria-label="Shared screens" i18n-aria-label="@@screen.shared">
+      @for (screen of screens(); track screen.id) {
+        <li>
+          <button
+            type="button"
+            class="link"
+            [attr.aria-pressed]="screen.watched"
+            (click)="screen.watched ? voice.stopWatching() : voice.watch(screen.id)"
+          >
+            <svg [lucideIcon]="icons.watch" size="14"></svg>
+            @if (screen.watched) {
+              <span i18n="@@screen.stop-watching">Stop watching {{ screen.username }}</span>
+            } @else {
+              <span i18n="@@screen.watch">Watch {{ screen.username }}'s screen</span>
+            }
+          </button>
+        </li>
+      }
+    </ul>
+  }
   @if (callPeople().length) {
     <ul class="people" aria-label="In the call" i18n-aria-label="@@voice.in-call">
       @for (person of callPeople(); track person.id) {
@@ -82,6 +129,11 @@
       @case ('voice_disabled') {
         <span i18n="@@voice.error-disabled"
           >Voice is off on this instance. Its admin can turn it on.</span
+        >
+      }
+      @case ('screen_capture') {
+        <span i18n="@@screen.error-capture"
+          >Couldn't capture the screen: nothing chosen, or this system doesn't allow it.</span
         >
       }
       @case ('not_allowed') {

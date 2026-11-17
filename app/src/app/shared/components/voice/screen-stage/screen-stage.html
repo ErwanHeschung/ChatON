@@ -1,0 +1,31 @@
+<div class="bar">
+  <p class="who">
+    <span class="badge badge-accent" i18n="@@screen.live">Live</span>
+    @if (mine()) {
+      <span i18n="@@screen.mine">Your screen</span>
+    } @else {
+      <span
+        >{{ who()[0] }}<span class="instance">{{ who()[1] }}</span></span
+      >
+    }
+  </p>
+  <button
+    type="button"
+    class="btn btn-ghost btn-icon btn-sm"
+    (click)="fullscreen()"
+    i18n-title="@@screen.fullscreen"
+    title="Full screen"
+  >
+    <svg [lucideIcon]="icons.fullscreen" size="18"></svg>
+  </button>
+  <button
+    type="button"
+    class="btn btn-ghost btn-icon btn-sm"
+    (click)="voice.stopWatching()"
+    i18n-title="@@screen.close"
+    title="Back to the conversation"
+  >
+    <svg [lucideIcon]="icons.close" size="18"></svg>
+  </button>
+</div>
+<canvas #screen (dblclick)="fullscreen()"></canvas>

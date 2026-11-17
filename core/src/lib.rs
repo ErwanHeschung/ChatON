@@ -64,6 +64,8 @@ pub enum Error {
     VoiceDisabled,
     #[error("voice: {0}")]
     Voice(String),
+    #[error("can't capture the screen here")]
+    ScreenCapture,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

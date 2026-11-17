@@ -51,6 +51,50 @@
   gap: var(--space-1);
 }
 
+// On air: the green rule.
+.on-air {
+  display: flex;
+  flex-basis: 100%;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--accent-text);
+  font-size: var(--text-xs);
+
+  .link {
+    font-size: var(--text-xs);
+  }
+}
+
+// Sharing is on, not off: green rather than the coral of a muted microphone.
+.btn.share[aria-pressed='true'] {
+  background-color: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.screens {
+  display: flex;
+  flex-basis: 100%;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  .link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    max-width: 100%;
+  }
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 // Off is a warning, not a selection: coral rather than the green of aria-pressed.
 .btn[aria-pressed='true'] {
   background-color: var(--danger-subtle);
