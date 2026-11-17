@@ -7,7 +7,7 @@ require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/btcsuite/btcd/btcec/v2 v2.5.1
 	github.com/go-playground/validator/v10 v10.30.6
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/viper v1.21.0
 	go.etcd.io/bbolt v1.4.2
@@ -41,7 +41,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.18.1 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/liamg/magic v0.0.1 // indirect
 	github.com/mailru/easyjson v0.9.1 // indirect
