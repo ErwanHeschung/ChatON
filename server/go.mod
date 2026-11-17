@@ -10,7 +10,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/viper v1.21.0
-	go.etcd.io/bbolt v1.4.2
+	go.etcd.io/bbolt v1.5.0
 	go.yaml.in/yaml/v3 v3.0.6
 )
 

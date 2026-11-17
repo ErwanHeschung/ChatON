@@ -140,7 +140,7 @@ pub(crate) fn encrypt(plain: &[u8], mime: &str, name: &str) -> Result<(Vec<u8>, 
     getrandom::fill(&mut key).map_err(|e| Error::Invalid(e.to_string()))?;
     getrandom::fill(&mut nonce).map_err(|e| Error::Invalid(e.to_string()))?;
     let cipher = Aes256Gcm::new(&key.into())
-        .encrypt(Nonce::from_slice(&nonce), plain)
+        .encrypt(&Nonce::from(nonce), plain)
         .map_err(|_| Error::Invalid("encryption failed".into()))?;
     let attachment = Attachment {
         url: String::new(),
@@ -170,7 +170,7 @@ pub(crate) fn decrypt(attachment: &Attachment, cipher: &[u8]) -> Result<Vec<u8>>
         .and_then(|n| n.try_into().ok())
         .ok_or_else(corrupt)?;
     let plain = Aes256Gcm::new(&key.into())
-        .decrypt(Nonce::from_slice(&nonce), cipher)
+        .decrypt(&Nonce::from(nonce), cipher)
         .map_err(|_| corrupt())?;
     if sha256_hex(&plain) != attachment.plain_sha256 {
         return Err(corrupt());
@@ -280,6 +280,27 @@ mod tests {
         assert!(decrypt(&wrong_ox, &cipher).is_err(), "plaintext hash");
         let (_, other) = encrypt(b"x", "a/b", "x").unwrap();
         assert_ne!(other.key, att.key, "one key per file");
+    }
+
+    /// A fixed AES-256-GCM vector (NIST, test case 14): files sent by any earlier version
+    /// still open after an `aes-gcm` upgrade.
+    #[test]
+    fn decrypts_a_known_vector() {
+        let cipher =
+            hex::decode("cea7403d4d606b6e074ec5d3baf39d18d0d1c8a799996bf0265b98b5d48ab919")
+                .unwrap();
+        let plain = [0u8; 16];
+        let att = Attachment {
+            url: String::new(),
+            mime: "a/b".into(),
+            name: "x".into(),
+            size: 16,
+            sha256: sha256_hex(&cipher),
+            plain_sha256: sha256_hex(&plain),
+            key: "0".repeat(64),
+            nonce: "0".repeat(24),
+        };
+        assert_eq!(decrypt(&att, &cipher).unwrap(), plain);
     }
 
     #[test]
