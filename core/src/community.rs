@@ -15,6 +15,7 @@ use nostr_sdk::prelude::{
 use serde::{Deserialize, Serialize};
 
 use crate::media::{self, Attachment};
+use crate::perms::{self, Policy};
 use crate::session::{Session, TIMEOUT, backfill, http, is_local_host};
 use crate::{Error, Result, event, link};
 
@@ -40,8 +41,12 @@ pub struct Community {
     pub name: String,
     pub picture: Option<String>,
     pub channels: Vec<Channel>,
-    /// My roles here (`admin`, `moderator`), empty for a plain member.
+    /// My role ids here, empty for a plain member.
     pub roles: Vec<String>,
+    /// The owner (spec § 9), if the relay names one.
+    pub owner: Option<PublicKey>,
+    /// My permissions in the community (spec § 9), in spec order.
+    pub perms: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -52,12 +57,18 @@ pub struct Channel {
     pub voice: bool,
     /// Who is in it, by the relay's 39004 (voice channels only).
     pub participants: Vec<PublicKey>,
+    /// My permissions in this channel (spec § 9).
+    pub perms: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Member {
     pub pubkey: PublicKey,
     pub roles: Vec<String>,
+    /// The community's owner (spec § 9).
+    pub owner: bool,
+    /// Strictly below me in the hierarchy: I may act on them, given the permission.
+    pub manageable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -200,11 +211,20 @@ impl Session {
         )
         .await?;
         self.sync_community(community, &relay).await?;
+        let perms = self
+            .communities()
+            .await?
+            .into_iter()
+            .find(|c| c.id == community)
+            .and_then(|c| c.channels.into_iter().find(|ch| ch.id == id))
+            .map(|ch| ch.perms)
+            .unwrap_or_default();
         Ok(Channel {
             id,
             name: name.into(),
             voice,
             participants: Vec::new(),
+            perms,
         })
     }
 
@@ -294,11 +314,33 @@ impl Session {
             .await?
             .map(|ev| admins(&ev))
             .unwrap_or_default();
+        let policy = self.policy(key, community).await?;
+        let me = self.account().pubkey;
+        fn as_member<'a>(
+            roles: &'a HashMap<PublicKey, Vec<String>>,
+            pk: &PublicKey,
+            hex: &'a str,
+        ) -> perms::Member<'a> {
+            perms::Member {
+                pubkey: hex,
+                roles: roles.get(pk).map(Vec::as_slice).unwrap_or_default(),
+                timeout: 0,
+            }
+        }
+        let me_hex = me.to_hex();
         let mut all: Vec<Member> = tag_values(&members, "p")
             .filter_map(|pk| PublicKey::from_hex(pk).ok())
-            .map(|pubkey| Member {
-                roles: roles.get(&pubkey).cloned().unwrap_or_default(),
-                pubkey,
+            .map(|pubkey| {
+                let hex = pubkey.to_hex();
+                Member {
+                    roles: roles.get(&pubkey).cloned().unwrap_or_default(),
+                    owner: hex == policy.owner,
+                    manageable: policy.outranks(
+                        &as_member(&roles, &me, &me_hex),
+                        &as_member(&roles, &pubkey, &hex),
+                    ),
+                    pubkey,
+                }
             })
             .collect();
         all.sort_by_key(|m| m.pubkey);
@@ -566,6 +608,14 @@ impl Session {
             .await?
             .and_then(|ev| admins(&ev).remove(&me))
             .unwrap_or_default();
+        let policy = self.policy(key, id).await?;
+        let me_hex = me.to_hex();
+        let mine = perms::Member {
+            pubkey: &me_hex,
+            roles: &roles,
+            timeout: 0,
+        };
+        let now = Timestamp::now().as_secs();
         let mut channels = Vec::new();
         for child in meta.children {
             if let Some(m) = self.metadata(key, &child).await? {
@@ -582,6 +632,8 @@ impl Session {
                     name: m.name,
                     voice: m.voice,
                     participants,
+                    // ponytail: no channel overrides until private channels (step 12e).
+                    perms: policy.effective(&mine, Some(&[]), now).names(),
                 });
             }
         }
@@ -595,6 +647,8 @@ impl Session {
             name: meta.name,
             picture,
             channels,
+            perms: policy.effective(&mine, None, now).names(),
+            owner: meta.owner.and_then(|pk| PublicKey::from_hex(&pk).ok()),
             roles,
         }))
     }
@@ -688,6 +742,22 @@ impl Session {
             .identifier(group)
             .limit(1);
         Ok(self.client.database().query(filter).await?.first().cloned())
+    }
+
+    /// Owner (39000) and roles (39003) of a community; the default roles if it has none.
+    async fn policy(&self, key: PublicKey, community: &str) -> Result<Policy> {
+        Ok(Policy {
+            owner: self
+                .metadata(key, community)
+                .await?
+                .and_then(|m| m.owner)
+                .unwrap_or_default(),
+            roles: self
+                .state(key, Kind::GroupRoles, community)
+                .await?
+                .and_then(|ev| perms::parse_roles(ev.tags.iter().map(|t| t.as_slice())))
+                .unwrap_or_else(perms::default_roles),
+        })
     }
 
     async fn metadata(&self, key: PublicKey, group: &str) -> Result<Option<Metadata>> {
@@ -803,6 +873,7 @@ struct Metadata {
     picture: Option<String>,
     children: Vec<String>,
     voice: bool,
+    owner: Option<String>,
 }
 
 fn metadata(ev: &Event) -> Metadata {
@@ -813,6 +884,7 @@ fn metadata(ev: &Event) -> Metadata {
             [k, v, ..] if k == "picture" => meta.picture = Some(v.clone()),
             [k, v, ..] if k == "child" => meta.children.push(v.clone()),
             [k, ..] if k == "livekit" => meta.voice = true,
+            [k, v, ..] if k == "owner" => meta.owner = Some(v.clone()),
             _ => {}
         }
     }
@@ -965,6 +1037,7 @@ mod tests {
                 picture: None,
                 children: vec!["g7w2p5n1c4bb".into(), "a1b2c3d4e5f6".into()],
                 voice: false,
+                owner: None,
             }
         );
         let voice = ev(

@@ -79,17 +79,14 @@ export class UsersList {
     return member.roles.includes(ROLE_MODERATOR);
   }
 
-  /** Only an admin names or unnames moderators, never another admin. */
+  /** Names or unnames moderators below me, never touching an admin (the relay checks too). */
   public canPromote(member: Member): boolean {
-    return this.community.isAdmin() && !this.isMe(member) && !this.isAdmin(member);
+    return this.community.can('manage_roles') && member.manageable && !this.isAdmin(member);
   }
 
-  /** Admins remove anyone; moderators everyone but admins (the relay checks too). */
+  /** Removes members below me (the relay checks too). */
   public canRemove(member: Member): boolean {
-    return (
-      !this.isMe(member) &&
-      (this.community.isAdmin() || (!!this.community.canModerate() && !this.isAdmin(member)))
-    );
+    return this.community.can('kick_members') && member.manageable;
   }
 
   public toggleModerator(member: Member): void {

@@ -175,3 +175,47 @@ func subscribe(ctx context.Context, t *testing.T, r *nostr.Relay, f nostr.Filter
 		}
 	}
 }
+
+// Step 12a: owner, default roles, hierarchy (spec § 9, Rôles et permissions).
+func TestCommunityOwnerAndHierarchy(t *testing.T) {
+	alice, bob, carol := newUser(), newUser(), newUser()
+	url := startRelay(t, alice, bob, carol)
+	a, b, c := connect(t, url, &alice), connect(t, url, &bob), connect(t, url, &carol)
+	at := func(s int) time.Time { return time.Now().Add(time.Duration(s) * time.Second) }
+
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateGroup, nostr.Tags{h(communityID)}, at(0)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateInvite, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	mustPublish(t, c, event(carol, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+
+	// State: the owner in 39000, the default roles in 39003, everyone last.
+	if meta := state(t, url, nostr.KindSimpleGroupMetadata, communityID); meta.Tags.Find("owner")[1] != alice.pk.Hex() {
+		t.Fatalf("owner: %v", meta.Tags)
+	}
+	var roles []string
+	for tag := range state(t, url, nostr.KindSimpleGroupRoles, communityID).Tags.FindAll("role") {
+		roles = append(roles, tag[1])
+	}
+	if !slices.Equal(roles, []string{"admin", "moderator", "everyone"}) {
+		t.Fatalf("roles: %v", roles)
+	}
+
+	mustReject(t, a, event(alice, nostr.KindSimpleGroupLeaveRequest, nostr.Tags{h(communityID)}, at(1)), "the owner leaves")
+	mustReject(t, a, event(alice, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", newUser().pk.Hex(), "moderator"}}, at(1)), "roles for a non-member")
+	mustReject(t, a, event(alice, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", bob.pk.Hex(), "everyone"}}, at(1)), "giving everyone")
+
+	// Bob admin: everything but the owner's, and only below himself.
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", bob.pk.Hex(), "admin"}}, at(1)))
+	mustReject(t, b, event(bob, nostr.KindSimpleGroupRemoveUser, nostr.Tags{h(communityID), {"p", alice.pk.Hex()}}, at(2)), "admin removes the owner")
+	mustReject(t, b, event(bob, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", carol.pk.Hex(), "admin"}}, at(2)), "admin gives his own rank")
+	mustReject(t, b, event(bob, nostr.KindSimpleGroupDeleteGroup, nostr.Tags{h(communityID)}, at(2)), "admin deletes the community")
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", carol.pk.Hex(), "moderator"}}, at(2)))
+
+	// Carol moderator: removes members below her, gives no roles.
+	mustReject(t, c, event(carol, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", carol.pk.Hex()}}, at(3)), "moderator manages roles")
+	mustReject(t, c, event(carol, nostr.KindSimpleGroupRemoveUser, nostr.Tags{h(communityID), {"p", bob.pk.Hex()}}, at(3)), "moderator removes an admin")
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", carol.pk.Hex()}}, at(3))) // back to member
+	mustReject(t, c, event(carol, nostr.KindSimpleGroupCreateInvite, nostr.Tags{h(communityID), {"code", "CAROL001"}}, at(4)), "member invites")
+	mustReject(t, c, event(carol, nostr.KindSimpleGroupEditMetadata, nostr.Tags{h(communityID), {"name", "À moi"}}, at(4)), "member renames")
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupRemoveUser, nostr.Tags{h(communityID), {"p", carol.pk.Hex()}}, at(4)))
+}

@@ -275,6 +275,9 @@ async fn a_community_with_channels_invites_and_moderation() {
     let community = alice.create_community("Les chats").await.unwrap();
     assert_eq!(community.name, "Les chats");
     assert_eq!(community.roles, ["admin"]);
+    // The owner has every permission (spec § 9).
+    assert_eq!(community.owner, Some(alice.account().pubkey));
+    assert_eq!(community.perms.len(), chaton_core::perms::PERMISSIONS.len());
     let names = |c: &chaton_core::community::Community| -> Vec<String> {
         c.channels.iter().map(|ch| ch.name.clone()).collect()
     };
@@ -297,6 +300,10 @@ async fn a_community_with_channels_invites_and_moderation() {
     let joined = bob.join(&invite).await.unwrap();
     assert_eq!(names(&joined), ["general", "random"]);
     assert!(joined.roles.is_empty());
+    // A plain member: @everyone's permissions, nothing to moderate with.
+    let can = |c: &chaton_core::community::Community, p: &str| c.perms.iter().any(|x| x == p);
+    assert!(can(&joined, "send_messages") && !can(&joined, "kick_members"));
+    assert!(joined.channels[0].perms.iter().any(|p| p == "view_channel"));
     carol.join(&invite).await.unwrap();
 
     // Live chat: Bob writes in #random, Alice (listening since the start) gets it.
@@ -342,6 +349,8 @@ async fn a_community_with_channels_invites_and_moderation() {
         Some(vec!["moderator".to_string()])
     );
     assert_eq!(role(carol.account().pubkey), Some(vec![]));
+    let promoted = bob.communities().await.unwrap();
+    assert!(can(&promoted[0], "kick_members") && !can(&promoted[0], "manage_roles"));
     bob.delete_message(&community.id, &general.id, alices.id)
         .await
         .unwrap();

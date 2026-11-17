@@ -65,7 +65,7 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 | 9 | Message dans un salon (`h` = salon) | 29 | oui | 6 |
 | 9000, 9001, 9002, 9005, 9007, 9008, 9009 | Modération : rôles, retrait, métadonnées, suppression, création, invitation (§ 9) | 29 | oui | 6 |
 | 9021, 9022 | Demande pour rejoindre, quitter | 29 | oui | 6 |
-| 39000–39003 | État d'un groupe : métadonnées, admins, membres, rôles. **Signés par le relais** | 29 | oui (relais) | 6 |
+| 39000–39003 | État d'un groupe : métadonnées (dont `owner`), rôles des membres, membres, définition des rôles (§ 9). **Signés par le relais** | 29 | oui (relais) | 6, 12 |
 | 39004 | Participants d'un salon vocal (`participant`, § 11). **Signé par le relais** | 29 | oui (relais) | 9 |
 | 10009 | Mes communautés (`group`) | 51 | oui | 6 |
 | 10000 | Mes blocages (sourdine) : clés et instances, **contenu privé** chiffré pour moi (§ 5) | 51 | oui | 10 |
@@ -206,34 +206,96 @@ Une **communauté** (un « serveur » façon Discord) est un groupe NIP-29 hébe
 
 - Identifiant d'un groupe : 12 caractères `[a-z0-9]`, tirés au hasard par le client qui le crée. Adresse NIP-29 : `<hôte>'<id>`.
 - Une communauté ChatON est toujours `private` (seuls les membres lisent), `closed` (on entre avec un code d'invitation) et `restricted` (seuls les membres écrivent). Le relais impose ces trois drapeaux, quoi que dise un `9002`.
-- Les membres et les rôles sont ceux de la **communauté** ; ses salons en héritent. Pas de permissions par salon en v0.
-- L'état publié par le relais : `39000` (`d`, `name`, `picture`, drapeaux, `parent` ou `child`), `39001` (`p` + rôles), `39002` (`p` des membres), `39003` (`role`). Un client n'accepte ces événements que signés par la clé `self` du relais qui héberge le groupe.
+- Les membres et les rôles sont ceux de la **communauté** ; ses salons en héritent.
+- L'état publié par le relais : `39000` (`d`, `name`, `picture`, drapeaux, `owner`, `parent` ou `child`), `39001` (`p` + identifiants de rôles), `39002` (`p` des membres), `39003` (les rôles, ci-dessous). Un client n'accepte ces événements que signés par la clé `self` du relais qui héberge le groupe.
 
 ### Rôles et permissions
 
-| Action | `admin` | `moderator` | membre |
-|---|---|---|---|
-| Écrire un message (`9`) | oui | oui | oui |
-| Supprimer un message (`9005`) | oui | oui | le sien |
-| Créer une invitation (`9009`) | oui | oui | non |
-| Retirer un membre (`9001`) | oui | sauf un admin | non |
-| Donner un rôle (`9000`) | oui | non | non |
-| Renommer, gérer les salons (`9002`, `9007`, `9008`) | oui | non | non |
-| Quitter (`9022`) | oui | oui | oui |
+Les permissions sont des **noms**. Un nom inconnu est ignoré (un client plus ancien ne casse pas).
 
-Le créateur d'une communauté en est `admin`. Les rôles personnalisés viendront plus tard.
+| Permission | Portée | Ce qu'elle permet |
+|---|---|---|
+| `administrator` | communauté | tout, sauf ce qui est réservé au propriétaire |
+| `manage_community` | communauté | nom, image, description, bannière |
+| `manage_channels` | salon | créer, renommer, ordonner, supprimer des salons et catégories |
+| `manage_roles` | salon | définir les rôles, les donner ; permissions des salons |
+| `manage_invites` | communauté | voir et révoquer toutes les invitations |
+| `create_invite` | communauté | créer une invitation |
+| `kick_members` | communauté | retirer un membre (`9001`) |
+| `ban_members` | communauté | bannir, débannir |
+| `moderate_members` | communauté | exclure temporairement |
+| `view_audit_log` | communauté | lire le journal de modération |
+| `manage_messages` | salon | supprimer les messages des autres, épingler |
+| `mention_everyone` | salon | mentionner `@everyone` et les rôles non mentionnables |
+| `view_channel` | salon | voir le salon et son historique |
+| `send_messages` | salon | écrire (`9`) |
+| `attach_files` | salon | joindre des fichiers |
+| `add_reactions` | salon | réagir |
+| `connect` | salon | rejoindre un salon vocal |
+| `speak` | salon | parler en vocal |
+| `stream` | salon | partager son écran |
+| `mute_members` | salon | couper le micro ou le son d'un autre en vocal |
+| `move_members` | salon | déplacer ou déconnecter un autre en vocal |
+
+**Définition des rôles** : dans `39003`, un tag par rôle, **du plus haut au plus bas** (l'ordre est la hiérarchie) :
+
+```
+["role", <id>, <nom affiché>, <couleur #rrggbb ou "">, <attribut>…]
+["role", "everyone", "@everyone", "", <permission>…]     ← toujours présent, toujours en dernier
+```
+
+- `<id>` : `[a-z0-9]{1,16}`, stable (renommer un rôle ne change pas les membres). `everyone` est réservé : c'est la base de tous les membres, il ne se donne pas.
+- Un attribut est une permission, `hoist` (afficher ses membres à part) ou `mentionable` (tout le monde peut le mentionner).
+- Un client NIP-29 tiers lit ces tags comme `["role", nom, description]` : il voit l'identifiant et le nom affiché.
+- Les rôles d'un membre restent dans `39001` : `["p", <clé>, <id>…]`.
+- **Propriétaire** : `["owner", <clé>]` dans le `39000` de la communauté. C'est son créateur ; pour une communauté créée avant ce format, l'auteur de son `9007`. Il a toutes les permissions, ne peut ni partir, ni être retiré, et lui seul supprime la communauté.
+
+**Rôles par défaut** (une nouvelle communauté, et une communauté d'avant ce format au chargement) :
+
+| id | Nom | Attributs |
+|---|---|---|
+| `admin` | Admin | `administrator` |
+| `moderator` | Modérateur | `manage_messages kick_members ban_members moderate_members create_invite view_audit_log mute_members move_members` |
+| `everyone` | @everyone | `view_channel send_messages attach_files add_reactions connect speak stream` |
+
+**Permissions effectives** d'un membre, dans la communauté ou dans un salon (vecteurs : `spec/test-vectors/permissions.json`, que Rust et Go doivent reproduire) :
+
+1. Le propriétaire a **toutes** les permissions (on s'arrête là).
+2. Base = les permissions de `everyone` ∪ celles de ses rôles. Si la base contient `administrator` : toutes les permissions (on s'arrête là : surcharges et exclusion temporaire ne s'appliquent pas).
+3. Dans un salon, les surcharges du salon (`["allow" | "deny", <cible>, <permission>…]`, cible = un id de rôle, `everyone` ou une clé) s'appliquent dans cet ordre : `everyone` (retirer `deny`, ajouter `allow`), puis l'union des `deny` de ses rôles retirée et l'union de leurs `allow` ajoutée, puis la surcharge de sa clé.
+4. Dans un salon : sans `view_channel`, aucune permission ; sans `connect`, ni `speak` ni `stream`.
+5. Partout, exclu temporairement (`["timeout", <clé>, <unix>]` dans `39002`, non échu) : seulement `view_channel`.
+
+Seuls les noms de la table ci-dessus sortent du calcul : `hoist`, `mentionable` et les noms inconnus n'en font pas partie.
+
+**Hiérarchie** : le rang d'un membre est la position de son rôle le plus haut (`everyone` est le plus bas) ; le propriétaire est au-dessus de tous. Un membre ne retire, ne bannit, n'exclut et ne change les rôles que de membres de rang **strictement inférieur**, et ne donne ou ne retire que des rôles strictement sous le sien. `administrator` ne passe pas outre la hiérarchie.
+
+**Qui fait quoi** :
+
+| Action | Permission |
+|---|---|
+| Écrire un message (`9`) | `send_messages` dans le salon |
+| Supprimer un message (`9005`) | le sien, ou `manage_messages` dans le salon |
+| Créer une invitation (`9009`) | `create_invite` |
+| Retirer un membre (`9001`) | `kick_members`, et la cible plus bas que soi |
+| Donner des rôles (`9000`) | `manage_roles`, rôles et cible plus bas que soi |
+| Modifier la communauté (`9002`) | `manage_community` |
+| Créer, modifier un salon (`9007`, `9002`) | `manage_channels` |
+| Supprimer un salon (`9008`) | `manage_channels` |
+| Supprimer la communauté (`9008`) | le propriétaire |
+| Quitter (`9022`) | tout membre sauf le propriétaire |
 
 ### Créer une communauté et ses salons
 
-1. `9007` `["h", C]` : seule une clé qui a un handle sur l'instance peut créer une communauté. Le relais en fait l'`admin` en publiant lui-même un `9000` `["h", C], ["p", créateur, "admin"]`.
+1. `9007` `["h", C]` : seule une clé qui a un handle sur l'instance peut créer une communauté. Le relais en fait le propriétaire (`owner`) et l'`admin`, en publiant lui-même un `9000` `["h", C], ["p", créateur, "admin"]`, et la dote des rôles par défaut.
 2. `9002` `["h", C], ["name", …]` (et `picture`).
-3. Pour chaque salon S : `9007` `["h", S]`, puis `9002` `["h", S], ["name", …], ["parent", C]` (l'auteur doit être admin de C), puis `9002` sur C avec **toute** la liste `child`.
+3. Pour chaque salon S : `9007` `["h", S]`, puis `9002` `["h", S], ["name", …], ["parent", C]` (l'auteur doit avoir `manage_channels` dans C), puis `9002` sur C avec **toute** la liste `child`.
 
-Un `9002` remplace **toutes** les métadonnées du groupe (NIP-29) : le client renvoie toujours chaque tag (`name`, `picture`, `parent`, tous les `child`).
+Un `9002` remplace **toutes** les métadonnées du groupe (NIP-29) : le client renvoie toujours chaque tag (`name`, `picture`, `parent`, tous les `child`). Le propriétaire et les rôles ne passent pas par ce `9002` : le relais les garde.
 
 ### Invitations
 
-- Un admin ou un modérateur publie `9009` `["h", C], ["code", X]`, X = 8 caractères en base32 de Crockford. Le code est réutilisable et n'expire pas en v0.
+- Un membre qui a `create_invite` publie `9009` `["h", C], ["code", X]`, X = 8 caractères en base32 de Crockford. Le code est réutilisable et n'expire pas en v0.
 - Texte partagé : `<hôte>'<C>/<X>`, par exemple `chaton.example'k3j9x2m8q0aa/AB12CD34`. Le relais est `wss://<hôte>` (`ws://` pour `localhost`).
 - Pour entrer : `9021` `["h", C], ["code", X]`, plus `["nip05", "pseudo@instance"]` (ChatON l'ajoute toujours, vecteur `group_join_request_nip05`). Pour une clé d'une autre instance, l'hôte le vérifie (NIP-05) et retient l'instance du membre, pour appliquer ses règles (`federation.md` § 6). Si le code est bon, le relais ajoute la clé en publiant un `9000` `["h", C], ["p", clé]`. Un membre retiré (`9001`) a besoin d'une nouvelle invitation (pas de liste de bannis en v0).
 - Après être entré, le client ajoute `["group", C, "<url du relais>"]` à sa liste `10009`, que tous ses appareils lisent.

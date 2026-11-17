@@ -15,9 +15,9 @@ import {
   Community,
   CommunityUpdate,
   Member,
-  ROLE_ADMIN,
-  ROLE_MODERATOR,
+  Permission,
 } from '@models/Community.model';
+import { ConnectedUserStore } from '@stores/connected-user.store';
 import { DmStore } from '@stores/dm.store';
 import { MediaService } from '@services/media.service';
 
@@ -33,17 +33,17 @@ export const CommunityStore = signalStore(
     error: null as CmdError['code'] | null,
     sendError: null as CmdError['code'] | null,
   }),
-  withComputed((store) => {
+  withComputed((store, user = inject(ConnectedUserStore)) => {
     const current = computed(() => store.communities().find((c) => c.id === store.selected()));
     return {
       current,
-      isAdmin: computed(() => !!current()?.roles.includes(ROLE_ADMIN)),
-      canModerate: computed(() =>
-        current()?.roles.some((r) => r === ROLE_ADMIN || r === ROLE_MODERATOR),
-      ),
+      isOwner: computed(() => !!current()?.owner && current()?.owner === user.user()?.pubkey),
     };
   }),
   withMethods((store, dm = inject(DmStore), media = inject(MediaService)) => {
+    /** I have `perm` in the open community (computed by core, checked again by the relay). */
+    const can = (perm: Permission) => !!store.current()?.perms.includes(perm);
+
     /** Runs a command, keeping its error code for the UI. */
     const run = async <T>(command: string, args?: Record<string, unknown>) => {
       try {
@@ -115,6 +115,7 @@ export const CommunityStore = signalStore(
     };
 
     return {
+      can,
       load,
       select,
       selectChannel,

@@ -1,7 +1,7 @@
 // Package community hosts NIP-29 groups: a community is a group, its channels
 // are child groups, and members and roles live on the community. The relay
-// checks every group event against spec/protocol.md § 9 and publishes each
-// group's state (39000-39003) signed with its own key.
+// checks every group event against the permissions of spec/protocol.md § 9
+// (perms.go) and publishes each group's state (39000-39003) signed with its own key.
 package community
 
 import (
@@ -79,6 +79,8 @@ type Groups struct {
 	verify Verifier
 	// The instance of members from elsewhere, from their verified join (nip05).
 	origins map[nostr.PubKey]string
+	// Owner and roles of each community (39000 owner, 39003), by community id.
+	policies map[string]*Policy
 }
 
 // Verifier says which instance a handle is on, if it names this key there (NIP-05).
@@ -103,7 +105,9 @@ func New(key nostr.SecretKey, relayURL string, store eventstore.Store, dir Direc
 		store:    store,
 		dir:      dir,
 		origins:  map[nostr.PubKey]string{},
+		policies: map[string]*Policy{},
 	}
+	owners, roles := map[string]nostr.PubKey{}, map[string][]Role{}
 	// Metadata first: it creates the group the other state events merge into.
 	for _, kind := range stateKinds {
 		for ev := range g.query(nostr.Filter{Kinds: []nostr.Kind{kind}, Authors: []nostr.PubKey{g.self}}, loadLimit) {
@@ -120,18 +124,36 @@ func New(key nostr.SecretKey, relayURL string, store eventstore.Store, dir Direc
 			switch kind {
 			case nostr.KindSimpleGroupMetadata:
 				err = group.MergeInMetadataEvent(&ev)
+				if t := ev.Tags.Find("owner"); t != nil {
+					owners[id], _ = nostr.PubKeyFromHex(t[1])
+				}
 			case nostr.KindSimpleGroupAdmins:
 				err = group.MergeInAdminsEvent(&ev)
 			case nostr.KindSimpleGroupMembers:
 				err = group.MergeInMembersEvent(&ev)
 			case nostr.KindSimpleGroupRoles:
 				err = group.MergeInRolesEvent(&ev)
+				roles[id] = ParseRoles(ev.Tags)
 			}
 			if err != nil {
 				return nil, fmt.Errorf("group %s, kind %d: %w", id, kind, err)
 			}
 			g.stamps[id] = max(g.stamps[id], ev.CreatedAt)
 		}
+	}
+	// Communities from before ChatON roles get the default ones, and their creator as owner.
+	for id, group := range g.groups {
+		if group.Parent != "" {
+			continue
+		}
+		p := &Policy{Owner: owners[id], Roles: roles[id]}
+		if p.Roles == nil {
+			p.Roles = defaultRoles()
+		}
+		if p.Owner == (nostr.PubKey{}) {
+			p.Owner = g.creator(id)
+		}
+		g.policies[id] = p
 	}
 	// Joins were verified when accepted: their nip05 says where members come from.
 	for ev := range g.query(nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupJoinRequest}}, loadLimit) {
@@ -186,13 +208,71 @@ func (g *Groups) community(id string) *nip29.Group {
 	return group
 }
 
-func hasRole(c *nip29.Group, pk nostr.PubKey, names ...string) bool {
-	for _, r := range c.Members[pk] {
-		if slices.Contains(names, r.Name) {
-			return true
+// creator: the author of the first 9007 for id.
+func (g *Groups) creator(id string) nostr.PubKey {
+	var pk nostr.PubKey
+	first := nostr.Timestamp(0)
+	for ev := range g.query(nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupCreateGroup}, Tags: nostr.TagMap{"h": {id}}}, 10) {
+		if first == 0 || ev.CreatedAt < first {
+			pk, first = ev.PubKey, ev.CreatedAt
 		}
 	}
-	return false
+	return pk
+}
+
+// policy of community c; the defaults for one that has none yet.
+func (g *Groups) policy(c *nip29.Group) *Policy {
+	p := g.policies[c.Address.ID]
+	if p == nil {
+		p = &Policy{Roles: defaultRoles()}
+		g.policies[c.Address.ID] = p
+	}
+	return p
+}
+
+// member: pk as the permission rules see it.
+func member(c *nip29.Group, pk nostr.PubKey) Member {
+	m := Member{PubKey: pk}
+	for _, r := range c.Members[pk] {
+		m.Roles = append(m.Roles, r.Name)
+	}
+	return m
+}
+
+// perms: pk's permissions in community c, or in its channel ch (nil: the community).
+func (g *Groups) perms(c *nip29.Group, pk nostr.PubKey, ch *nip29.Group) Perms {
+	p := g.policy(c)
+	if !isMember(c, pk) && pk != p.Owner {
+		return 0
+	}
+	var channel []Override
+	if ch != nil && ch != c {
+		channel = []Override{} // ponytail: channel overrides come with private channels (step 12e)
+	}
+	return p.Effective(member(c, pk), channel, nostr.Now())
+}
+
+// symmetricDiff: the ids in exactly one of a and b.
+func symmetricDiff(a, b []string) []string {
+	var out []string
+	for _, x := range a {
+		if !slices.Contains(b, x) {
+			out = append(out, x)
+		}
+	}
+	for _, x := range b {
+		if !slices.Contains(a, x) && !slices.Contains(out, x) {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+func tagValue(ev nostr.Event, name string) string {
+	if t := ev.Tags.Find(name); t != nil {
+		return t[1]
+	}
+	return ""
 }
 
 func isMember(c *nip29.Group, pk nostr.PubKey) bool {
@@ -258,44 +338,69 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 		return reject("invalid: unknown community")
 	}
 	author := ev.PubKey
-	admin := hasRole(c, author, RoleAdmin)
+	policy := g.policy(c)
+	can := g.perms(c, author, group)
 
 	switch ev.Kind {
 	case nostr.KindSimpleGroupChatMessage:
-		if !isMember(c, author) {
-			return reject("restricted: members only")
+		if !can.Has("send_messages") {
+			return reject("restricted: you can't write here")
 		}
 	case nostr.KindSimpleGroupEditMetadata:
 		return g.checkEdit(ev, group)
 	case nostr.KindSimpleGroupPutUser:
-		if group != c || !admin {
-			return reject("restricted: only an admin gives roles, on the community")
+		if group != c || !can.Has("manage_roles") {
+			return reject("restricted: giving roles needs manage_roles, on the community")
 		}
+		actor := member(c, author)
 		for t := range ev.Tags.FindAll("p") {
-			for _, role := range t[2:] {
-				if role != RoleAdmin && role != RoleModerator {
-					return reject("invalid: unknown role %q", role)
+			pk, err := nostr.PubKeyFromHex(t[1])
+			switch {
+			case err != nil:
+				return reject("invalid: bad p tag")
+			case !isMember(c, pk):
+				return reject("invalid: not a member")
+			case pk != author && !policy.Outranks(actor, member(c, pk)):
+				return reject("restricted: they're not below you")
+			}
+			for _, id := range t[2:] {
+				if _, ok := policy.role(id); !ok || id == Everyone {
+					return reject("invalid: unknown role %q", id)
+				}
+			}
+			// Roles given or taken: below the actor's own.
+			for _, id := range symmetricDiff(member(c, pk).Roles, t[2:]) {
+				if !policy.RoleBelow(actor, id) {
+					return reject("restricted: role %q isn't below yours", id)
 				}
 			}
 		}
 	case nostr.KindSimpleGroupRemoveUser:
-		if group != c || !(admin || hasRole(c, author, RoleModerator)) {
-			return reject("restricted: only admins and moderators remove members")
+		if group != c || !can.Has("kick_members") {
+			return reject("restricted: removing members needs kick_members, on the community")
 		}
+		actor := member(c, author)
 		for t := range ev.Tags.FindAll("p") {
-			if pk, err := nostr.PubKeyFromHex(t[1]); err == nil && !admin && hasRole(c, pk, RoleAdmin) {
-				return reject("restricted: a moderator can't remove an admin")
+			pk, err := nostr.PubKeyFromHex(t[1])
+			if err != nil {
+				return reject("invalid: bad p tag")
+			}
+			if !policy.Outranks(actor, member(c, pk)) {
+				return reject("restricted: they're not below you")
 			}
 		}
 	case nostr.KindSimpleGroupDeleteEvent:
-		return g.checkDelete(ev, c, admin || hasRole(c, author, RoleModerator))
+		return g.checkDelete(ev, c)
 	case nostr.KindSimpleGroupDeleteGroup:
-		if !admin {
-			return reject("restricted: admins only")
+		if group == c && author != policy.Owner {
+			return reject("restricted: only the owner deletes the community")
+		}
+		if group != c && !can.Has("manage_channels") {
+			return reject("restricted: deleting a channel needs manage_channels")
 		}
 	case nostr.KindSimpleGroupCreateInvite:
-		if group != c || !(admin || hasRole(c, author, RoleModerator)) {
-			return reject("restricted: only admins and moderators invite, on the community")
+		if group != c || !can.Has("create_invite") {
+			return reject("restricted: inviting needs create_invite, on the community")
 		}
 	case nostr.KindSimpleGroupJoinRequest:
 		code := ev.Tags.Find("code")
@@ -308,15 +413,19 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 			return reject("restricted: invalid invite code")
 		}
 	case nostr.KindSimpleGroupLeaveRequest:
-		if group != c || !isMember(c, author) {
+		switch {
+		case group != c || !isMember(c, author):
 			return reject("invalid: not a member of this community")
+		case author == policy.Owner:
+			return reject("restricted: the owner can't leave; transfer the community first")
 		}
 	}
 	return false, ""
 }
 
-// checkEdit: a community is edited by its admins; a channel too, by the admins
-// of its parent, which it gets once (spec § 9, channel creation).
+// checkEdit: a channel is edited with manage_channels in its community, which it
+// gets once (spec § 9, channel creation); a community's name and picture need
+// manage_community, its channel list manage_channels.
 func (g *Groups) checkEdit(ev nostr.Event, group *nip29.Group) (bool, string) {
 	parent := ""
 	if t := ev.Tags.Find("parent"); t != nil {
@@ -332,24 +441,34 @@ func (g *Groups) checkEdit(ev nostr.Event, group *nip29.Group) (bool, string) {
 		if p == nil || p.Parent != "" {
 			return reject("invalid: unknown community %q", parent)
 		}
-		if !hasRole(p, ev.PubKey, RoleAdmin) {
-			return reject("restricted: admins of the community only")
+		if !g.perms(p, ev.PubKey, nil).Has("manage_channels") {
+			return reject("restricted: editing channels needs manage_channels")
 		}
 	default:
-		if !hasRole(group, ev.PubKey, RoleAdmin) {
-			return reject("restricted: admins only")
-		}
+		can := g.perms(group, ev.PubKey, nil)
+		var children []string
 		for t := range ev.Tags.FindAll("child") {
 			if child := g.groups[t[1]]; child == nil || child.Parent != group.Address.ID {
 				return reject("invalid: %q is not a channel of this community", t[1])
+			}
+			children = append(children, t[1])
+		}
+		if !slices.Equal(children, group.Children) && !can.Has("manage_channels") {
+			return reject("restricted: arranging channels needs manage_channels")
+		}
+		if tagValue(ev, "name") != group.Name || tagValue(ev, "picture") != group.Picture ||
+			tagValue(ev, "about") != group.About || tagValue(ev, "banner") != group.Banner {
+			if !can.Has("manage_community") {
+				return reject("restricted: editing the community needs manage_community")
 			}
 		}
 	}
 	return false, ""
 }
 
-// checkDelete: moderators delete anything in their community, others their own messages.
-func (g *Groups) checkDelete(ev nostr.Event, c *nip29.Group, moderator bool) (bool, string) {
+// checkDelete: anyone deletes their own messages; manage_messages in the
+// target's channel deletes the others'.
+func (g *Groups) checkDelete(ev nostr.Event, c *nip29.Group) (bool, string) {
 	for t := range ev.Tags.FindAll("e") {
 		id, err := nostr.IDFromHex(t[1])
 		if err != nil {
@@ -359,7 +478,7 @@ func (g *Groups) checkDelete(ev nostr.Event, c *nip29.Group, moderator bool) (bo
 			if g.community(groupID(target)) != c {
 				return reject("restricted: not in this community")
 			}
-			if !moderator && target.PubKey != ev.PubKey {
+			if target.PubKey != ev.PubKey && !g.perms(c, ev.PubKey, g.groups[groupID(target)]).Has("manage_messages") {
 				return reject("restricted: you can only delete your own messages")
 			}
 		}
@@ -419,6 +538,7 @@ func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
 	switch ev.Kind {
 	case nostr.KindSimpleGroupCreateGroup:
 		g.groups[id] = g.newGroup(id)
+		g.policies[id] = &Policy{Owner: ev.PubKey, Roles: defaultRoles()}
 		g.put(ctx, id, ev.PubKey, RoleAdmin)
 		g.publish(ctx, id)
 		return
@@ -455,6 +575,7 @@ func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
 	if ev.Kind == nostr.KindSimpleGroupEditMetadata && group.Parent != "" {
 		// ponytail: a channel only keeps name and parent; topics, pictures later.
 		group.Children = nil
+		delete(g.policies, id) // created as a group of its own, it's a channel now
 	}
 	if ev.Kind != nostr.KindSimpleGroupCreateInvite { // codes stay secret
 		g.publish(ctx, id)
@@ -488,11 +609,15 @@ func (g *Groups) relayEvent(_ context.Context, kind nostr.Kind, id string, tags 
 func (g *Groups) publish(ctx context.Context, id string) {
 	group := g.groups[id]
 	group.Private, group.Closed, group.Restricted = true, true, true
-	events := []nostr.Event{group.ToMetadataEvent()}
-	if group.Parent == "" {
-		events = append(events, group.ToAdminsEvent(), group.ToMembersEvent(), group.ToRolesEvent())
+	meta := group.ToMetadataEvent()
+	if group.Parent != "" {
+		g.emit(ctx, id, meta)
+		return
 	}
-	g.emit(ctx, id, events...)
+	p := g.policy(group)
+	meta.Tags = append(meta.Tags, nostr.Tag{"owner", p.Owner.Hex()})
+	roles := nostr.Event{Kind: nostr.KindSimpleGroupRoles, Tags: append(nostr.Tags{{"d", id}}, RoleTags(p.Roles)...)}
+	g.emit(ctx, id, meta, group.ToAdminsEvent(), group.ToMembersEvent(), roles)
 }
 
 // emit signs, stores and broadcasts state events of group id (g.mu held).

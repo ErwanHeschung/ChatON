@@ -96,7 +96,7 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 - `core/src/community.rs` : créer (avec un salon `general`), salons, invitations, rejoindre, quitter, membres, rôles, retrait, messages et suppression. L'état n'est accepté que signé par la clé NIP-11 du relais. Synchronisation à la connexion et abonnement en direct ; `listen` émet désormais un `Update` (MP, message de salon, suppression, changement de communauté).
 - App : barre des communautés réelle avec « + » (créer | rejoindre), salons et invitation dans la colonne de gauche, salon ouvert dans le chat (suppression), membres avec badges et actions d'admin à droite. Les maquettes (catégories, 100 éléments factices) sont supprimées.
 - **Terminé quand :** une communauté se crée, invite, discute dans deux salons, supprime un message, nomme un modérateur et retire un membre. Validé par `server/internal/relay/community_test.go`, `core/tests/e2e.rs` (y compris le second appareil lié qui retrouve la communauté) et à la main dans deux fenêtres.
-- Plus tard : catégories, permissions par salon, rôles personnalisés, liste de bannis (un membre retiré a seulement besoin d'une nouvelle invitation), révocation d'invitation.
+- Plus tard : catégories, permissions par salon, rôles personnalisés, bans, révocation d'invitation : voir l'étape 12.
 
 ## Étape 6b : fichiers et médias ✅
 
@@ -167,6 +167,13 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 - Le client publié ne propose plus d'instance par défaut.
 - CI (`ci.yml`) sur `main` et chaque PR : gofmt, vet et tests Go, fmt, clippy et tests du core, e2e contre deux serveurs, ESLint, Prettier et build de l'app. La release la lance avant de publier.
 - Plus tard : macOS et iOS (signature Apple payante), signature Windows (SmartScreen), mise à jour automatique (`tauri-plugin-updater`), F-Droid, Play Store, APK armv7 et x86_64, build Tauri (libwebrtc) et e2e voix en CI.
+
+## Étape 12 : communautés complètes et présence (en cours)
+
+Livrée en sous-étapes, chacune testée et poussée à part.
+
+- **12a, socle des permissions ✅** : `spec/protocol.md` § 9 « Rôles et permissions » (21 permissions nommées, rôles `["role", id, nom, couleur, attr…]` du plus haut au plus bas avec `everyone` en dernier, `["owner", pk]` dans le `39000`, permissions effectives et hiérarchie) et `spec/test-vectors/permissions.json`, passés par `perms.go` et `core/src/perms.rs`. Le relais charge rôles et propriétaire (rôles par défaut et créateur pour les anciennes communautés, les modérateurs gardant un rôle modérateur complet), réécrit `Check` sur les permissions et la hiérarchie : le propriétaire ne part pas et seul lui supprime la communauté ; personne n'agit sur un égal ou un supérieur. Vecteurs ajoutés pour 9001, 9005, 9008, 9022, 39001–39003. Le core expose `owner`, `perms` (communauté et salon) et `manageable` ; l'app décide par `can(perm)`.
+- 12b restrictions de lecture ; 12c réglages et rôles ; 12d salons et catégories ; 12e salons privés ; 12f modération (bans, exclusions temporaires, journal) ; 12g invitations ; 12h modération vocale ; 12i réponses, réactions, épingles ; 12j mentions, non-lus, notifications ; 12k présence (en ligne, absent, ne pas déranger, invisible), visible aussi en MP.
 
 ## Étape 11 : (plus tard) P2P direct
 

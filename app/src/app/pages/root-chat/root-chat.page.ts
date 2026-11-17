@@ -68,7 +68,7 @@ export class RootChat {
       }));
     }
     const me = this.user.user()?.pubkey;
-    const moderator = this.community.canModerate();
+    const moderator = this.community.can('manage_messages');
     return [...this.community.messages()].reverse().map((m) => ({
       ...this.message(m.id, m.author, m.text, m.created_at, m.attachment),
       deletable: moderator || m.author === me,

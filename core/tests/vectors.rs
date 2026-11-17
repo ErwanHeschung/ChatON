@@ -23,7 +23,7 @@ fn valid_vectors_reproduce_serialization_id_and_sig() {
     let aux: [u8; 32] = hex(str_of(&vs, "aux_rand")).try_into().unwrap();
     let secp = Secp256k1::new();
     let valid = vs["valid"].as_array().unwrap();
-    assert_eq!(valid.len(), 32);
+    assert_eq!(valid.len(), 40);
 
     for v in valid {
         let name = str_of(v, "name");
@@ -94,4 +94,69 @@ fn hex(s: &str) -> Vec<u8> {
         .step_by(2)
         .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
         .collect()
+}
+
+/// spec/test-vectors/permissions.json: the same cases Go runs (perms_test.go).
+#[test]
+fn permission_vectors() {
+    use chaton_core::perms::{Member, PERMISSIONS, Policy, parse_overrides, parse_roles};
+    let v: Value =
+        serde_json::from_str(include_str!("../../spec/test-vectors/permissions.json")).unwrap();
+    let tags = |v: &Value| -> Vec<Vec<String>> {
+        v.as_array()
+            .unwrap()
+            .iter()
+            .map(|t| {
+                t.as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|s| s.as_str().unwrap().to_string())
+                    .collect()
+            })
+            .collect()
+    };
+    let strings = |v: &Value| -> Vec<String> {
+        v.as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s.as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(strings(&v["permissions"]), PERMISSIONS);
+    let policy = Policy {
+        owner: str_of(&v, "owner").into(),
+        roles: parse_roles(tags(&v["roles"])).expect("roles"),
+    };
+    for c in v["effective"].as_array().unwrap() {
+        let roles = strings(&c["roles"]);
+        let m = Member {
+            pubkey: str_of(c, "member"),
+            roles: &roles,
+            timeout: c["timeout"].as_u64().unwrap(),
+        };
+        let overrides = (!c["channel"].is_null()).then(|| parse_overrides(tags(&c["channel"])));
+        let got = policy
+            .effective(&m, overrides.as_deref(), c["now"].as_u64().unwrap())
+            .names();
+        assert_eq!(got, strings(&c["expect"]), "{}", str_of(c, "name"));
+    }
+    for c in v["outranks"].as_array().unwrap() {
+        let (ar, br) = (strings(&c["a"]["roles"]), strings(&c["b"]["roles"]));
+        let a = Member {
+            pubkey: str_of(&c["a"], "pubkey"),
+            roles: &ar,
+            timeout: 0,
+        };
+        let b = Member {
+            pubkey: str_of(&c["b"], "pubkey"),
+            roles: &br,
+            timeout: 0,
+        };
+        assert_eq!(
+            policy.outranks(&a, &b),
+            c["expect"].as_bool().unwrap(),
+            "{}",
+            str_of(c, "name")
+        );
+    }
 }

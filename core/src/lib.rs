@@ -14,6 +14,7 @@ pub mod identity;
 pub mod link;
 pub mod media;
 pub mod network;
+pub mod perms;
 pub mod push;
 pub mod session;
 pub mod voice;

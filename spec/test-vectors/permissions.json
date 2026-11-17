@@ -1,0 +1,726 @@
+{
+  "_comment": "spec/protocol.md § 9: effective permissions and hierarchy. Rust (core/tests/vectors.rs) and Go (server/internal/community/perms_test.go) must reproduce every case. expect lists permissions in the order of `permissions`.",
+  "permissions": [
+    "administrator",
+    "manage_community",
+    "manage_channels",
+    "manage_roles",
+    "manage_invites",
+    "create_invite",
+    "kick_members",
+    "ban_members",
+    "moderate_members",
+    "view_audit_log",
+    "manage_messages",
+    "mention_everyone",
+    "view_channel",
+    "send_messages",
+    "attach_files",
+    "add_reactions",
+    "connect",
+    "speak",
+    "stream",
+    "mute_members",
+    "move_members"
+  ],
+  "owner": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "roles": [
+    [
+      "role",
+      "admin",
+      "Admin",
+      "",
+      "administrator"
+    ],
+    [
+      "role",
+      "moderator",
+      "Modérateur",
+      "",
+      "manage_messages",
+      "kick_members",
+      "ban_members",
+      "moderate_members",
+      "create_invite",
+      "view_audit_log",
+      "mute_members",
+      "move_members"
+    ],
+    [
+      "role",
+      "gardien",
+      "Gardien",
+      "#e5a50a",
+      "hoist",
+      "mentionable",
+      "kick_members",
+      "fly"
+    ],
+    [
+      "role",
+      "everyone",
+      "@everyone",
+      "",
+      "view_channel",
+      "send_messages",
+      "attach_files",
+      "add_reactions",
+      "connect",
+      "speak",
+      "stream"
+    ]
+  ],
+  "effective": [
+    {
+      "name": "owner_has_everything",
+      "member": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "roles": [],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": null,
+      "expect": [
+        "administrator",
+        "manage_community",
+        "manage_channels",
+        "manage_roles",
+        "manage_invites",
+        "create_invite",
+        "kick_members",
+        "ban_members",
+        "moderate_members",
+        "view_audit_log",
+        "manage_messages",
+        "mention_everyone",
+        "view_channel",
+        "send_messages",
+        "attach_files",
+        "add_reactions",
+        "connect",
+        "speak",
+        "stream",
+        "mute_members",
+        "move_members"
+      ]
+    },
+    {
+      "name": "administrator_has_everything",
+      "member": "1111111111111111111111111111111111111111111111111111111111111111",
+      "roles": [
+        "admin"
+      ],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": null,
+      "expect": [
+        "administrator",
+        "manage_community",
+        "manage_channels",
+        "manage_roles",
+        "manage_invites",
+        "create_invite",
+        "kick_members",
+        "ban_members",
+        "moderate_members",
+        "view_audit_log",
+        "manage_messages",
+        "mention_everyone",
+        "view_channel",
+        "send_messages",
+        "attach_files",
+        "add_reactions",
+        "connect",
+        "speak",
+        "stream",
+        "mute_members",
+        "move_members"
+      ]
+    },
+    {
+      "name": "member_gets_everyone",
+      "member": "2222222222222222222222222222222222222222222222222222222222222222",
+      "roles": [],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": null,
+      "expect": [
+        "view_channel",
+        "send_messages",
+        "attach_files",
+        "add_reactions",
+        "connect",
+        "speak",
+        "stream"
+      ]
+    },
+    {
+      "name": "moderator_adds_its_permissions",
+      "member": "2222222222222222222222222222222222222222222222222222222222222222",
+      "roles": [
+        "moderator"
+      ],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": null,
+      "expect": [
+        "create_invite",
+        "kick_members",
+        "ban_members",
+        "moderate_members",
+        "view_audit_log",
+        "manage_messages",
+        "view_channel",
+        "send_messages",
+        "attach_files",
+        "add_reactions",
+        "connect",
+        "speak",
+        "stream",
+        "mute_members",
+        "move_members"
+      ]
+    },
+    {
+      "name": "unknown_names_and_attributes_ignored",
+      "member": "2222222222222222222222222222222222222222222222222222222222222222",
+      "roles": [
+        "gardien"
+      ],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": null,
+      "expect": [
+        "kick_members",
+        "view_channel",
+        "send_messages",
+        "attach_files",
+        "add_reactions",
+        "connect",
+        "speak",
+        "stream"
+      ]
+    },
+    {
+      "name": "channel_everyone_deny_then_role_allow",
+      "member": "2222222222222222222222222222222222222222222222222222222222222222",
+      "roles": [
+        "gardien"
+      ],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": [
+        [
+          "deny",
+          "everyone",
+          "send_messages"
+        ],
+        [
+          "allow",
+          "gardien",
+          "send_messages"
+        ]
+      ],
+      "expect": [
+        "kick_members",
+        "view_channel",
+        "send_messages",
+        "attach_files",
+        "add_reactions",
+        "connect",
+        "speak",
+        "stream"
+      ]
+    },
+    {
+      "name": "channel_everyone_deny_applies",
+      "member": "3333333333333333333333333333333333333333333333333333333333333333",
+      "roles": [],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": [
+        [
+          "deny",
+          "everyone",
+          "send_messages"
+        ],
+        [
+          "allow",
+          "gardien",
+          "send_messages"
+        ]
+      ],
+      "expect": [
+        "view_channel",
+        "attach_files",
+        "add_reactions",
+        "connect",
+        "speak",
+        "stream"
+      ]
+    },
+    {
+      "name": "private_channel_hidden",
+      "member": "3333333333333333333333333333333333333333333333333333333333333333",
+      "roles": [],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": [
+        [
+          "deny",
+          "everyone",
+          "view_channel"
+        ],
+        [
+          "allow",
+          "gardien",
+          "view_channel"
+        ]
+      ],
+      "expect": []
+    },
+    {
+      "name": "private_channel_role_sees_it",
+      "member": "2222222222222222222222222222222222222222222222222222222222222222",
+      "roles": [
+        "gardien"
+      ],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": [
+        [
+          "deny",
+          "everyone",
+          "view_channel"
+        ],
+        [
+          "allow",
+          "gardien",
+          "view_channel"
+        ]
+      ],
+      "expect": [
+        "kick_members",
+        "view_channel",
+        "send_messages",
+        "attach_files",
+        "add_reactions",
+        "connect",
+        "speak",
+        "stream"
+      ]
+    },
+    {
+      "name": "member_override_last",
+      "member": "2222222222222222222222222222222222222222222222222222222222222222",
+      "roles": [
+        "gardien"
+      ],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": [
+        [
+          "allow",
+          "gardien",
+          "add_reactions"
+        ],
+        [
+          "deny",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "add_reactions"
+        ],
+        [
+          "allow",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "manage_messages"
+        ]
+      ],
+      "expect": [
+        "kick_members",
+        "manage_messages",
+        "view_channel",
+        "send_messages",
+        "attach_files",
+        "connect",
+        "speak",
+        "stream"
+      ]
+    },
+    {
+      "name": "role_deny_beats_nothing",
+      "member": "2222222222222222222222222222222222222222222222222222222222222222",
+      "roles": [
+        "gardien"
+      ],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": [
+        [
+          "deny",
+          "gardien",
+          "attach_files"
+        ]
+      ],
+      "expect": [
+        "kick_members",
+        "view_channel",
+        "send_messages",
+        "add_reactions",
+        "connect",
+        "speak",
+        "stream"
+      ]
+    },
+    {
+      "name": "role_allow_wins_over_role_deny",
+      "member": "2222222222222222222222222222222222222222222222222222222222222222",
+      "roles": [
+        "gardien",
+        "moderator"
+      ],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": [
+        [
+          "deny",
+          "gardien",
+          "attach_files"
+        ],
+        [
+          "allow",
+          "moderator",
+          "attach_files"
+        ]
+      ],
+      "expect": [
+        "create_invite",
+        "kick_members",
+        "ban_members",
+        "moderate_members",
+        "view_audit_log",
+        "manage_messages",
+        "view_channel",
+        "send_messages",
+        "attach_files",
+        "add_reactions",
+        "connect",
+        "speak",
+        "stream",
+        "mute_members",
+        "move_members"
+      ]
+    },
+    {
+      "name": "no_connect_no_speak_or_stream",
+      "member": "2222222222222222222222222222222222222222222222222222222222222222",
+      "roles": [],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": [
+        [
+          "deny",
+          "everyone",
+          "connect"
+        ]
+      ],
+      "expect": [
+        "view_channel",
+        "send_messages",
+        "attach_files",
+        "add_reactions"
+      ]
+    },
+    {
+      "name": "administrator_ignores_overrides",
+      "member": "1111111111111111111111111111111111111111111111111111111111111111",
+      "roles": [
+        "admin"
+      ],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": [
+        [
+          "deny",
+          "everyone",
+          "view_channel"
+        ],
+        [
+          "deny",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "send_messages"
+        ]
+      ],
+      "expect": [
+        "administrator",
+        "manage_community",
+        "manage_channels",
+        "manage_roles",
+        "manage_invites",
+        "create_invite",
+        "kick_members",
+        "ban_members",
+        "moderate_members",
+        "view_audit_log",
+        "manage_messages",
+        "mention_everyone",
+        "view_channel",
+        "send_messages",
+        "attach_files",
+        "add_reactions",
+        "connect",
+        "speak",
+        "stream",
+        "mute_members",
+        "move_members"
+      ]
+    },
+    {
+      "name": "timeout_leaves_view_channel",
+      "member": "2222222222222222222222222222222222222222222222222222222222222222",
+      "roles": [
+        "moderator"
+      ],
+      "timeout": 1700000600,
+      "now": 1700000000,
+      "channel": null,
+      "expect": [
+        "view_channel"
+      ]
+    },
+    {
+      "name": "timeout_in_channel",
+      "member": "2222222222222222222222222222222222222222222222222222222222222222",
+      "roles": [],
+      "timeout": 1700000600,
+      "now": 1700000000,
+      "channel": [
+        [
+          "allow",
+          "everyone",
+          "manage_messages"
+        ]
+      ],
+      "expect": [
+        "view_channel"
+      ]
+    },
+    {
+      "name": "timeout_over",
+      "member": "2222222222222222222222222222222222222222222222222222222222222222",
+      "roles": [],
+      "timeout": 1699999999,
+      "now": 1700000000,
+      "channel": null,
+      "expect": [
+        "view_channel",
+        "send_messages",
+        "attach_files",
+        "add_reactions",
+        "connect",
+        "speak",
+        "stream"
+      ]
+    },
+    {
+      "name": "administrator_not_timed_out",
+      "member": "1111111111111111111111111111111111111111111111111111111111111111",
+      "roles": [
+        "admin"
+      ],
+      "timeout": 1700000600,
+      "now": 1700000000,
+      "channel": null,
+      "expect": [
+        "administrator",
+        "manage_community",
+        "manage_channels",
+        "manage_roles",
+        "manage_invites",
+        "create_invite",
+        "kick_members",
+        "ban_members",
+        "moderate_members",
+        "view_audit_log",
+        "manage_messages",
+        "mention_everyone",
+        "view_channel",
+        "send_messages",
+        "attach_files",
+        "add_reactions",
+        "connect",
+        "speak",
+        "stream",
+        "mute_members",
+        "move_members"
+      ]
+    },
+    {
+      "name": "owner_in_hidden_channel",
+      "member": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "roles": [],
+      "timeout": 0,
+      "now": 1700000000,
+      "channel": [
+        [
+          "deny",
+          "everyone",
+          "view_channel"
+        ]
+      ],
+      "expect": [
+        "administrator",
+        "manage_community",
+        "manage_channels",
+        "manage_roles",
+        "manage_invites",
+        "create_invite",
+        "kick_members",
+        "ban_members",
+        "moderate_members",
+        "view_audit_log",
+        "manage_messages",
+        "mention_everyone",
+        "view_channel",
+        "send_messages",
+        "attach_files",
+        "add_reactions",
+        "connect",
+        "speak",
+        "stream",
+        "mute_members",
+        "move_members"
+      ]
+    }
+  ],
+  "outranks": [
+    {
+      "name": "owner_above_admin",
+      "a": {
+        "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "roles": []
+      },
+      "b": {
+        "pubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+        "roles": [
+          "admin"
+        ]
+      },
+      "expect": true
+    },
+    {
+      "name": "admin_below_owner",
+      "a": {
+        "pubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+        "roles": [
+          "admin"
+        ]
+      },
+      "b": {
+        "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "roles": []
+      },
+      "expect": false
+    },
+    {
+      "name": "admin_above_moderator",
+      "a": {
+        "pubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+        "roles": [
+          "admin"
+        ]
+      },
+      "b": {
+        "pubkey": "2222222222222222222222222222222222222222222222222222222222222222",
+        "roles": [
+          "moderator"
+        ]
+      },
+      "expect": true
+    },
+    {
+      "name": "moderator_below_admin",
+      "a": {
+        "pubkey": "2222222222222222222222222222222222222222222222222222222222222222",
+        "roles": [
+          "moderator"
+        ]
+      },
+      "b": {
+        "pubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+        "roles": [
+          "admin"
+        ]
+      },
+      "expect": false
+    },
+    {
+      "name": "equal_rank_is_not_above",
+      "a": {
+        "pubkey": "2222222222222222222222222222222222222222222222222222222222222222",
+        "roles": [
+          "moderator"
+        ]
+      },
+      "b": {
+        "pubkey": "3333333333333333333333333333333333333333333333333333333333333333",
+        "roles": [
+          "moderator"
+        ]
+      },
+      "expect": false
+    },
+    {
+      "name": "highest_role_counts",
+      "a": {
+        "pubkey": "2222222222222222222222222222222222222222222222222222222222222222",
+        "roles": [
+          "gardien",
+          "moderator"
+        ]
+      },
+      "b": {
+        "pubkey": "3333333333333333333333333333333333333333333333333333333333333333",
+        "roles": [
+          "gardien"
+        ]
+      },
+      "expect": true
+    },
+    {
+      "name": "moderator_above_member",
+      "a": {
+        "pubkey": "2222222222222222222222222222222222222222222222222222222222222222",
+        "roles": [
+          "moderator"
+        ]
+      },
+      "b": {
+        "pubkey": "3333333333333333333333333333333333333333333333333333333333333333",
+        "roles": []
+      },
+      "expect": true
+    },
+    {
+      "name": "member_not_above_member",
+      "a": {
+        "pubkey": "2222222222222222222222222222222222222222222222222222222222222222",
+        "roles": []
+      },
+      "b": {
+        "pubkey": "3333333333333333333333333333333333333333333333333333333333333333",
+        "roles": []
+      },
+      "expect": false
+    },
+    {
+      "name": "nobody_above_owner",
+      "a": {
+        "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "roles": []
+      },
+      "b": {
+        "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "roles": []
+      },
+      "expect": false
+    }
+  ]
+}

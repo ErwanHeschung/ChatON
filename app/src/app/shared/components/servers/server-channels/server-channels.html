@@ -4,7 +4,7 @@
   <nav class="channels">
     <h3 class="section-label">
       <span i18n="@@channels.section">Channels</span>
-      @if (store.isAdmin()) {
+      @if (store.can('manage_channels')) {
         <button
           type="button"
           class="btn btn-ghost btn-icon btn-sm"
