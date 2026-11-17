@@ -77,6 +77,9 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     implementation("org.unifiedpush.android:connector:3.1.2")
+    // WebRTC's Java side (audio devices), from the LiveKit prebuilt of webrtc-sys
+    // (android-arm64-release-webrtc-a545de4); update it with webrtc-sys.
+    implementation(files("libs/libwebrtc.jar"))
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")

@@ -1,6 +1,7 @@
 //! Tauri shell: thin commands over `chaton_core::session`. No logic, no crypto here.
 
 mod push;
+mod voice;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -108,7 +109,15 @@ async fn start(app: &AppHandle, state: &App, session: Session) -> Account {
                         alert(&handle, &listener, message.sender, body);
                         handle.emit("voice", update)
                     }
-                    voice @ Update::Voice { .. } => handle.emit("voice", voice),
+                    voice @ Update::Voice { .. } => {
+                        if matches!(voice, Update::Voice { state: None }) {
+                            let handle = handle.clone();
+                            tauri::async_runtime::spawn(
+                                async move { voice::release(&handle).await },
+                            );
+                        }
+                        handle.emit("voice", voice)
+                    }
                     other => handle.emit("community", other),
                 };
             })
@@ -356,38 +365,42 @@ async fn voice_available(state: State<'_, App>, community: String) -> Res<bool> 
     Ok(session(&state).await?.voice_available(&community).await?)
 }
 
-/// Whether to open the microphone. Desktop: yes (the OS asks if it must);
-/// a device without one listens only (core checks).
-fn microphone() -> bool {
-    true
-}
-
 #[tauri::command]
 async fn join_voice_channel(
+    app: AppHandle,
     state: State<'_, App>,
     community: String,
     channel: String,
 ) -> Res<VoiceState> {
     Ok(session(&state)
         .await?
-        .join_voice_channel(&community, &channel, microphone())
+        .join_voice_channel(&community, &channel, voice::prepare(&app).await)
         .await?)
 }
 
 /// Calls the conversation `room` (its members, me included or not).
 #[tauri::command]
-async fn start_call(state: State<'_, App>, room: Vec<PublicKey>) -> Res<VoiceState> {
+async fn start_call(
+    app: AppHandle,
+    state: State<'_, App>,
+    room: Vec<PublicKey>,
+) -> Res<VoiceState> {
     Ok(session(&state)
         .await?
-        .start_call(&room, microphone())
+        .start_call(&room, voice::prepare(&app).await)
         .await?)
 }
 
 #[tauri::command]
-async fn join_call(state: State<'_, App>, room: Vec<PublicKey>, id: String) -> Res<VoiceState> {
+async fn join_call(
+    app: AppHandle,
+    state: State<'_, App>,
+    room: Vec<PublicKey>,
+    id: String,
+) -> Res<VoiceState> {
     Ok(session(&state)
         .await?
-        .join_call(&room, &id, microphone())
+        .join_call(&room, &id, voice::prepare(&app).await)
         .await?)
 }
 
@@ -654,6 +667,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(push::init())
+        .plugin(voice::init())
         .manage(App::default())
         .invoke_handler(tauri::generate_handler![
             current_account,

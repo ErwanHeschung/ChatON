@@ -131,9 +131,19 @@ Avec NIP-17, **les messages privés sont chiffrés de bout en bout dès l'étape
 - **Terminé quand :** un MP reçu application fermée réveille le téléphone, et ouvrir l'app l'affiche ; écrire depuis un de mes appareils ne réveille pas les autres. Validé par `server/internal/push/push_test.go` (déchiffrement du push, copie à soi, 410, plafond, règles d'adresse), `core/tests/e2e.rs` et à la main sur un téléphone.
 - Plus tard : iOS (APNs, Mac nécessaire), repli FCM, aperçu du contenu sur Android (`core` dans le service de push), notifications des salons (mentions), sourdine par conversation.
 
-## Étape 9 : voix et vidéo
+## Étape 9 : voix ✅ (desktop ; Android compilé, à essayer sur un téléphone)
 
-- LiveKit déployé à côté du serveur. L'hôte de communauté délivre les jetons LiveKit après une authentification NIP-98 et une vérification des permissions.
+- Portée (2026-11-16) : la voix seule, dans les salons des communautés et en appel dans les MP (1:1 et groupes de 10 au plus). Vidéo et partage d'écran plus tard.
+- **SDK Rust LiveKit** (`livekit` 0.11, feature `voice` de `core`) sur toutes les plateformes : WebKitGTK n'a pas WebRTC, donc pas de SDK JS. L'UI n'affiche que l'état (événement `voice`).
+- Standards réutilisés (`spec/protocol.md` § 11) : NIP-29 « Live AV spaces » (tag `livekit` sur le salon, présence en 39004 signée par le relais), jetons LiveKit, et kind 14 pour les appels (`call`, `call-end`). Aucun kind propre.
+- `server/internal/voice` : jetons de salon (`/.well-known/nip29/livekit/<salon>`, NIP-98, membres seulement) et d'appel (`/api/voice/call`, sans état), webhooks LiveKit pour la présence, éjection des membres retirés, réconciliation au démarrage. Voix coupée sans `SERVER_LIVEKIT*`.
+- Appels en MP **chiffrés de bout en bout** (LiveKit E2EE, clé dans l'invitation chiffrée) : l'instance sait qui appelle qui, pas ce qui se dit. Un appel à deux se termine pour les deux quand l'un raccroche ; en groupe, quand le dernier part. La voix des salons n'est pas chiffrée de bout en bout, comme leur texte.
+- App : salons vocaux avec présence sans rejoindre et anneau « parle », barre de voix (micro, son, raccrocher ; sous la conversation sur téléphone), bannière d'appel entrant, notes d'appel, sonnerie notifiée fenêtre en arrière-plan.
+- Android : `VoicePlugin.kt` (contexte de WebRTC, permission micro, mode appel), `libwebrtc.jar` dans `gen/android/app/libs`, symboles JNI de WebRTC exportés par `build.rs`.
+- Dev : `npm run dev:livekit` (Docker) et `server/.env`. LiveKit réglé pour que l'anneau « parle » suive la voix (`audio.update_interval: 100`).
+- **Terminé quand :** deux membres se parlent dans un salon vocal, voient qui parle, coupent micro et son ; un troisième voit qui y est sans rejoindre ; un appel 1:1 sonne, se connecte chiffré et se termine des deux côtés. Validé par `server/internal/voice/voice_test.go`, `core/tests/e2e.rs` (`voice_channel_presence_and_an_encrypted_call`) et à la main sur desktop (deux profils).
+- **Reste :** l'essai sur un téléphone (WSL en réseau « mirrored », adresse LAN pour l'instance et LiveKit, `rtc.node_ip`, pare-feu TCP 7880-7881 et UDP 7882).
+- Plus tard : vidéo et partage d'écran, sonnerie app fermée (service Android au premier plan), son de sonnerie, choix du micro et des haut-parleurs, « appel manqué », TURN/TLS pour les réseaux stricts, limites de débit sur les jetons, appels entre instances (étape 10), iOS.
 
 ## Étape 10 : fédération
 

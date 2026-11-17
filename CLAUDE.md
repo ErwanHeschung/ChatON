@@ -127,7 +127,8 @@ cd app && npm ci && npm run tauri dev
 # Android (téléphone en débogage USB ou adb Wi-Fi ; le SDK et le NDK 28 dans ~/Android/Sdk). Le téléphone
 # joint l'instance par l'adresse LAN du PC : WSL en réseau « mirrored » ou redirection de port.
 # Notifications : installer ntfy (distributeur UnifiedPush) sur le téléphone.
-#   export NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358
+#   export NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358 ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358
+# (ANDROID_NDK_HOME : webrtc-sys, la voix. Son libwebrtc.jar est copié dans gen/android/app/libs, à mettre à jour avec lui.)
 cd app && npm run tauri android dev
 cd app && npm run tauri android build -- --apk --debug --target aarch64
 # second compte sur la même machine (réutilise le serveur de dev de la première fenêtre)

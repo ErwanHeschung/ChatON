@@ -781,7 +781,9 @@ dependencies = [
  "android-native-keyring-store",
  "apple-native-keyring-store",
  "chaton-core",
+ "jni",
  "keyring-core",
+ "livekit",
  "serde",
  "serde_json",
  "tauri",
@@ -789,6 +791,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-notification",
  "tokio",
+ "webrtc-sys-build",
  "windows-native-keyring-store",
  "zbus-secret-service-keyring-store",
 ]
