@@ -31,7 +31,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 voice = ["dep:livekit", "dep:jpeg-encoder"]
 
 [dev-dependencies]
-secp256k1 = "0.30"
+secp256k1 = "0.33"
 tokio = { version = "1", features = ["time"] }
 
 # NIP-49 (scrypt) is ~50x slower unoptimized: keeps `cargo test` and debug builds fast.
