@@ -79,6 +79,8 @@
   }
 </div>
 
+<ng-content select="[banner]"></ng-content>
+
 @switch (error()) {
   @case (null) {}
   @case ('too_large') {

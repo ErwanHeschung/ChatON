@@ -6,12 +6,14 @@
 //! Secrets go through `keyring-core`'s default store: the app must call
 //! `keyring_core::set_default_store` with its platform store at startup.
 
+pub mod block;
 pub mod community;
 pub mod dm;
 pub mod event;
 pub mod identity;
 pub mod link;
 pub mod media;
+pub mod network;
 pub mod push;
 pub mod session;
 pub mod voice;

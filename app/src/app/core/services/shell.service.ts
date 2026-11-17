@@ -1,4 +1,4 @@
-import { computed, inject, Injectable, signal } from '@angular/core';
+import { computed, effect, inject, Injectable, signal, untracked } from '@angular/core';
 import { splitHandle } from '@models/Dm.model';
 import { CommunityStore } from '@stores/community.store';
 import { DmStore } from '@stores/dm.store';
@@ -25,6 +25,8 @@ export class ShellService {
   public readonly chatOpen = signal(false);
   /** Settings, full screen over the shell. */
   public readonly settings = signal(false);
+  /** The network map in the sheet, until a conversation or channel is opened. */
+  public readonly network = signal(false);
   /** Members panel: shown by default wherever it sits beside the conversation (not over it). */
   public readonly members = signal(globalThis.matchMedia?.('(min-width: 1024px)').matches ?? true);
 
@@ -51,6 +53,14 @@ export class ShellService {
       picture: this.dm.peers()[peer]?.picture,
     };
   });
+
+  constructor() {
+    effect(() => {
+      this.dm.selected();
+      this.community.channel();
+      untracked(() => this.network.set(false));
+    });
+  }
 
   public openChat(): void {
     this.chatOpen.set(true);

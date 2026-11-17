@@ -4,10 +4,13 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
-	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/eventstore/boltdb"
 
 	"github.com/ErwanHeschung/ChatON/server/configs"
@@ -17,6 +20,8 @@ import (
 	"github.com/ErwanHeschung/ChatON/server/internal/media"
 	"github.com/ErwanHeschung/ChatON/server/internal/push"
 	"github.com/ErwanHeschung/ChatON/server/internal/relay"
+	"github.com/ErwanHeschung/ChatON/server/internal/rules"
+	"github.com/ErwanHeschung/ChatON/server/internal/safehttp"
 	"github.com/ErwanHeschung/ChatON/server/internal/voice"
 )
 
@@ -35,9 +40,6 @@ func main() {
 	if s.PublicURL == "" {
 		s.PublicURL = "http://localhost" + s.Port
 	}
-	if s.Name == "" {
-		s.Name = "ChatON"
-	}
 
 	// One bbolt file: events (eventstore) and handles (directory buckets).
 	db := &boltdb.BoltBackend{Path: s.DBPath}
@@ -50,14 +52,26 @@ func main() {
 	if err != nil {
 		log.Fatal("Cannot init directory:", err)
 	}
-	blocked := make([]nostr.PubKey, 0, len(s.BlockedPubkeys))
-	for _, hex := range s.BlockedPubkeys {
-		pk, err := nostr.PubKeyFromHex(hex)
-		if err != nil {
-			log.Fatalf("SERVER_BLOCKEDPUBKEYS: %q: %v", hex, err)
-		}
-		blocked = append(blocked, pk)
+	// SERVER_RULES (rules.yaml next to the DB by default); SIGHUP reloads keys and instances.
+	if s.Rules == "" {
+		s.Rules = filepath.Join(filepath.Dir(s.DBPath), "rules.yaml")
 	}
+	instanceRules, err := rules.Open(s.Rules, s.BlockedPubkeys)
+	if err != nil {
+		log.Fatal("Cannot load rules: ", err)
+	}
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	go func() {
+		for range hup {
+			if err := instanceRules.Reload(); err != nil {
+				log.Println("rules not reloaded:", err)
+			} else {
+				log.Println("rules reloaded")
+			}
+		}
+	}()
+	allowPrivate := s.PushAllowPrivate // dev: NIP-05 checks of local instances too
 	key, err := community.LoadKey(s.RelayKey, filepath.Join(filepath.Dir(s.DBPath), "relay.key"))
 	if err != nil {
 		log.Fatal("Cannot load relay key:", err)
@@ -67,13 +81,16 @@ func main() {
 		log.Fatal("Cannot load communities:", err)
 	}
 	rl := relay.New(relay.Config{
-		Name:           s.Name,
-		Description:    "ChatON instance",
-		BlockedPubkeys: blocked,
+		Name:        s.Name,
+		Description: "ChatON instance",
+		Rules:       instanceRules,
+		Countries:   s.Country,
 	}, db, dir, groups)
+	groups.UseRules(instanceRules, rules.Verifier{Client: safehttp.Client(allowPrivate, 5*time.Second)})
 
 	mux := rl.Router() // khatru serves WebSocket + NIP-11 on "/", the rest falls through here
 	dir.Register(mux)
+	instanceRules.Register(mux)
 
 	// Push (spec/federation.md): wakes local users' phones when a DM arrives.
 	vapid, err := push.LoadVAPIDKey(s.VAPIDKey, filepath.Join(filepath.Dir(s.DBPath), "vapid.key"))

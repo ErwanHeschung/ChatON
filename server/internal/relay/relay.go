@@ -9,6 +9,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"fiatjaf.com/nostr"
@@ -17,6 +18,7 @@ import (
 	"fiatjaf.com/nostr/khatru/policies"
 
 	"github.com/ErwanHeschung/ChatON/server/internal/community"
+	"github.com/ErwanHeschung/ChatON/server/internal/rules"
 )
 
 // MaxQueryLimit caps each query; clients page with `until` (spec federation § 5).
@@ -38,14 +40,19 @@ var acceptedKinds = append([]nostr.Kind{
 	nostr.KindRelayListMetadata,
 	nostr.KindDMRelayList,
 	nostr.KindSimpleGroupList,
+	nostr.KindMuteList, // my blocks, private content (spec protocol § 5)
 	nostr.KindGiftWrap,
 	KindDeviceLink,
 }, community.ClientKinds...)
 
 type Config struct {
-	Name           string
-	Description    string
-	BlockedPubkeys []nostr.PubKey
+	Name        string
+	Description string
+	// Blocked keys and rate limits (rules.yaml); nil: nothing blocked, default limits.
+	Rules *rules.Store
+	// Where the instance is (ISO 3166 alpha-2), as its admin says: NIP-11
+	// relay_countries, for the clients' network map.
+	Countries []string
 }
 
 // Directory is the part of the directory the relay needs.
@@ -57,6 +64,7 @@ func New(cfg Config, db eventstore.Store, dir Directory, groups *community.Group
 	rl := khatru.NewRelay()
 	rl.Info.Name = cfg.Name
 	rl.Info.Description = cfg.Description
+	rl.Info.RelayCountries = cfg.Countries
 	rl.Info.Software = "https://github.com/ErwanHeschung/ChatON"
 	rl.Info.SupportedNIPs = []any{1, 11, 17, 29, 42, 51, 59, 65} // what we actually do, not khatru's defaults
 
@@ -66,19 +74,24 @@ func New(cfg Config, db eventstore.Store, dir Directory, groups *community.Group
 	// Challenge right away so clients can authenticate before asking for their DMs.
 	rl.OnConnect = khatru.RequestAuth
 
+	if cfg.Rules == nil {
+		cfg.Rules = rules.Fixed(&rules.Rules{Limits: rules.DefaultLimits})
+	}
+	limits := cfg.Rules.Get().Limits
 	rl.OnEvent = policies.SeqEvent(
 		policies.PreventTimestampsInTheFuture(MaxFuture),
 		rejectAmbiguousEscapes,
 		rejectRumor,
 		policies.RestrictToSpecifiedKinds(false, acceptedKinds...),
-		blocked(cfg.BlockedPubkeys),
+		blocked(cfg.Rules),
 		writePolicy(dir, groups),
-		// ponytail: fixed limits per IP, make them configurable once real traffic shows the need.
-		policies.EventIPRateLimiter(20, time.Minute, 60),
+		// Last: only events that passed count. Per IP (localhost is exempt).
+		policies.EventIPRateLimiter(limits.EventsPerMinute, time.Minute, limits.EventsBurst),
+		wrapsPerRecipient(limits.WrapsPerRecipientPerMinute),
 	)
 	rl.OnRequest = policies.SeqRequest(giftWrapsOnlyForRecipient, oneLinkChannel, groups.CheckFilter)
 	groups.Bind(rl)
-	rl.RejectConnection = policies.ConnectionRateLimiter(10, time.Minute, 30)
+	rl.RejectConnection = policies.ConnectionRateLimiter(limits.ConnectionsPerMinute, time.Minute, limits.ConnectionsBurst)
 	return rl
 }
 
@@ -108,11 +121,35 @@ func rejectRumor(_ context.Context, ev nostr.Event) (bool, string) {
 	return false, ""
 }
 
-func blocked(pubkeys []nostr.PubKey) func(context.Context, nostr.Event) (bool, string) {
+func blocked(r *rules.Store) func(context.Context, nostr.Event) (bool, string) {
 	return func(_ context.Context, ev nostr.Event) (bool, string) {
-		if slices.Contains(pubkeys, ev.PubKey) {
+		if r.Get().Blocked(ev.PubKey) {
 			return true, "blocked: this key is blocked on this instance"
 		}
+		return false, ""
+	}
+}
+
+// wrapsPerRecipient caps the gift wraps one user gets per minute: their sender is
+// a throwaway key, so this is the only brake on DM spam. Fixed one-minute windows.
+func wrapsPerRecipient(perMinute int) func(context.Context, nostr.Event) (bool, string) {
+	var mu sync.Mutex
+	window := time.Now()
+	counts := map[nostr.PubKey]int{}
+	return func(_ context.Context, ev nostr.Event) (bool, string) {
+		if ev.Kind != nostr.KindGiftWrap || perMinute <= 0 {
+			return false, ""
+		}
+		pk, _ := recipient(ev)
+		mu.Lock()
+		defer mu.Unlock()
+		if time.Since(window) > time.Minute {
+			window, counts = time.Now(), map[nostr.PubKey]int{}
+		}
+		if counts[pk] >= perMinute {
+			return true, "rate-limited: too many messages for this user, try again in a minute"
+		}
+		counts[pk]++
 		return false, ""
 	}
 }

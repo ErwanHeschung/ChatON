@@ -44,7 +44,8 @@
 }
 
 .home,
-.add {
+.add,
+.network {
   background-color: var(--surface-raised);
 
   &:hover {
@@ -60,6 +61,16 @@
 
 .add {
   color: var(--accent-text);
+}
+
+// The way out to the wider network: at the foot of the rail, among the fireflies.
+.network {
+  margin-top: auto;
+
+  &[aria-current='true'] {
+    background-color: var(--accent-subtle);
+    color: var(--accent-text);
+  }
 }
 
 .separator {

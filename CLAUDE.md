@@ -135,16 +135,20 @@ cd app && npm run tauri android dev
 cd app && npm run tauri android build -- --apk --debug --target aarch64
 # second compte sur la même machine (réutilise le serveur de dev de la première fenêtre)
 cd app && CHATON_PROFILE=bob src-tauri/target/debug/chaton-app
+# carte du Réseau remplie de 29 instances fictives (build debug seulement, src-tauri/src/mock.rs)
+cd app && CHATON_MOCK_NETWORK=1 npm run tauri dev
 cd app && npm run build && ./node_modules/.bin/eslint src
 
 # server
 cd server && go vet ./... && go test ./...
 cd server && SERVER_PORT=:8080 SERVER_PUBLICURL=http://localhost:8080 go run ./cmd/server
-# autres variables : SERVER_DBPATH (chaton.bolt, bbolt), SERVER_NAME, SERVER_BLOCKEDPUBKEYS (hex, séparées par des virgules),
+# autres variables : SERVER_DBPATH (chaton.bolt, bbolt), SERVER_NAME (nom de l'instance, NIP-11, affiché par les clients à côté du domaine ; aucun par défaut), SERVER_BLOCKEDPUBKEYS (hex, séparées par des virgules),
 # SERVER_RELAYKEY (hex, clé qui signe l'état des communautés ; sinon relay.key à côté de la base, à sauvegarder avec elle),
 # SERVER_BLOBDIR (fichiers envoyés, Blossom ; sinon blobs/ à côté de la base, index dans blobs.bolt),
 # SERVER_VAPIDKEY (base64url, signe les push ; sinon vapid.key à côté de la base, à sauvegarder avec elle),
-# SERVER_PUSHALLOWPRIVATE=1 (dev seulement : push vers des adresses privées, requis par les tests e2e)
+# SERVER_PUSHALLOWPRIVATE=1 (dev seulement : push et vérifications NIP-05 vers des adresses privées, requis par les tests e2e)
+# SERVER_COUNTRY (FR, ou FR,BE : NIP-11 relay_countries, place l'instance sur la carte du réseau des clients)
+# SERVER_RULES (rules.yaml : liste noire/blanche, clés, débits ; sinon à côté de la base ; relu sur SIGHUP, spec/federation.md § 6)
 # SERVER_LIVEKITURL, SERVER_LIVEKITKEY, SERVER_LIVEKITSECRET (voix, les trois ou aucun ; en dev : ws://localhost:7880,
 #   devkey, chaton-dev-secret-not-for-production, avec `npm run dev:livekit` à la racine, qui demande Docker)
 
@@ -157,6 +161,7 @@ cd server && go run ./cmd/genvectors > ../spec/test-vectors/events.json
 cd core && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 # bout en bout, serveur lancé sur :8099 (SERVER_PORT=:8099 SERVER_PUBLICURL=http://localhost:8099 SERVER_PUSHALLOWPRIVATE=1)
 cd core && CHATON_TEST_SERVER=http://localhost:8099 cargo test --test e2e -- --ignored
+# fédération : un second serveur sur :8098 (SERVER_DBPATH à part), puis CHATON_TEST_SERVER_B=http://localhost:8098 en plus
 # voix (feature `voice`, LiveKit compilé : clang requis, voir plus haut). LiveKit + serveur sur :8080 avec SERVER_LIVEKIT*
 cd core && cargo clippy --all-targets --features voice -- -D warnings
 cd core && CHATON_TEST_SERVER=http://localhost:8080 cargo test --features voice --test e2e voice -- --ignored
@@ -203,6 +208,4 @@ Tranchées le 2026-11-15 :
 - [x] **Groupes en NIP-17, MLS reporté** : Marmot (MLS sur Nostr) n'a pas de version publiée compatible (`mdk-core` 0.8 : nostr 0.44 et un openmls dépassé pour des raisons de sécurité). Groupes de 10 au plus, membres figés. On y reviendra quand Marmot sera stable.
 - [x] **Pas de coffre de clés** : un mot de passe fuité donnerait la clé pour toujours (une clé ne se révoque pas), et l'opérateur pourrait attaquer hors ligne les mots de passe faibles. Multi-appareil par liaison d'appareils, sauvegarde par export de la clé. Perdre tous ses appareils sans export = perdre le compte.
 
-Demande avant de trancher l'une de ces questions :
-
-- [ ] Mode par défaut des instances : liste noire (proposé) ou liste blanche ?
+- [x] **Mode par défaut des instances : liste noire** (2026-11-17). Le blocage d'instance s'applique aux MP côté client (le serveur ne voit pas l'expéditeur d'un gift wrap), aux communautés côté serveur.

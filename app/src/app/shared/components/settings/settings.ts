@@ -7,6 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { getVersion } from '@tauri-apps/api/app';
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
   LucideArrowLeft,
@@ -18,6 +19,7 @@ import {
   LucideInfo,
   LucideKeyRound,
   LucideMonitorSmartphone,
+  LucideShieldBan,
   LucideSlidersHorizontal,
   LucideUserRound,
   LucideX,
@@ -32,7 +34,8 @@ import { ShellService } from '@services/shell.service';
 import { ConnectedUserStore } from '@stores/connected-user.store';
 import { DmStore } from '@stores/dm.store';
 
-type Section = 'profile' | 'account' | 'devices' | 'notifications' | 'preferences' | 'about';
+type Section =
+  'profile' | 'account' | 'privacy' | 'devices' | 'notifications' | 'preferences' | 'about';
 
 /**
  * Settings, full screen like the chat shell: sections in the frame, the open one in the sheet.
@@ -74,6 +77,7 @@ export class Settings {
         label: $localize`:@@settings.account:Account and key`,
         icon: LucideKeyRound,
       },
+      { id: 'privacy', label: $localize`:@@settings.privacy:Privacy`, icon: LucideShieldBan },
       {
         id: 'devices',
         label: $localize`:@@settings.devices:Devices`,
@@ -102,6 +106,7 @@ export class Settings {
         ...user,
         parts: splitHandle(`@${user.handle}`),
         picture: this.dm.peers()[user.pubkey]?.picture,
+        nick: this.dm.peers()[user.pubkey]?.display_name,
       }
     );
   });
@@ -117,8 +122,10 @@ export class Settings {
   public readonly nsec = signal<string | null>(null);
   public readonly confirmLogout = signal(false);
   public readonly pictureState = signal<'idle' | 'sending' | 'done' | CmdError['code']>('idle');
+  public readonly moving = signal<'idle' | 'moving' | CmdError['code']>('idle');
 
   constructor() {
+    if (!this.dm.privacy()) void this.dm.loadPrivacy().catch(() => undefined);
     getVersion()
       .then((v) => this.version.set(v))
       .catch(() => this.version.set('dev'));
@@ -139,6 +146,15 @@ export class Settings {
         this.authService.linkCancel().subscribe();
       }
     });
+  }
+
+  /** Moves my account to another instance (core does it all), then starts there. */
+  protected move(instance: string, name: string): void {
+    this.moving.set('moving');
+    invoke('move_instance', { instance: instance.trim(), name: name.trim() })
+      // ponytail: a reload resets every store to the new account, as after logout.
+      .then(() => location.assign('/'))
+      .catch((e: CmdError) => this.moving.set(e.code ?? 'internal'));
   }
 
   protected open(section: Section): void {
@@ -171,6 +187,20 @@ export class Settings {
 
   public answer(accept: boolean): void {
     this.authService.linkConfirm(accept).subscribe();
+  }
+
+  public readonly nickState = signal<'idle' | 'saving' | 'done' | CmdError['code']>('idle');
+
+  /** My display name (empty removes it), in my public profile. */
+  protected setNick(name: string): void {
+    this.nickState.set('saving');
+    invoke('set_display_name', { name })
+      .then(async () => {
+        const me = this.account.user()?.pubkey;
+        if (me) await this.dm.resolve(me, true);
+        this.nickState.set('done');
+      })
+      .catch((e: CmdError) => this.nickState.set(e.code ?? 'internal'));
   }
 
   /** Public picture, on my instance. */

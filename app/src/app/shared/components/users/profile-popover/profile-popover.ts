@@ -11,7 +11,7 @@ import { Router } from '@angular/router';
 import { LucideDynamicIcon, LucideMessageCircle, LucidePencil } from '@lucide/angular';
 import { ROUTES } from '@app/app.routes';
 import { ProfileCard } from '@components/users/profile-card/profile-card';
-import { roomKey } from '@models/Dm.model';
+import { instanceOf, roomKey } from '@models/Dm.model';
 import { ShellService } from '@services/shell.service';
 import { ConnectedUserStore } from '@stores/connected-user.store';
 import { DmStore } from '@stores/dm.store';
@@ -35,6 +35,40 @@ import { DmStore } from '@stores/dm.store';
           </button>
         }
       </div>
+      @if (!mine()) {
+        <!-- Blocks are mine only: nobody is told (spec § 5). -->
+        <div class="actions block">
+          @if (blocked()) {
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              (click)="block({ key: pubkey() }, false)"
+              i18n="@@profile.unblock"
+            >
+              Unblock
+            </button>
+          } @else {
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              (click)="block({ key: pubkey() }, true)"
+              i18n="@@profile.block"
+            >
+              Block
+            </button>
+          }
+          @if (instance(); as instance) {
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              (click)="block({ instance }, true)"
+              i18n="@@profile.block-instance"
+            >
+              Block {{ instance }}
+            </button>
+          }
+        </div>
+      }
     </app-profile-card>
   `,
   styles: `
@@ -53,6 +87,11 @@ import { DmStore } from '@stores/dm.store';
 
       .btn {
         flex: 1;
+      }
+
+      &.block {
+        gap: var(--space-2);
+        margin-top: var(--space-2);
       }
     }
   `,
@@ -73,10 +112,25 @@ export class ProfilePopover {
   protected readonly handle = computed(() => this.dm.label(this.pubkey()));
   protected readonly picture = computed(() => this.dm.peers()[this.pubkey()]?.picture);
   protected readonly mine = computed(() => this.pubkey() === this.account.user()?.pubkey);
+  protected readonly blocked = computed(
+    () => this.dm.privacy()?.blocks.keys.includes(this.pubkey()) ?? false,
+  );
+  /** Their instance, when it's another one and not blocked yet. */
+  protected readonly instance = computed(() => {
+    const theirs = instanceOf(this.dm.peers()[this.pubkey()]?.handle);
+    const blocked = theirs && this.dm.privacy()?.blocks.instances.includes(theirs);
+    return theirs !== instanceOf(this.account.user()?.handle) && !blocked ? theirs : null;
+  });
 
   constructor() {
     // A community member may not be resolved yet: their handle and picture come in.
     effect(() => void this.dm.resolve(this.pubkey()));
+    if (!this.dm.privacy()) void this.dm.loadPrivacy().catch(() => undefined);
+  }
+
+  protected block(target: { key?: string; instance?: string }, blocked: boolean): void {
+    void this.dm.setBlocked(target, blocked);
+    this.done.emit();
   }
 
   protected editProfile(): void {

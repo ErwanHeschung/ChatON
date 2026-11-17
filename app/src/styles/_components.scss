@@ -236,6 +236,16 @@ textarea {
   color: var(--accent-text);
 }
 
+/* --- SCREEN READERS ONLY: said, not shown --- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* --- LIST ROW: channels, conversations, members. Interactive when it's a button. --- */
 .list-row {
   display: flex;

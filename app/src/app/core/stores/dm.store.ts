@@ -10,7 +10,8 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { CmdError } from '@models/Auth.model';
-import { Conversation, DmMessage, Peer, peerLabel, roomKey } from '@models/Dm.model';
+import { CommunityUpdate } from '@models/Community.model';
+import { Conversation, DmMessage, Peer, Privacy, peerLabel, roomKey } from '@models/Dm.model';
 import { ConnectedUserStore } from '@stores/connected-user.store';
 import { MediaService } from '@services/media.service';
 
@@ -29,10 +30,22 @@ export const DmStore = signalStore(
     sendError: null as CmdError['code'] | null,
     /** Members already in the group that "Add people" starts from. */
     groupDraft: [] as string[],
+    /** My blocks and my instance's rules (core). */
+    privacy: null as Privacy | null,
   }),
   withComputed((store) => {
     const room = computed(() => store.selected()?.split(',') ?? []);
-    return { room, isGroup: computed(() => room().length > 2) };
+    const open = computed(() =>
+      store.conversations().find((c) => roomKey(c.room) === store.selected()),
+    );
+    return {
+      room,
+      isGroup: computed(() => room().length > 2),
+      /** The open conversation is a request: show who's asking, offer to block. */
+      request: computed(() => (open()?.request ? open() : undefined)),
+      chats: computed(() => store.conversations().filter((c) => !c.request)),
+      requests: computed(() => store.conversations().filter((c) => c.request)),
+    };
   }),
   withMethods((store, user = inject(ConnectedUserStore), media = inject(MediaService)) => {
     const resolvePeer = async (pubkey: string, refresh = false) => {
@@ -65,10 +78,13 @@ export const DmStore = signalStore(
       const key = roomKey(message.room);
       patchState(store, (s) => {
         const old = s.conversations.find((c) => roomKey(c.room) === key);
+        // Core sends what it knows; a request ends when I write (spec § 5).
+        const mine = message.sender === user.user()?.pubkey;
         const conversation = {
           room: message.room,
           subject: message.subject ?? old?.subject ?? null,
           last: message,
+          request: (old?.request ?? true) && !mine,
         };
         return {
           conversations: [conversation, ...s.conversations.filter((c) => c !== old)],
@@ -96,9 +112,35 @@ export const DmStore = signalStore(
       }
     };
 
+    const load = async () => {
+      const conversations = await invoke<Conversation[]>('conversations');
+      patchState(store, { conversations });
+      const keys = new Set(conversations.flatMap((c) => c.room));
+      await Promise.all([...keys].map((pk) => resolvePeer(pk)));
+    };
+
+    const loadPrivacy = async () => {
+      patchState(store, { privacy: await invoke<Privacy>('privacy') });
+    };
+
+    /** After my blocks changed (here or on another device): what's shown changes too. */
+    const refresh = async () => {
+      await Promise.all([load(), loadPrivacy()]);
+      const key = store.selected();
+      if (key) await reload(key);
+    };
+
     return {
       select,
       receive,
+      refresh,
+      loadPrivacy,
+
+      /** Blocks or unblocks a person (`key`) or a whole instance (`instance`), for me only. */
+      async setBlocked(target: { key?: string; instance?: string }, blocked: boolean) {
+        await invoke('set_blocked', { ...target, blocked });
+        await refresh();
+      },
       /** Resolves a key's handle once, for `label` (also used for community members). */
       resolve: resolvePeer,
       label,
@@ -111,10 +153,7 @@ export const DmStore = signalStore(
       },
 
       async load() {
-        const conversations = await invoke<Conversation[]>('conversations');
-        patchState(store, { conversations });
-        const keys = new Set(conversations.flatMap((c) => c.room));
-        await Promise.all([...keys].map((pk) => resolvePeer(pk)));
+        await Promise.all([load(), loadPrivacy().catch(() => undefined)]);
       },
 
       /** Finds `@pseudo@instance` and opens the 1:1 with them. */
@@ -170,6 +209,9 @@ export const DmStore = signalStore(
   withHooks({
     onInit(store) {
       void listen<DmMessage>('dm', (event) => store.receive(event.payload));
+      void listen<CommunityUpdate>('community', ({ payload }) => {
+        if (payload.type === 'blocks') void store.refresh();
+      });
     },
   }),
 );

@@ -267,3 +267,19 @@ kbd {
     max-width: 100%;
   }
 }
+
+.move {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+
+  .field {
+    flex: 1 1 12rem;
+  }
+}
+
+.content > .section-label {
+  // The label belongs to the group under it, not to the gap between sections.
+  margin-bottom: calc(var(--space-2) - var(--space-6));
+}

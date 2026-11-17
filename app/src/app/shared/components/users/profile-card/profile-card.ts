@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { DmStore } from '@stores/dm.store';
 import { LucideCamera, LucideDynamicIcon } from '@lucide/angular';
 import { Avatar } from '@components/avatar/avatar';
 import { splitHandle } from '@models/Dm.model';
@@ -28,4 +29,6 @@ export class ProfileCard {
 
   protected readonly cameraIcon = LucideCamera;
   protected readonly parts = computed(() => splitHandle(this.handle()));
+  protected readonly nick = computed(() => this.dm.peers()[this.pubkey()]?.display_name ?? null);
+  private readonly dm = inject(DmStore);
 }

@@ -8,7 +8,13 @@
   <svg [lucideIcon]="icons.back" size="20"></svg>
 </button>
 
-@if (shell.conversation(); as view) {
+@if (shell.network()) {
+  <div class="title">
+    <svg class="kind" [lucideIcon]="icons.network" size="20"></svg>
+    <h1 i18n="@@network.title">Network</h1>
+    <span class="meta" i18n="@@network.meta">The instances you know</span>
+  </div>
+} @else if (shell.conversation(); as view) {
   <div class="title">
     @switch (view.kind) {
       @case ('channel') {

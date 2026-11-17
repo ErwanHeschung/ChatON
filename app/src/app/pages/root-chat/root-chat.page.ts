@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { RouterOutlet } from '@angular/router';
 import { Chat } from '@components/chats/chat/chat';
 import { ChatHeader } from '@components/chats/chat-header/chat-header';
+import { RequestBanner } from '@components/chats/request-banner/request-banner';
+import { Network } from '@components/network/network';
 import { CommunityRail } from '@components/community-rail/community-rail';
 import { UserPanel } from '@components/users/user-panel/user-panel';
 import { UsersList } from '@components/users/users-list/users-list';
@@ -33,6 +35,8 @@ import { VoiceStore } from '@stores/voice.store';
     VoiceBar,
     CallBanner,
     ScreenStage,
+    RequestBanner,
+    Network,
   ],
   templateUrl: './root-chat.page.html',
   styleUrl: './root-chat.page.scss',

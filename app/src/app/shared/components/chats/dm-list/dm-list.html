@@ -33,19 +33,37 @@
       <svg [lucideIcon]="newIcon" size="16"></svg>
     </button>
   </h3>
-  @for (conversation of dm.conversations(); track key(conversation)) {
-    <button
-      type="button"
-      class="list-row"
-      [attr.aria-current]="key(conversation) === dm.selected() ? 'true' : null"
-      (click)="open(conversation)"
-    >
-      <app-user-card [user]="card(conversation)"></app-user-card>
-    </button>
+  @for (conversation of dm.chats(); track key(conversation)) {
+    <ng-container *ngTemplateOutlet="row; context: { $implicit: conversation }"></ng-container>
   } @empty {
     <div class="empty">
       <app-paw-trail [length]="4" [size]="16"></app-paw-trail>
       <p class="hint" i18n="@@dm.empty">It's dangerous to go alone! Find someone above.</p>
     </div>
   }
+
+  @if (dm.requests().length) {
+    <!-- Closed by default: strangers wait here, without notifying (spec § 5). -->
+    <details class="requests">
+      <summary class="section-label">
+        <svg class="chevron" [lucideIcon]="chevronIcon" size="14"></svg>
+        <span i18n="@@dm.requests">Message requests</span>
+        <span class="badge">{{ dm.requests().length }}</span>
+      </summary>
+      @for (conversation of dm.requests(); track key(conversation)) {
+        <ng-container *ngTemplateOutlet="row; context: { $implicit: conversation }"></ng-container>
+      }
+    </details>
+  }
 </nav>
+
+<ng-template #row let-conversation>
+  <button
+    type="button"
+    class="list-row"
+    [attr.aria-current]="key(conversation) === dm.selected() ? 'true' : null"
+    (click)="open(conversation)"
+  >
+    <app-user-card [user]="card(conversation)"></app-user-card>
+  </button>
+</ng-template>

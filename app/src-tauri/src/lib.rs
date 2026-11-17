@@ -1,5 +1,7 @@
 //! Tauri shell: thin commands over `chaton_core::session`. No logic, no crypto here.
 
+#[cfg(debug_assertions)]
+mod mock;
 mod push;
 mod voice;
 
@@ -7,10 +9,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use chaton_core::Error;
+use chaton_core::block::{Blocks, Rules};
 use chaton_core::community::{ChannelMessage, Community, Member, Update};
 use chaton_core::dm::Message;
 use chaton_core::link::{self, LinkOffer};
 use chaton_core::media::Attachment;
+use chaton_core::network::Instance;
 use chaton_core::nostr::prelude::{EventId, PublicKey};
 use chaton_core::session::{Account, Conversation, Peer, Session};
 use chaton_core::voice::{ScreenSource, VoiceState};
@@ -101,8 +105,10 @@ async fn start(app: &AppHandle, state: &App, session: Session) -> Account {
         listener
             .listen(|update| {
                 let _ = match update {
-                    Update::Dm { message } => {
-                        notify(&handle, &listener, &message);
+                    Update::Dm { message, request } => {
+                        if !request {
+                            notify(&handle, &listener, &message);
+                        }
                         handle.emit("dm", message)
                     }
                     Update::Ring { ref message, .. } => {
@@ -153,7 +159,12 @@ fn alert(app: &AppHandle, session: &Arc<Session>, sender: PublicKey, body: Strin
     tauri::async_runtime::spawn(async move {
         use tauri_plugin_notification::NotificationExt;
         let peer = session.peer(sender).await;
-        let title = peer.handle.map_or(peer.npub, |h| format!("@{h}"));
+        let who = peer.handle.map_or(peer.npub, |h| format!("@{h}"));
+        // The handle stays: a display name alone could be anyone's.
+        let title = match peer.display_name {
+            Some(name) => format!("{name} ({who})"),
+            None => who,
+        };
         drop(app.notification().builder().title(title).body(body).show());
     });
 }
@@ -282,6 +293,69 @@ async fn logout(state: State<'_, App>) -> Res<()> {
         session.logout().await?;
     }
     Ok(())
+}
+
+/// Moves my account to another instance, then restarts the session there.
+#[tauri::command]
+async fn move_instance(
+    app: AppHandle,
+    state: State<'_, App>,
+    instance: String,
+    name: String,
+) -> Res<Account> {
+    let old = session(&state).await?;
+    old.move_to(&instance, &name).await?;
+    state.session.lock().await.take();
+    old.close().await;
+    let session = Session::open(&data_dir(&app)?).await?.ok_or(CmdError {
+        code: "signed_out",
+        message: "account file missing after the move".into(),
+    })?;
+    Ok(start(&app, &state, session).await)
+}
+
+#[derive(Serialize)]
+struct Privacy {
+    blocks: Blocks,
+    rules: Rules,
+}
+
+/// My blocks, and what my instance refuses.
+#[tauri::command]
+async fn privacy(state: State<'_, App>) -> Res<Privacy> {
+    let session = session(&state).await?;
+    Ok(Privacy {
+        blocks: session.blocks().await?,
+        rules: session.instance_rules().clone(),
+    })
+}
+
+/// Blocks (or unblocks) a person or a whole instance, for me only.
+#[tauri::command]
+async fn set_blocked(
+    state: State<'_, App>,
+    key: Option<PublicKey>,
+    instance: Option<String>,
+    blocked: bool,
+) -> Res<Blocks> {
+    let session = session(&state).await?;
+    Ok(match (key, instance, blocked) {
+        (Some(key), _, true) => session.block_key(key).await?,
+        (Some(key), _, false) => session.unblock_key(key).await?,
+        (None, Some(d), true) => session.block_instance(&d).await?,
+        (None, Some(d), false) => session.unblock_instance(&d).await?,
+        (None, None, _) => session.blocks().await?,
+    })
+}
+
+/// The instances I know and whether they answer (the network map).
+#[tauri::command]
+async fn instances(state: State<'_, App>) -> Res<Vec<Instance>> {
+    #[allow(unused_mut)]
+    let mut all = session(&state).await?.instances().await?;
+    #[cfg(debug_assertions)]
+    all.extend(mock::instances());
+    Ok(all)
 }
 
 /// Shown on the other device when linking.
@@ -595,6 +669,12 @@ async fn send_channel_file(
         .await?)
 }
 
+/// My display name, empty to remove it.
+#[tauri::command]
+async fn set_display_name(state: State<'_, App>, name: String) -> Res<()> {
+    Ok(session(&state).await?.set_display_name(&name).await?)
+}
+
 #[tauri::command]
 async fn set_profile_picture(state: State<'_, App>, request: tauri::ipc::Request<'_>) -> Res<()> {
     let file = Upload::from(&request)?;
@@ -721,6 +801,10 @@ pub fn run() {
             link_cancel,
             export_key,
             logout,
+            move_instance,
+            privacy,
+            set_blocked,
+            instances,
             search_handle,
             peer,
             send_dm,
@@ -756,6 +840,7 @@ pub fn run() {
             send_dm_file,
             send_channel_file,
             set_profile_picture,
+            set_display_name,
             set_community_picture,
             open_attachment,
             picture,

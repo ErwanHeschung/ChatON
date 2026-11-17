@@ -127,6 +127,8 @@ export const CommunityStore = signalStore(
             return forget(update.ids);
           case 'communities':
             return void load().then(loadMembers);
+          case 'blocks':
+            return void selectChannel(store.channel());
         }
       },
 

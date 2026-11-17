@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { DmStore } from '@stores/dm.store';
 import { Avatar } from '@components/avatar/avatar';
 import { splitHandle } from '@models/Dm.model';
 import { UserShort } from '@models/User.model';
@@ -19,4 +20,6 @@ export class UserCard {
   /** In a voice room, talking right now: a green ring. */
   public readonly speaking = input(false);
   protected readonly parts = computed(() => splitHandle(this.user().username));
+  protected readonly nick = computed(() => this.dm.peers()[this.user().id]?.display_name ?? null);
+  private readonly dm = inject(DmStore);
 }

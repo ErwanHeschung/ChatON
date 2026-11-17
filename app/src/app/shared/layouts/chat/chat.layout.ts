@@ -14,7 +14,7 @@ import { ShellService } from '@services/shell.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.chat-open]': 'shell.chatOpen()',
-    '[class.members-open]': 'shell.members()',
+    '[class.members-open]': 'shell.members() && !shell.network()',
     '[class.voice]': 'voice()',
   },
 })

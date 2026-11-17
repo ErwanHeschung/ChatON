@@ -34,7 +34,10 @@
     </div>
   }
 
-  <h2 class="name" [title]="handle()">
+  @if (nick(); as nick) {
+    <p class="nick">{{ nick }}</p>
+  }
+  <h2 class="name" [class.under]="nick()" [title]="handle()">
     @if (parts()[1]) {
       <span class="at">&#64;</span>{{ parts()[0].slice(1)
       }}<span class="instance">{{ parts()[1] }}</span>

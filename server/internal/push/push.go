@@ -15,17 +15,17 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/khatru"
 	"github.com/SherClockHolmes/webpush-go"
+
+	"github.com/ErwanHeschung/ChatON/server/internal/safehttp"
 	"go.etcd.io/bbolt"
 
 	"github.com/ErwanHeschung/ChatON/server/internal/handlers"
@@ -344,41 +344,16 @@ func (p *Push) checkEndpoint(ctx context.Context, endpoint string) error {
 		return fmt.Errorf("resolve: %w", err)
 	}
 	for _, a := range addrs {
-		if !public(a) {
+		if !safehttp.Public(a) {
 			return errors.New("not a public address")
 		}
 	}
 	return nil
 }
 
-var cgnat = netip.MustParsePrefix("100.64.0.0/10")
-
-func public(a netip.Addr) bool {
-	a = a.Unmap()
-	return a.IsGlobalUnicast() && !a.IsPrivate() && !cgnat.Contains(a)
-}
-
-// safeClient refuses to connect to non-public addresses (no SSRF through
-// endpoints), and doesn't follow redirects.
+// safeClient: push endpoints on public addresses only, no redirects.
 func safeClient(allowPrivate bool) *http.Client {
-	dialer := &net.Dialer{
-		Timeout: 10 * time.Second,
-		Control: func(_, address string, _ syscall.RawConn) error {
-			if allowPrivate {
-				return nil
-			}
-			ap, err := netip.ParseAddrPort(address)
-			if err != nil || !public(ap.Addr()) {
-				return fmt.Errorf("push endpoint %s is not a public address", address)
-			}
-			return nil
-		},
-	}
-	return &http.Client{
-		Timeout:       20 * time.Second,
-		Transport:     &http.Transport{DialContext: dialer.DialContext, TLSHandshakeTimeout: 10 * time.Second},
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
+	return safehttp.Client(allowPrivate, 20*time.Second)
 }
 
 func hostOf(endpoint string) string {

@@ -177,6 +177,7 @@ func generate() []byte {
 		valid("group_put_user", relay, 9000, nostr.Tags{v0, {"h", community}, {"p", alice.pk, "admin"}}, ""),
 		valid("group_create_invite", alice, 9009, nostr.Tags{v0, {"h", community}, {"code", "AB12CD34"}}, ""),
 		valid("group_join_request", bob, 9021, nostr.Tags{v0, {"h", community}, {"code", "AB12CD34"}}, ""),
+		valid("group_join_request_nip05", bob, 9021, nostr.Tags{v0, {"h", community}, {"code", "AB12CD34"}, {"nip05", "bob@ronron.example"}}, ""),
 		valid("group_chat_message", bob, 9, nostr.Tags{v0, {"h", channel1}}, "Bonjour tout le monde"),
 		valid("group_metadata", relay, 39000, nostr.Tags{v0, {"d", community}, {"name", "Les chatons"}, {"private"}, {"restricted"}, {"closed"}, {"child", channel1}}, ""),
 		valid("groups_list", bob, 10009, nostr.Tags{v0, {"group", community, "wss://chaton.example"}}, ""),
@@ -194,6 +195,9 @@ func generate() []byte {
 		valid("group_voice_participants", relay, 39004, nostr.Tags{v0, {"d", voice}, {"participant", alice.pk}, {"participant", bob.pk}}, ""),
 		valid("call_rumor", alice, 14, nostr.Tags{v0, {"p", bob.pk}, {"call", callID, "https://chaton.example", callKey}}, "📞 Appel vocal"),
 		valid("call_end_rumor", alice, 14, nostr.Tags{v0, {"p", bob.pk}, {"call-end", callID}}, "Appel terminé"),
+		// federation (spec § 5): the author's handle in a rumor, my private blocks
+		valid("dm_rumor_nip05", alice, 14, nostr.Tags{v0, {"p", bob.pk}, {"nip05", "alice@chaton.example"}}, "Salut Bob 👋"),
+		valid("mute_list", alice, 10000, nostr.Tags{v0}, opaque),
 		// serialization edge cases (rumors: id only)
 		valid("escapes", alice, 14, nostr.Tags{v0}, "quote \" backslash \\ newline \n tab \t cr \r bs \b ff \f"),
 		valid("unicode_raw", alice, 14, nostr.Tags{v0}, "émoji 🎉 日本語 ñ"),

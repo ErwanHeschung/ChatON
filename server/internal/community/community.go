@@ -19,6 +19,8 @@ import (
 	"fiatjaf.com/nostr/eventstore"
 	"fiatjaf.com/nostr/khatru"
 	"fiatjaf.com/nostr/nip29"
+
+	"github.com/ErwanHeschung/ChatON/server/internal/rules"
 )
 
 const (
@@ -71,6 +73,22 @@ type Groups struct {
 	store    eventstore.Store
 	dir      Directory
 	relay    *khatru.Relay
+
+	// Instance rules (spec federation § 6); nil: everyone is welcome.
+	rules  *rules.Store
+	verify Verifier
+	// The instance of members from elsewhere, from their verified join (nip05).
+	origins map[nostr.PubKey]string
+}
+
+// Verifier says which instance a handle is on, if it names this key there (NIP-05).
+type Verifier interface {
+	Instance(ctx context.Context, handle string, pk nostr.PubKey) (string, error)
+}
+
+// UseRules applies the instance rules to members from other instances.
+func (g *Groups) UseRules(r *rules.Store, v Verifier) {
+	g.rules, g.verify = r, v
 }
 
 // New loads the groups from their last published state (39000-39003, signed by
@@ -84,6 +102,7 @@ func New(key nostr.SecretKey, relayURL string, store eventstore.Store, dir Direc
 		relayURL: relayURL,
 		store:    store,
 		dir:      dir,
+		origins:  map[nostr.PubKey]string{},
 	}
 	// Metadata first: it creates the group the other state events merge into.
 	for _, kind := range stateKinds {
@@ -112,6 +131,14 @@ func New(key nostr.SecretKey, relayURL string, store eventstore.Store, dir Direc
 				return nil, fmt.Errorf("group %s, kind %d: %w", id, kind, err)
 			}
 			g.stamps[id] = max(g.stamps[id], ev.CreatedAt)
+		}
+	}
+	// Joins were verified when accepted: their nip05 says where members come from.
+	for ev := range g.query(nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupJoinRequest}}, loadLimit) {
+		if t := ev.Tags.Find("nip05"); t != nil {
+			if _, domain, ok := strings.Cut(t[1], "@"); ok {
+				g.origins[ev.PubKey] = rules.Domain(domain)
+			}
 		}
 	}
 	for ev := range g.query(nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupCreateInvite}}, loadLimit) {
@@ -185,12 +212,30 @@ func reject(format string, args ...any) (bool, string) {
 }
 
 // Check decides on a group event before it's stored (spec protocol § 9).
-func (g *Groups) Check(_ context.Context, ev nostr.Event) (bool, string) {
+func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 	if slices.Contains(stateKinds, ev.Kind) {
 		return reject("restricted: group state is published by the relay")
 	}
+	foreign := g.rules != nil && !g.dir.IsLocal(ev.PubKey)
+	// Where a newcomer from elsewhere comes from: checked before locking (HTTP).
+	joining := ""
+	if foreign && ev.Kind == nostr.KindSimpleGroupJoinRequest {
+		if t := ev.Tags.Find("nip05"); t != nil {
+			domain, err := g.verify.Instance(ctx, t[1], ev.PubKey)
+			if err != nil {
+				return reject("invalid: %v", err)
+			}
+			joining = domain
+		}
+		if !g.rules.Get().AllowsInstance(joining) {
+			return reject("blocked: members of your instance can't join communities here")
+		}
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if foreign && ev.Kind != nostr.KindSimpleGroupJoinRequest && !g.rules.Get().AllowsInstance(g.origins[ev.PubKey]) {
+		return reject("blocked: your instance is blocked here")
+	}
 
 	id := groupID(ev)
 	group := g.groups[id]
@@ -378,6 +423,11 @@ func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
 		g.publish(ctx, id)
 		return
 	case nostr.KindSimpleGroupJoinRequest:
+		if t := ev.Tags.Find("nip05"); t != nil && !g.dir.IsLocal(ev.PubKey) {
+			if _, domain, ok := strings.Cut(t[1], "@"); ok {
+				g.origins[ev.PubKey] = rules.Domain(domain)
+			}
+		}
 		g.put(ctx, id, ev.PubKey)
 		g.publish(ctx, id)
 		return

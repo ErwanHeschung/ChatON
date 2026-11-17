@@ -53,6 +53,52 @@
           ></app-profile-card>
 
           <div class="group">
+            <div class="row stack">
+              <div class="text">
+                <span class="label" i18n="@@nick.title">Display name</span>
+                @switch (nickState()) {
+                  @case ('done') {
+                    <span class="hint ok" i18n="@@nick.done">Saved.</span>
+                  }
+                  @case ('idle') {
+                    <span class="hint" i18n="@@nick.hint"
+                      >Any name, even one someone else has. Your handle always shows next to
+                      it.</span
+                    >
+                  }
+                  @case ('saving') {
+                    <span class="hint" i18n="@@nick.saving">Saving…</span>
+                  }
+                  @default {
+                    <span class="error" i18n="@@form.unknown-error"
+                      >Something went wrong. Try again, it works on my machine.</span
+                    >
+                  }
+                }
+              </div>
+              <form class="move" (submit)="$event.preventDefault(); setNick(nick.value)">
+                <div class="field">
+                  <input
+                    #nick
+                    aria-label="Display name"
+                    i18n-aria-label="@@nick.title"
+                    [value]="me.nick ?? ''"
+                    maxlength="32"
+                    autocomplete="nickname"
+                    placeholder="{{ me.parts[0].slice(1) }}"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  class="btn"
+                  [disabled]="nickState() === 'saving'"
+                  [attr.aria-busy]="nickState() === 'saving'"
+                  i18n="@@nick.save"
+                >
+                  Save
+                </button>
+              </form>
+            </div>
             <div class="row">
               <div class="text">
                 <span class="label" i18n="@@picture-title">Picture</span>
@@ -163,6 +209,71 @@
                 <button type="button" class="btn" (click)="showKey()" i18n="@@backup.show">
                   Show my secret key
                 </button>
+              }
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="row stack">
+              <div class="text">
+                <span class="label" i18n="@@move.title">Move to another instance</span>
+                <span class="hint" i18n="@@move.hint"
+                  >You keep your key, your contacts and your history; you get a new handle there.
+                  Keep the old instance a few days: your contacts find your new address through
+                  it.</span
+                >
+              </div>
+              <form
+                class="move"
+                (submit)="$event.preventDefault(); move(instance.value, name.value)"
+              >
+                <div class="field">
+                  <label for="move-instance" i18n="@@register.instance-label">Instance</label>
+                  <input
+                    #instance
+                    id="move-instance"
+                    placeholder="https://chaton.example"
+                    autocomplete="url"
+                    spellcheck="false"
+                    required
+                  />
+                </div>
+                <div class="field">
+                  <label for="move-name" i18n="@@register.name-label">Username</label>
+                  <input
+                    #name
+                    id="move-name"
+                    [value]="me.parts[0].slice(1)"
+                    autocomplete="off"
+                    spellcheck="false"
+                    required
+                  />
+                </div>
+                <button
+                  type="submit"
+                  class="btn"
+                  [disabled]="moving() === 'moving'"
+                  [attr.aria-busy]="moving() === 'moving'"
+                  i18n="@@move.button"
+                >
+                  Move
+                </button>
+              </form>
+              @switch (moving()) {
+                @case ('idle') {}
+                @case ('moving') {
+                  <span class="hint" i18n="@@move.moving"
+                    >Claiming your handle, telling both instances…</span
+                  >
+                }
+                @case ('handle_taken') {
+                  <span class="error" i18n="@@move.taken">This handle is taken there.</span>
+                }
+                @default {
+                  <span class="error" i18n="@@move.failed"
+                    >Couldn't move: is the address right? Nothing changed.</span
+                  >
+                }
               }
             </div>
           </div>
@@ -320,6 +431,70 @@
             }
           </div>
         </div>
+      }
+
+      @case ('privacy') {
+        @if (dm.privacy(); as privacy) {
+          <div class="group">
+            <div class="row">
+              <div class="text">
+                <span class="label" i18n="@@privacy.rules">Your instance</span>
+                @if (privacy.rules.mode === 'whitelist') {
+                  <span class="hint" i18n="@@privacy.whitelist"
+                    >Only talks to {{ privacy.rules.instances.length }} chosen instances: messages
+                    from anywhere else don't reach you.</span
+                  >
+                } @else if (privacy.rules.instances.length) {
+                  <span class="hint" i18n="@@privacy.blacklist"
+                    >Blocks {{ privacy.rules.instances.length }} instances: their messages don't
+                    reach you.</span
+                  >
+                } @else {
+                  <span class="hint" i18n="@@privacy.open"
+                    >Talks to every instance. Message requests from strangers wait apart.</span
+                  >
+                }
+              </div>
+            </div>
+          </div>
+
+          <h3 class="section-label" i18n="@@privacy.blocked">Blocked</h3>
+          <div class="group">
+            @for (key of privacy.blocks.keys; track key) {
+              <div class="row">
+                <span class="value">{{ dm.label(key) }}</span>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-sm"
+                  (click)="dm.setBlocked({ key }, false)"
+                  i18n="@@profile.unblock"
+                >
+                  Unblock
+                </button>
+              </div>
+            }
+            @for (instance of privacy.blocks.instances; track instance) {
+              <div class="row">
+                <span class="value"><span class="instance">&#64;</span>{{ instance }}</span>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-sm"
+                  (click)="dm.setBlocked({ instance }, false)"
+                  i18n="@@profile.unblock"
+                >
+                  Unblock
+                </button>
+              </div>
+            }
+            @if (!privacy.blocks.keys.length && !privacy.blocks.instances.length) {
+              <div class="row">
+                <span class="hint" i18n="@@privacy.none"
+                  >Nobody. Block someone from their profile card: only you know it.</span
+                >
+              </div>
+            }
+          </div>
+        }
       }
 
       @case ('preferences') {

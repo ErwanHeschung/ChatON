@@ -39,7 +39,8 @@ export interface ChannelMessage {
 export type CommunityUpdate =
   | { type: 'channel_message'; message: ChannelMessage }
   | { type: 'deleted'; channel: string; ids: string[] }
-  | { type: 'communities' };
+  | { type: 'communities' }
+  | { type: 'blocks' };
 
 export const ROLE_ADMIN = 'admin';
 export const ROLE_MODERATOR = 'moderator';

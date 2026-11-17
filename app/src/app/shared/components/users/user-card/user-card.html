@@ -7,6 +7,10 @@
     [ears]="ears()"
   ></app-avatar>
 </span>
-<span class="name" [title]="user().username"
-  >{{ parts()[0] }}<span class="instance">{{ parts()[1] }}</span></span
->
+<span class="name" [title]="user().username">
+  @if (nick(); as nick) {
+    {{ nick }} <span class="instance">{{ user().username }}</span>
+  } @else {
+    {{ parts()[0] }}<span class="instance">{{ parts()[1] }}</span>
+  }
+</span>

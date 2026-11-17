@@ -1,0 +1,173 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  height: 100%;
+  padding: var(--space-6);
+  overflow-y: auto;
+  animation: rise-in var(--duration-base) var(--ease-out);
+}
+
+/* --- SUMMARY and LIST --- */
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-6);
+
+  .check {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-left: auto;
+  }
+}
+
+.count {
+  color: var(--content-secondary);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+
+  strong {
+    color: var(--content-primary);
+    font-size: var(--text-2xl);
+  }
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-4);
+  margin: 0;
+  padding: 0;
+  color: var(--content-secondary);
+  font-size: var(--text-sm);
+  list-style: none;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background-color: var(--surface-panel);
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  transition: background-color var(--duration-fast) var(--ease-out);
+
+  & + & {
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  &.lit {
+    background-color: var(--surface-hover);
+  }
+}
+
+.status {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.18);
+
+  &.down {
+    background-color: var(--danger);
+    box-shadow: 0 0 0 3px var(--danger-subtle);
+  }
+
+  &.blocked {
+    background-color: var(--content-tertiary);
+    box-shadow: none;
+  }
+}
+
+.text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.domain {
+  display: flex;
+  gap: var(--space-1);
+  color: var(--content-primary);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+
+  .nick {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .at {
+    color: var(--content-secondary);
+    font-weight: var(--weight-regular);
+  }
+
+  &.mine {
+    color: var(--accent-text);
+  }
+}
+
+.meta,
+.latency {
+  color: var(--content-secondary);
+  font-size: var(--text-sm);
+}
+
+// A handle has no spaces: it breaks anywhere rather than run under the country.
+.meta {
+  overflow-wrap: anywhere;
+}
+
+.latency {
+  font-variant-numeric: tabular-nums;
+}
+
+.where {
+  color: var(--content-secondary);
+  font-size: var(--text-sm);
+}
+
+.badge.down {
+  background-color: var(--danger-subtle);
+  color: var(--danger);
+}
+
+p {
+  margin: 0;
+}
+
+@media (max-width: 767px) {
+  :host {
+    padding: var(--space-4);
+  }
+}

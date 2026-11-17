@@ -46,3 +46,17 @@
 >
   <svg [lucideIcon]="addIcon" size="22"></svg>
 </button>
+
+<button
+  type="button"
+  class="rail-item network"
+  (click)="toggleNetwork()"
+  [attr.aria-current]="shell.network() ? 'true' : null"
+  appTooltip="Network: the instances you know"
+  i18n-appTooltip="@@network.open"
+  appTooltipSide="right"
+  aria-label="Network"
+  i18n-aria-label="@@network.title"
+>
+  <svg [lucideIcon]="networkIcon" size="22"></svg>
+</button>

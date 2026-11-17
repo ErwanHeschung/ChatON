@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, OnDestroy, OnInit } from '@angular/core';
-import { LucideDynamicIcon, LucidePlus } from '@lucide/angular';
+import { NgTemplateOutlet } from '@angular/common';
+import { LucideChevronRight, LucideDynamicIcon, LucidePlus } from '@lucide/angular';
 import { UserCard } from '@components/users/user-card/user-card';
 import { GroupDialog } from '@components/chats/group-dialog/group-dialog';
 import { Conversation, roomKey } from '@models/Dm.model';
@@ -12,7 +13,7 @@ import { DmStore } from '@stores/dm.store';
 /** Sidebar of the DM view: find `@pseudo@instance`, list conversations. */
 @Component({
   selector: 'app-dm-list',
-  imports: [UserCard, LucideDynamicIcon, PawTrail],
+  imports: [UserCard, LucideDynamicIcon, PawTrail, NgTemplateOutlet],
   templateUrl: './dm-list.html',
   styleUrl: './dm-list.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -22,6 +23,7 @@ export class DmList implements OnInit, OnDestroy {
   private readonly modal = inject(ModalService);
   private readonly shell = inject(ShellService);
   protected readonly newIcon = LucidePlus;
+  protected readonly chevronIcon = LucideChevronRight;
 
   ngOnInit(): void {
     this.dm.load().catch(() => undefined);

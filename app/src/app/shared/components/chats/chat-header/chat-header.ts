@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import {
   LucideArrowLeft,
   LucideDynamicIcon,
+  LucideGlobe,
   LucideHash,
   LucideLock,
   LucidePhone,
@@ -30,6 +31,7 @@ export class ChatHeader {
     hash: LucideHash,
     lock: LucideLock,
     members: LucideUsers,
+    network: LucideGlobe,
   };
   protected readonly callTitle = $localize`:@@header.call:Start a voice call`;
   protected readonly inCallTitle = $localize`:@@header.in-call:You're in this call`;

@@ -48,6 +48,8 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 
 ## 3. Kinds utilisés en v0
 
+**Nom affiché** : `display_name` du profil (kind 0), libre et non unique. Le client le ramène à une ligne de 32 caractères au plus, sans caractères de contrôle ni de direction (bidi), et ne l'affiche **jamais** sans le handle vérifié (ou l'npub) à côté : c'est le handle qui identifie. Il suit la clé, donc il survit à une migration ; la photo, hébergée par l'ancienne instance, non.
+
 | Kind | Usage | NIP | Signé ? | Étape |
 |---|---|---|---|---|
 | 0 | Profil (`name`, `display_name`, `picture`, `nip05`) | 01 | oui | 4 |
@@ -66,6 +68,7 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 | 39000–39003 | État d'un groupe : métadonnées, admins, membres, rôles. **Signés par le relais** | 29 | oui (relais) | 6 |
 | 39004 | Participants d'un salon vocal (`participant`, § 11). **Signé par le relais** | 29 | oui (relais) | 9 |
 | 10009 | Mes communautés (`group`) | 51 | oui | 6 |
+| 10000 | Mes blocages (sourdine) : clés et instances, **contenu privé** chiffré pour moi (§ 5) | 51 | oui | 10 |
 | 24242 | Autorisation Blossom (envoi d'un fichier, § 10) | Blossom BUD-01 | oui | 6b |
 
 **Kinds propres à ChatON** : autorisés seulement quand aucune NIP ne convient (aujourd'hui, seule la liaison d'appareils). Ils sont **documentés ici avant tout code**, avec un vecteur. Les autres clients Nostr les ignorent.
@@ -84,7 +87,7 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 | 65 | Liste de relais | 4 |
 | 49 | Clé privée chiffrée par mot de passe (export chiffré, plus tard) | — |
 | 29 | Communautés et salons (§ 9) | 6 |
-| 51 | Listes : mes communautés (`10009`) ; sourdine et blocage plus tard | 6, 10 |
+| 51 | Listes : mes communautés (`10009`), mes blocages (`10000`) | 6, 10 |
 | 09, 25 | Suppression d'un message privé, réactions | plus tard |
 | 92 | Pièce jointe dans un message (`imeta`, § 10) | 6b |
 | Blossom (BUD-01, 02) | Fichiers et médias (§ 10) | 6b |
@@ -113,6 +116,16 @@ Une conversation de groupe est un MP NIP-17 à plusieurs destinataires, comme le
 - **Nom** : tag `subject` de NIP-17, 100 caractères au plus. Le dernier `subject` vu dans le salon l'emporte. Nommer ou renommer envoie un kind 14 au contenu vide avec un `subject` (vecteur `group_dm_rumor`). Créer un groupe exige un nom et envoie cet événement, pour que les membres voient le groupe tout de suite. Un contenu vide n'est accepté qu'avec un `subject` ou un fichier.
 - **Membres** : la liste ne change jamais. Ajouter quelqu'un crée un nouveau salon, à l'historique vide. Personne ne peut être retiré.
 - Le coût grandit avec le nombre de membres (un emballage chacun), d'où la limite.
+
+### Qui écrit : le tag `nip05`
+
+Une rumeur 14 ou 15 envoyée par ChatON porte `["nip05", "pseudo@instance"]`, le handle de son auteur (vecteur `dm_rumor_nip05`). Il est authentifié par le sceau, comme le reste de la rumeur, mais le destinataire ne le croit qu'après vérification NIP-05 : `pseudo@instance` doit donner la clé du sceau. Une fois vérifié, il donne l'**instance** de l'expéditeur (pour les règles et les blocages, ci-dessous) et ses relais (pour répondre, `federation.md` § 3). Absent ou faux, il est ignoré : l'expéditeur n'a pas d'instance connue. Les autres clients NIP-17 l'ignorent.
+
+### Demandes et blocages
+
+- **Demande** : une conversation où je n'ai jamais écrit. Elle est rangée à part, ne notifie pas, et ses appels ne sonnent pas. Y répondre l'accepte. Rien n'est stocké : mes messages envoyés sont synchronisés entre mes appareils, donc tous sont d'accord.
+- **Mes blocages** : un `10000` (NIP-51) dont tout le contenu est **privé**, une liste de tags chiffrée en NIP-44 pour moi-même (vecteur `mute_list`, contenu opaque) : `["p", <clé>]` pour une personne, `["instance", <domaine>]` pour toute une instance. Personne d'autre ne sait qui je bloque.
+- **À la réception**, le client écarte (ni gardé, ni notifié, ni affiché) un MP dont la clé est bloquée par moi, dont l'instance vérifiée est bloquée par moi, ou que les règles de mon instance refusent (`federation.md` § 6). Dans une communauté, les messages d'une clé que je bloque sont masqués.
 
 ### Pourquoi le message (14) n'est pas signé
 
@@ -222,7 +235,7 @@ Un `9002` remplace **toutes** les métadonnées du groupe (NIP-29) : le client r
 
 - Un admin ou un modérateur publie `9009` `["h", C], ["code", X]`, X = 8 caractères en base32 de Crockford. Le code est réutilisable et n'expire pas en v0.
 - Texte partagé : `<hôte>'<C>/<X>`, par exemple `chaton.example'k3j9x2m8q0aa/AB12CD34`. Le relais est `wss://<hôte>` (`ws://` pour `localhost`).
-- Pour entrer : `9021` `["h", C], ["code", X]`. Si le code est bon, le relais ajoute la clé en publiant un `9000` `["h", C], ["p", clé]`. Un membre retiré (`9001`) a besoin d'une nouvelle invitation (pas de liste de bannis en v0).
+- Pour entrer : `9021` `["h", C], ["code", X]`, plus `["nip05", "pseudo@instance"]` (ChatON l'ajoute toujours, vecteur `group_join_request_nip05`). Pour une clé d'une autre instance, l'hôte le vérifie (NIP-05) et retient l'instance du membre, pour appliquer ses règles (`federation.md` § 6). Si le code est bon, le relais ajoute la clé en publiant un `9000` `["h", C], ["p", clé]`. Un membre retiré (`9001`) a besoin d'une nouvelle invitation (pas de liste de bannis en v0).
 - Après être entré, le client ajoute `["group", C, "<url du relais>"]` à sa liste `10009`, que tous ses appareils lisent.
 
 ### Messages

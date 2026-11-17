@@ -1,0 +1,28 @@
+<svg class="icon" [lucideIcon]="icon" size="20"></svg>
+<p class="text">
+  <strong
+    >{{ handle()[0] }}<span class="instance">{{ handle()[1] }}</span></strong
+  >&ngsp;<ng-container i18n="@@request.text"
+    >wants to write to you. You've never talked: reply to accept.</ng-container
+  >
+</p>
+<div class="actions">
+  @if (instance(); as instance) {
+    <button
+      type="button"
+      class="btn btn-ghost btn-sm"
+      (click)="block({ instance })"
+      i18n="@@request.block-instance"
+    >
+      Block {{ instance }}
+    </button>
+  }
+  <button
+    type="button"
+    class="btn btn-danger btn-sm"
+    (click)="block({ key: sender() })"
+    i18n="@@request.block"
+  >
+    Block
+  </button>
+</div>

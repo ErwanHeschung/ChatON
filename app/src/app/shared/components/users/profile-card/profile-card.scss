@@ -69,6 +69,21 @@ button.avatar {
   }
 }
 
+.nick {
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Under a display name, the handle is the second line: smaller, still whole.
+.name.under {
+  font-size: var(--text-md);
+}
+
 .name {
   max-width: 100%;
   margin: 0;

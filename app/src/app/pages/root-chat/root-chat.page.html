@@ -7,7 +7,9 @@
 
   <app-chat-header header></app-chat-header>
 
-  @if (voice.state()?.watching) {
+  @if (shell.network()) {
+    <app-network chat />
+  } @else if (voice.state()?.watching) {
     <app-screen-stage chat />
   } @else {
     <app-chat
@@ -19,7 +21,11 @@
       (file)="sendFile($event)"
       (remove)="remove($event)"
       (join)="joinCall($event)"
-    ></app-chat>
+    >
+      @if (!inChannel() && dm.request()) {
+        <app-request-banner banner />
+      }
+    </app-chat>
   }
 
   <app-users-list members></app-users-list>

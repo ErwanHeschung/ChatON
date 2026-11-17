@@ -123,7 +123,11 @@ impl std::fmt::Display for Invite {
 pub enum Update {
     Dm {
         message: crate::dm::Message,
+        /// From a room where I never wrote: don't notify.
+        request: bool,
     },
+    /// My blocks changed (another device): read DMs and channels again.
+    Blocks,
     ChannelMessage {
         message: ChannelMessage,
     },
@@ -234,7 +238,11 @@ impl Session {
                 &relay,
                 Kind::GroupJoinRequest,
                 &invite.community,
-                [Tag::parse(["code", &invite.code])?],
+                [
+                    Tag::parse(["code", &invite.code])?,
+                    // Where I come from: the host checks it (spec federation § 6).
+                    Tag::parse(["nip05", &self.account().handle])?,
+                ],
                 "",
             )
             .await;
@@ -327,7 +335,9 @@ impl Session {
         let db = self.client.database();
         let messages = db.query(in_channel.clone().kind(Kind::ChatMessage)).await?;
         let deletions = db.query(in_channel.kind(Kind::GroupDeleteEvent)).await?;
-        Ok(visible(messages.iter(), deletions.iter()))
+        let blocked = self.blocks().await?.keys;
+        let shown = messages.iter().filter(|m| !blocked.contains(&m.pubkey));
+        Ok(visible(shown, deletions.iter()))
     }
 
     pub async fn send(&self, community: &str, channel: &str, text: &str) -> Result<ChannelMessage> {
@@ -408,17 +418,17 @@ impl Session {
     /// unreachable instance doesn't stop the others.
     pub(crate) async fn sync_communities(&self) -> Result<()> {
         let relay = self.account().relay.clone();
-        let mine = Filter::new()
-            .author(self.account().pubkey)
-            .kind(Kind::SimpleGroups);
+        // My lists: communities (10009) and blocks (10000), kept in sync between devices.
+        let me = Filter::new().author(self.account().pubkey);
+        let mine = [Kind::SimpleGroups, Kind::MuteList].map(|k| me.clone().kind(k));
         self.client
-            .fetch_events(ReqTarget::single(&relay, [mine.clone().limit(1)]))
+            .fetch_events(ReqTarget::single(&relay, mine.clone().map(|f| f.limit(1))))
             .timeout(TIMEOUT)
             .await?;
         self.resubscribe(
             SubscriptionId::new("communities"),
             &relay,
-            vec![mine.since(Timestamp::now())],
+            mine.map(|f| f.since(Timestamp::now())).to_vec(),
         )
         .await?;
         for (id, relay) in self.group_list().await? {
@@ -495,6 +505,9 @@ impl Session {
     /// What a received event changes, if anything. `None` for events of other kinds.
     pub(crate) async fn community_update(&self, ev: &Event) -> Option<Update> {
         if ev.kind == Kind::ChatMessage {
+            if self.blocks().await.ok()?.keys.contains(&ev.pubkey) {
+                return None;
+            }
             return message(ev).map(|message| Update::ChannelMessage { message });
         }
         if ev.kind == Kind::GroupDeleteEvent {
@@ -504,6 +517,9 @@ impl Session {
                     .filter_map(|id| EventId::from_hex(id).ok())
                     .collect(),
             });
+        }
+        if ev.kind == Kind::MuteList && ev.pubkey == self.account().pubkey {
+            return Some(Update::Blocks);
         }
         if ev.kind == Kind::SimpleGroups && ev.pubkey == self.account().pubkey {
             // Another device joined or left something.

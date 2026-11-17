@@ -223,10 +223,20 @@ mod live {
             // Token first: no invite for a call that can't happen.
             let token = self.call_token(&base, &id, &room).await?;
             let invite = self
-                .deliver(dm::wrap_call(&self.keys, &room, &id, &base, &key)?)
+                .deliver(dm::wrap_call(
+                    &self.keys,
+                    Some(&self.account().handle),
+                    &room,
+                    &id,
+                    &base,
+                    &key,
+                )?)
                 .await?;
             // My copy reaches no listener (sent, not received): the app gets it here.
-            drop(self.updates.send(Update::Dm { message: invite }));
+            drop(self.updates.send(Update::Dm {
+                message: invite,
+                request: false,
+            }));
             self.connect_voice(VoiceTarget::Call { room, id }, token, Some(key), microphone)
                 .await
         }
@@ -300,9 +310,17 @@ mod live {
                 && (alone || room.len() <= 2)
             {
                 let end = self
-                    .deliver(dm::wrap_call_end(&self.keys, &room, &id)?)
+                    .deliver(dm::wrap_call_end(
+                        &self.keys,
+                        Some(&self.account().handle),
+                        &room,
+                        &id,
+                    )?)
                     .await?;
-                drop(self.updates.send(Update::Dm { message: end }));
+                drop(self.updates.send(Update::Dm {
+                    message: end,
+                    request: false,
+                }));
             }
             Ok(())
         }

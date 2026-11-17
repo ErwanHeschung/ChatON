@@ -20,12 +20,14 @@ type ServerConfig struct {
 	AllowedOrigin    string   // SERVER_ALLOWEDORIGIN, browser CORS (dev only, Tauri goes through core)
 	PublicURL        string   // SERVER_PUBLICURL, e.g. "https://chaton.example" (NIP-98 "u", NIP-05 relays)
 	DBPath           string   // SERVER_DBPATH, bbolt file (events + handles)
-	Name             string   // SERVER_NAME, shown in NIP-11
+	Name             string   // SERVER_NAME, shown in NIP-11 and by clients next to the domain (none by default)
 	BlockedPubkeys   []string // SERVER_BLOCKEDPUBKEYS, comma-separated hex keys
 	RelayKey         string   // SERVER_RELAYKEY, hex: signs group state; default relay.key next to the DB
 	BlobDir          string   // SERVER_BLOBDIR, uploaded files; default blobs/ next to the DB
 	VAPIDKey         string   // SERVER_VAPIDKEY, base64url P-256: signs pushes; default vapid.key next to the DB
-	PushAllowPrivate bool     // SERVER_PUSHALLOWPRIVATE, dev only: push to private IPs and plain http
+	PushAllowPrivate bool     // SERVER_PUSHALLOWPRIVATE, dev only: push and NIP-05 checks to private IPs, plain http
+	Rules            string   // SERVER_RULES, rules.yaml path; default next to the DB
+	Country          []string // SERVER_COUNTRY, ISO 3166 alpha-2 (NIP-11 relay_countries), e.g. FR
 	LiveKitURL       string   // SERVER_LIVEKITURL, wss:// address clients join; voice is off when unset
 	LiveKitKey       string   // SERVER_LIVEKITKEY, LiveKit API key
 	LiveKitSecret    string   // SERVER_LIVEKITSECRET, LiveKit API secret: signs tokens, checks webhooks

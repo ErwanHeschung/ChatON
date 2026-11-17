@@ -1,3 +1,4 @@
+import { DmStore } from '@stores/dm.store';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -34,6 +35,7 @@ import { ProfileDirective } from '@directives/profile';
 })
 export class ChatBubble {
   protected readonly media = inject(MediaService);
+  private readonly dm = inject(DmStore);
   public message = input.required<Message>();
   /** Same author as the message above, shortly after: no avatar or name. */
   public readonly continued = input(false);
@@ -51,6 +53,10 @@ export class ChatBubble {
     callEnded: LucidePhoneOff,
   };
   protected readonly author = computed(() => splitHandle(this.message().senderName));
+  /** Their display name, with the handle quieter after it. */
+  protected readonly nick = computed(
+    () => this.dm.peers()[this.message().senderId]?.display_name ?? null,
+  );
   /** The time today, the day and time before. */
   public isImage(file: Attachment): boolean {
     return file.mime.startsWith('image/');

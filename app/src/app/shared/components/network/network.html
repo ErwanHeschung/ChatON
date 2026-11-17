@@ -1,0 +1,235 @@
+<h2 class="sr-only" i18n="@@network.title">Network</h2>
+<div class="map">
+  @let map = world();
+  <!-- Painted once: a still image, so the moving fireflies above never make the browser
+       redraw the coasts or blur the night again. -->
+  @if (base(); as base) {
+    <img class="base" [src]="base" alt="" />
+  }
+  <svg
+    class="live"
+    [attr.viewBox]="map ? map.VIEW.join(' ') : '0 0 1000 486.7'"
+    role="img"
+    aria-label="World map of the instances you know; the list below says the same"
+    i18n-aria-label="@@network.map"
+  >
+    @for (link of links(); track link.instance.domain; let k = $index) {
+      <g
+        class="link"
+        [class]="state(link.instance)"
+        [class.lit]="hovered() === link.instance.domain"
+      >
+        <path class="route" [attr.d]="link.d" />
+        @if (state(link.instance) === 'up') {
+          <!-- A comet from me to them, at the pace of their latency: a tail, then a head. -->
+          <path
+            class="tail"
+            pathLength="1"
+            [attr.d]="link.d"
+            [style.--dur]="link.dur"
+            [style.--k]="k"
+          />
+          <path
+            class="head"
+            pathLength="1"
+            [attr.d]="link.d"
+            [style.--dur]="link.dur"
+            [style.--k]="k"
+          />
+        }
+      </g>
+    }
+    <!-- Tracked by check too: each « Check again » replays the answers' rings. -->
+    @for (m of drawn(); track m.instance.domain + checkedAt(); let k = $index) {
+      <g
+        class="marker"
+        [class]="state(m.instance)"
+        [class.mine]="m.instance.mine"
+        [class.lit]="hovered() === m.instance.domain"
+        [attr.transform]="'translate(' + m.x + ' ' + m.y + ')'"
+        [style.--delay]="(m.instance.latency_ms ?? 0) * 4 + 'ms'"
+        (pointerenter)="point($event, m.instance.domain)"
+        (pointerleave)="point($event, null)"
+        (click)="reveal(m.instance.domain)"
+      >
+        <!-- A finger-sized target around a 3-unit firefly. -->
+        <circle class="hit" r="14" />
+        @if (state(m.instance) === 'up') {
+          <circle class="ping" r="4" />
+        }
+        @if (m.instance.mine) {
+          <!-- Ears are me (DESIGN.md): the avatar's cat head, at map scale. -->
+          <path
+            class="dot head"
+            transform="scale(0.17) translate(-50 -56)"
+            d="M50 12a44 44 0 1 0 0.01 0zM8 44C6 30 8 14 13 5c1-2 4-2.5 6-1 8 5 15 9 23 12zM92 44c2-14 0-30-5-39-1-2-4-2.5-6-1-8 5-15 9-23 12z"
+          />
+        } @else {
+          <circle class="dot" r="3.4" />
+        }
+      </g>
+    }
+    <!-- Labels last, above every firefly. Mine, unless another is pointed at. Past three
+         quarters of the width, the label goes left of its firefly. -->
+    @for (m of markers(); track m.instance.domain) {
+      @if (hovered() ? hovered() === m.instance.domain : m.instance.mine) {
+        @let left = m.x > 750;
+        <g class="label" [attr.transform]="'translate(' + m.x + ' ' + m.y + ')'">
+          <text [attr.x]="left ? -13 : 13" y="4" [attr.text-anchor]="left ? 'end' : 'start'">
+            @if (m.instance.name) {
+              {{ m.instance.name }}
+              <tspan class="quiet">· {{ m.instance.domain }}</tspan>
+            } @else {
+              {{ m.instance.domain }}
+            }
+          </text>
+        </g>
+      }
+    }
+  </svg>
+</div>
+
+<div class="summary">
+  @if (instances(); as all) {
+    <p class="count" aria-live="polite" i18n="@@network.summary">
+      <strong>{{ reachable() }}</strong> of {{ all.length }}
+      {reachable(), plural, =0 {answer} =1 {answers} other {answer}}
+    </p>
+    @if (!alone()) {
+      <ul class="legend">
+        @if (states().has('up')) {
+          <li>
+            <span class="status up"></span><ng-container i18n="@@network.up">Answers</ng-container>
+          </li>
+        }
+        @if (states().has('down')) {
+          <li>
+            <span class="status down"></span
+            ><ng-container i18n="@@network.down">Unreachable</ng-container>
+          </li>
+        }
+        @if (states().has('blocked')) {
+          <li>
+            <span class="status blocked"></span
+            ><ng-container i18n="@@network.blocked">Blocked</ng-container>
+          </li>
+        }
+        <li>
+          <svg [lucideIcon]="icons.night" size="14" aria-hidden="true"></svg
+          ><ng-container i18n="@@network.night">Night right now</ng-container>
+        </li>
+      </ul>
+    }
+  } @else if (failed()) {
+    <p class="error" i18n="@@network.failed">Couldn't list the instances. Try again.</p>
+  } @else {
+    <p class="hint" i18n="@@network.loading">Knocking on every door…</p>
+  }
+  <span class="check">
+    @if (checked(); as at) {
+      <time class="hint" [attr.datetime]="at.toISOString()" i18n="@@network.checked"
+        >Checked at {{ at | date: 'shortTime' }}</time
+      >
+    }
+    <button
+      type="button"
+      class="btn btn-ghost btn-sm"
+      (click)="load()"
+      [disabled]="loading()"
+      [attr.aria-busy]="loading()"
+    >
+      <svg [lucideIcon]="icons.refresh" size="16" [class.spin]="loading()"></svg>
+      <ng-container i18n="@@network.refresh">Check again</ng-container>
+    </button>
+  </span>
+</div>
+
+@if (alone()) {
+  <p class="hint" i18n="@@network.alone">
+    Not a cat on the horizon yet. Your map grows when you write to someone on another instance, or
+    join one of its communities.
+  </p>
+}
+@if (sorted().length) {
+  <ul class="list">
+    @for (i of sorted(); track i.domain) {
+      <!-- Focus does what hover does: lights the firefly. -->
+      <li
+        class="row"
+        tabindex="0"
+        [id]="'instance-' + i.domain"
+        [class.lit]="hovered() === i.domain"
+        (pointerenter)="point($event, i.domain)"
+        (pointerleave)="point($event, null)"
+        (focus)="hovered.set(i.domain)"
+        (blur)="hovered.set(null)"
+      >
+        <span class="status" [class]="state(i)" aria-hidden="true"></span>
+        <div class="text">
+          <!-- Too long: the name gives way, never the domain. -->
+          <span class="domain" [class.mine]="i.mine">
+            @if (i.name) {
+              <span class="nick">{{ i.name }}</span><span class="at">&#64;{{ i.domain }}</span>
+            } @else {
+              <span class="nick"><span class="at">&#64;</span>{{ i.domain }}</span>
+            }
+          </span>
+          <span class="meta">
+            @if (i.mine) {
+              <ng-container i18n="@@network.mine">Your instance</ng-container>
+            } @else if (state(i) === 'down' && i.people.length) {
+              <ng-container i18n="@@network.affected"
+                >{{ affected(i) }}: your messages will wait</ng-container
+              >
+            } @else {
+              @if (i.people.length) {
+                <ng-container i18n="@@network.people">{i.people.length, plural,
+                  =1 {1 contact}
+                  other {{{ i.people.length }} contacts}
+                }</ng-container>
+              }
+              @if (i.people.length && i.communities) {
+                ·
+              }
+              @if (i.communities) {
+                <ng-container i18n="@@network.communities">{i.communities, plural,
+                  =1 {1 community}
+                  other {{{ i.communities }} communities}
+                }</ng-container>
+              }
+            }
+          </span>
+        </div>
+        <span class="where">{{ where(i) }}</span>
+        @switch (state(i)) {
+          @case ('up') {
+            <span class="latency"
+              ><span class="sr-only" i18n="@@network.up">Answers</span> {{ i.latency_ms }} ms</span
+            >
+          }
+          @case ('down') {
+            <span class="badge down" i18n="@@network.down">Unreachable</span>
+          }
+          @case ('blocked') {
+            <span class="badge" i18n="@@network.blocked">Blocked</span>
+          }
+        }
+      </li>
+    }
+  </ul>
+}
+@if (homeless()) {
+  <p class="hint" i18n="@@network.homeless">
+    Your instance doesn't say where it is, so the map has no links from it.
+  </p>
+}
+@if (unplaced()) {
+  <p class="hint" i18n="@@network.unplaced">
+    {unplaced(), plural,
+      =1 {1 instance doesn't say where it is: it's in the list, not on the map.}
+      other {
+        {{ unplaced() }} instances don't say where they are: they're in the list, not on the map.
+      }
+    }
+  </p>
+}

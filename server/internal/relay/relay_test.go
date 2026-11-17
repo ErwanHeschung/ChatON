@@ -13,6 +13,7 @@ import (
 	"fiatjaf.com/nostr/eventstore/boltdb"
 
 	"github.com/ErwanHeschung/ChatON/server/internal/community"
+	"github.com/ErwanHeschung/ChatON/server/internal/rules"
 )
 
 type fakeDir map[nostr.PubKey]bool
@@ -39,6 +40,12 @@ func startRelay(t *testing.T, locals ...user) string {
 // serve runs a relay on the bbolt file at path; stop closes it so it can be reopened.
 func serve(t *testing.T, path string, key nostr.SecretKey, locals ...user) (url string, stop func()) {
 	t.Helper()
+	return serveRules(t, path, key, nil, nil, locals...)
+}
+
+// serveRules: serve with instance rules (nil: none) and a NIP-05 verifier.
+func serveRules(t *testing.T, path string, key nostr.SecretKey, r *rules.Store, v community.Verifier, locals ...user) (url string, stop func()) {
+	t.Helper()
 	db := &boltdb.BoltBackend{Path: path}
 	if err := db.Init(); err != nil {
 		t.Fatal(err)
@@ -51,7 +58,10 @@ func serve(t *testing.T, path string, key nostr.SecretKey, locals ...user) (url 
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(New(Config{Name: "test"}, db, dir, groups))
+	if r != nil {
+		groups.UseRules(r, v)
+	}
+	srv := httptest.NewServer(New(Config{Name: "test", Rules: r}, db, dir, groups))
 	stop = sync.OnceFunc(func() { srv.Close(); db.Close() })
 	t.Cleanup(stop)
 	return "ws" + strings.TrimPrefix(srv.URL, "http"), stop

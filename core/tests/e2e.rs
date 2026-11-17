@@ -5,6 +5,14 @@
 //! cd core && CHATON_TEST_SERVER=http://localhost:8099 cargo test --test e2e -- --ignored
 //! ```
 //!
+//! Two instances (federation, step 10): a second server on :8098.
+//!
+//! ```sh
+//! cd server && SERVER_PORT=:8099 SERVER_COUNTRY=FR … (the first one, as above, plus its country)
+//! cd server && SERVER_PORT=:8098 SERVER_PUBLICURL=http://localhost:8098 SERVER_DBPATH=b.bolt SERVER_PUSHALLOWPRIVATE=1 go run ./cmd/server
+//! cd core && CHATON_TEST_SERVER=http://localhost:8099 CHATON_TEST_SERVER_B=http://localhost:8098 cargo test --test e2e two_instances -- --ignored
+//! ```
+//!
 //! Voice (feature `voice`): LiveKit's webhooks go to :8080 (`server/livekit.dev.yaml`).
 //!
 //! ```sh
@@ -48,7 +56,7 @@ fn setup() -> (String, String) {
 
 /// Forwards the DMs of a `listen` to `tx`.
 fn dms(tx: &tokio::sync::mpsc::UnboundedSender<chaton_core::dm::Message>, update: Update) {
-    if let Update::Dm { message } = update {
+    if let Update::Dm { message, .. } = update {
         drop(tx.send(message));
     }
 }
@@ -742,6 +750,10 @@ async fn voice_channel_presence_and_an_encrypted_call() {
     assert!(alice.voice_state().await.is_none());
 
     // An encrypted call: it rings for Bob, he joins, the last one out ends it.
+    // Bob wrote to Alice first: a call from a stranger (a request) doesn't ring.
+    bob.send_dm(&[alice.account().pubkey], "on s'appelle ?")
+        .await
+        .unwrap();
     let state = alice
         .start_call(&[bob.account().pubkey], false)
         .await
@@ -802,7 +814,7 @@ async fn voice_channel_presence_and_an_encrypted_call() {
     // A 1:1 call ends for both when one hangs up: Alice gets the end and leaves.
     bob.leave_voice().await.unwrap();
     next_matching(&mut alice_rx, "the call ended", |u| {
-        matches!(u, Update::Dm { message } if message.call.as_ref().is_some_and(|c| c.ended && c.id == id))
+        matches!(u, Update::Dm { message, .. } if message.call.as_ref().is_some_and(|c| c.ended && c.id == id))
     })
     .await;
     next_matching(&mut alice_rx, "alice out of the call", |u| {
@@ -811,7 +823,145 @@ async fn voice_channel_presence_and_an_encrypted_call() {
     .await;
     assert!(alice.voice_state().await.is_none());
     next_matching(&mut bob_rx, "bob's copy of the end", |u| {
-        matches!(u, Update::Dm { message } if message.call.as_ref().is_some_and(|c| c.ended && c.id == id))
+        matches!(u, Update::Dm { message, .. } if message.call.as_ref().is_some_and(|c| c.ended && c.id == id))
     })
     .await;
+}
+
+type Dms = tokio::sync::mpsc::UnboundedReceiver<(chaton_core::dm::Message, bool)>;
+
+async fn next(rx: &mut Dms) -> (chaton_core::dm::Message, bool) {
+    tokio::time::timeout(Duration::from_secs(10), rx.recv())
+        .await
+        .expect("nothing came")
+        .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs two running servers, see the module docs"]
+async fn two_instances_requests_blocks_and_a_move() {
+    let (server_a, host_a) = setup();
+    let server_b = std::env::var("CHATON_TEST_SERVER_B").expect("CHATON_TEST_SERVER_B");
+    let host_b = server_b.split("://").nth(1).unwrap().trim_end_matches('/');
+
+    let (alice_dir, bob_dir) = (temp_dir("alice"), temp_dir("bob"));
+    let alice = Session::register(&alice_dir, &server_a, &unique("alice"))
+        .await
+        .unwrap();
+    let bob_name = unique("bob");
+    let bob = Arc::new(
+        Session::register(&bob_dir, &server_b, &bob_name)
+            .await
+            .unwrap(),
+    );
+    let listen = |s: Arc<Session>| {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        tokio::spawn(async move {
+            s.listen(move |u| {
+                if let Update::Dm { message, request } = u {
+                    drop(tx.send((message, request)));
+                }
+            })
+            .await
+        });
+        rx
+    };
+
+    alice
+        .set_display_name("  Alice\n la chatte ")
+        .await
+        .unwrap();
+
+    // Alice (A) writes to Bob (B), a stranger: a request, from a verified alice@A.
+    let mut bob_rx = listen(bob.clone());
+    let to_bob = alice.search(&format!("{bob_name}@{host_b}")).await.unwrap();
+    alice
+        .send_dm(&[to_bob.pubkey], "bonjour d'ailleurs")
+        .await
+        .unwrap();
+    let (got, request) = next(&mut bob_rx).await;
+    assert_eq!((got.text.as_str(), request), ("bonjour d'ailleurs", true));
+    assert_eq!(
+        bob.peer(got.sender).await.handle.as_deref(),
+        Some(alice.account().handle.as_str())
+    );
+    assert!(bob.conversations().await.unwrap()[0].request);
+    // Her display name, read on her instance's relay.
+    let seen = bob.peer(got.sender).await;
+    assert_eq!(seen.display_name.as_deref(), Some("Alice la chatte"));
+    let alice_pk = got.sender;
+
+    // Bob restarts (nothing in memory) and replies: found through her 10050.
+    bob.close().await;
+    let bob = Arc::new(Session::open(&bob_dir).await.unwrap().unwrap());
+    let mut bob_rx = listen(bob.clone());
+    let alice = Arc::new(alice);
+    let mut alice_rx = listen(alice.clone());
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    bob.send_dm(&[alice_pk], "bien reçu").await.unwrap();
+    let (got, request) = next(&mut alice_rx).await;
+    assert_eq!((got.text.as_str(), request), ("bien reçu", false));
+    assert!(!bob.conversations().await.unwrap()[0].request);
+
+    // Bob's network: his instance, and A where Alice is (A says FR, if started with SERVER_COUNTRY=FR).
+    let network = bob.instances().await.unwrap();
+    assert!(network[0].mine && network[0].domain == host_b && network[0].reachable);
+    let a = network
+        .iter()
+        .find(|i| i.domain == host_a.to_lowercase())
+        .expect("A on the map");
+    assert!(
+        a.reachable && !a.mine && !a.blocked && a.people == [alice_pk],
+        "{a:?}"
+    );
+
+    // Bob blocks instance A: Alice's next message is dropped, unblocking shows it.
+    let blocks = bob.block_instance(&host_a).await.unwrap();
+    assert_eq!(blocks.instances, [host_a.to_lowercase()]);
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    alice
+        .send_dm(&[to_bob.pubkey], "tu m'entends ?")
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(3), bob_rx.recv())
+            .await
+            .is_err(),
+        "a blocked instance got through"
+    );
+    let last =
+        |s: Arc<Session>| async move { s.conversations().await.unwrap()[0].last.text.clone() };
+    assert_eq!(last(bob.clone()).await, "bien reçu");
+    bob.unblock_instance(&host_a).await.unwrap();
+    assert_eq!(last(bob.clone()).await, "tu m'entends ?");
+    bob.block_key(alice_pk).await.unwrap();
+    assert_eq!(last(bob.clone()).await, "bien reçu");
+    bob.unblock_key(alice_pk).await.unwrap();
+
+    // Alice moves to B; Bob, after a restart, writes to her new home.
+    let new_name = unique("alice");
+    let moved = alice.move_to(&server_b, &new_name).await.unwrap();
+    assert_eq!(moved.handle, format!("{new_name}@{host_b}"));
+    alice.close().await;
+    let alice = Arc::new(Session::open(&alice_dir).await.unwrap().unwrap());
+    assert_eq!(alice.account().handle, moved.handle);
+    assert_eq!(
+        alice.messages(&[to_bob.pubkey]).await.unwrap().len(),
+        3,
+        "history kept"
+    );
+    let mut alice_rx = listen(alice.clone());
+    bob.close().await;
+    let bob = Session::open(&bob_dir).await.unwrap().unwrap();
+    let seen = bob.peer(alice_pk).await;
+    assert_eq!(seen.handle.as_deref(), Some(moved.handle.as_str()));
+    assert_eq!(
+        seen.display_name.as_deref(),
+        Some("Alice la chatte"),
+        "kept by the move"
+    );
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    bob.send_dm(&[alice_pk], "bienvenue sur B").await.unwrap();
+    let (got, _) = next(&mut alice_rx).await;
+    assert_eq!(got.text, "bienvenue sur B");
 }
