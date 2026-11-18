@@ -1137,3 +1137,88 @@ async fn channels_categories_and_a_foreign_admin() {
     })
     .await;
 }
+
+/// Step 12e (spec § 9, Salons privés): a channel only some see, history included.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a running server, see the module docs"]
+async fn a_private_channel() {
+    use chaton_core::community::{ChannelEdit, ChannelOverride};
+    let (server, _) = setup();
+    let alice = Session::register(&temp_dir("alice"), &server, &unique("alice"))
+        .await
+        .unwrap();
+    let bob = Arc::new(
+        Session::register(&temp_dir("bob"), &server, &unique("bob"))
+            .await
+            .unwrap(),
+    );
+    let listener = bob.clone();
+    tokio::spawn(async move { listener.listen(|_| {}).await });
+
+    let community = alice.create_community("Les chats").await.unwrap();
+    let invite = alice.invite(&community.id).await.unwrap();
+    bob.join(&invite).await.unwrap();
+    let staff = alice
+        .create_channel(&community.id, "staff", false, None)
+        .await
+        .unwrap();
+    let private = ChannelEdit {
+        overrides: Some(vec![
+            ChannelOverride {
+                target: "everyone".into(),
+                allow: vec![],
+                deny: vec!["view_channel".into()],
+            },
+            ChannelOverride {
+                target: "moderator".into(),
+                allow: vec!["view_channel".into()],
+                deny: vec![],
+            },
+        ]),
+        ..Default::default()
+    };
+    alice
+        .edit_channel(&community.id, &staff.id, private)
+        .await
+        .unwrap();
+    alice
+        .send(&community.id, &staff.id, "entre nous")
+        .await
+        .unwrap();
+    let mine = alice.communities().await.unwrap().pop().unwrap();
+    let ch = mine.channels.iter().find(|c| c.id == staff.id).unwrap();
+    assert!(ch.private && ch.overrides.len() == 2, "{ch:?}");
+
+    // Bob, a plain member, doesn't see it.
+    let visible = |s: Arc<Session>, id: String| async move {
+        let c = s.communities().await.ok()?.pop()?;
+        Some(c.channels.iter().any(|ch| ch.id == id))
+    };
+    eventually("staff hidden from bob", || async {
+        (visible(bob.clone(), staff.id.clone()).await == Some(false)).then_some(())
+    })
+    .await;
+    assert!(bob.channel_messages(&staff.id).await.unwrap().is_empty());
+
+    // Moderator: the channel and its whole history.
+    alice
+        .set_roles(&community.id, bob.account().pubkey, &["moderator"])
+        .await
+        .unwrap();
+    let history = eventually("bob reads staff", || async {
+        let m = bob.channel_messages(&staff.id).await.ok()?;
+        (visible(bob.clone(), staff.id.clone()).await == Some(true) && !m.is_empty()).then_some(m)
+    })
+    .await;
+    assert_eq!(history[0].text, "entre nous");
+
+    // Back to member: gone again.
+    alice
+        .set_roles(&community.id, bob.account().pubkey, &[])
+        .await
+        .unwrap();
+    eventually("staff hidden again", || async {
+        (visible(bob.clone(), staff.id.clone()).await == Some(false)).then_some(())
+    })
+    .await;
+}

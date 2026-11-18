@@ -15,7 +15,7 @@ use nostr_sdk::prelude::{
 use serde::{Deserialize, Serialize};
 
 use crate::media::{self, Attachment};
-use crate::perms::{self, Policy, Role};
+use crate::perms::{self, Override, Policy, Role};
 use crate::session::{Session, TIMEOUT, backfill, http, is_local_host};
 use crate::{Error, Result, event, link};
 
@@ -92,6 +92,41 @@ pub struct ChannelEdit {
     pub topic: Option<String>,
     pub slowmode: Option<u32>,
     pub user_limit: Option<u32>,
+    /// Every override of the channel (`manage_roles` for what changes).
+    pub overrides: Option<Vec<ChannelOverride>>,
+}
+
+/// What a channel allows and denies one target: a role id, `everyone` or a key (spec § 9).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelOverride {
+    pub target: String,
+    pub allow: Vec<String>,
+    pub deny: Vec<String>,
+}
+
+/// One entry per target, from a channel's allow and deny tags.
+fn override_views(overrides: &[Override]) -> Vec<ChannelOverride> {
+    let mut out: Vec<ChannelOverride> = Vec::new();
+    for o in overrides {
+        let i = match out.iter().position(|v| v.target == o.target) {
+            Some(i) => i,
+            None => {
+                out.push(ChannelOverride {
+                    target: o.target.clone(),
+                    allow: Vec::new(),
+                    deny: Vec::new(),
+                });
+                out.len() - 1
+            }
+        };
+        let side = if o.allow {
+            &mut out[i].allow
+        } else {
+            &mut out[i].deny
+        };
+        side.extend(o.perms.names());
+    }
+    out
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -111,6 +146,9 @@ pub struct Channel {
     pub slowmode: u32,
     /// Most people in a voice channel, 0: no limit.
     pub user_limit: u32,
+    /// A member without roles can't see it (spec § 9, Salons privés).
+    pub private: bool,
+    pub overrides: Vec<ChannelOverride>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -302,6 +340,19 @@ impl Session {
         }
         if limit > 0 {
             tags.push(Tag::parse(["user_limit", &limit.to_string()])?);
+        }
+        // Unchanged unless edited: the relay keeps what's sent.
+        let overrides = edit
+            .overrides
+            .unwrap_or_else(|| override_views(&meta.overrides));
+        for o in &overrides {
+            for (kind, perms) in [("allow", &o.allow), ("deny", &o.deny)] {
+                if !perms.is_empty() {
+                    let mut tag = vec![kind, o.target.as_str()];
+                    tag.extend(perms.iter().map(String::as_str));
+                    tags.push(Tag::parse(tag)?);
+                }
+            }
         }
         self.group_event(&relay, Kind::GroupEditMetadata, channel, tags, "")
             .await?;
@@ -609,32 +660,59 @@ impl Session {
     /// Fetches the state and new messages of a community, then subscribes to it.
     /// Called again when its channels change, to follow the new ones.
     pub(crate) async fn sync_community(&self, id: &str, relay: &str) -> Result<()> {
-        self.ensure_relay(relay).await?;
+        let channels = self.catch_up(id, relay).await?;
         let key = self.relay_key(relay).await?;
-        self.fetch_state(relay, &[id.to_string()]).await?;
-        let channels = match self.metadata(key, id).await? {
-            Some(meta) => meta.children,
-            None => Vec::new(),
-        };
         let mut groups = channels.clone();
         groups.push(id.to_string());
-        self.fetch_state(relay, &channels).await?;
-
         let state = Filter::new()
             .author(key)
             .kinds(STATE_KINDS)
             .identifiers(groups);
         let mut filters = vec![state];
         if !channels.is_empty() {
-            let chat = Filter::new()
+            let live = Filter::new()
                 .kinds([Kind::ChatMessage, Kind::GroupDeleteEvent])
                 .custom_tags(SingleLetterTag::LOWERCASE_H, channels);
-            // Since the newest one stored: we were following every channel until then.
-            let mut history = chat.clone();
-            let stored = self.client.database().query(chat.clone().limit(1)).await?;
-            if let Some(last) = stored.iter().map(|e| e.created_at).max() {
-                history = history.since(last);
+            filters.push(live.since(Timestamp::now()));
+        }
+        self.resubscribe(subscription(id), relay, filters).await
+    }
+
+    /// Fetches community `id`'s state and the history of each channel I may
+    /// see since its newest stored message; returns its channel ids.
+    async fn catch_up(&self, id: &str, relay: &str) -> Result<Vec<String>> {
+        self.ensure_relay(relay).await?;
+        let key = self.relay_key(relay).await?;
+        let answered = !self.fetch_state(relay, &[id.to_string()]).await?.is_empty();
+        let channels = match self.metadata(key, id).await? {
+            Some(meta) => meta.children,
+            None => Vec::new(),
+        };
+        let seen = self.fetch_state(relay, &channels).await?;
+        if answered {
+            // The relay only serves the state of channels I may see (spec § 9, Salons
+            // privés): one it withheld was closed to me, forget what I had of it.
+            for gone in channels.iter().filter(|c| !seen.contains(*c)) {
+                let stale = Filter::new()
+                    .author(key)
+                    .kind(Kind::GroupMetadata)
+                    .identifier(gone);
+                self.client.database().delete(stale).await?;
             }
+        }
+
+        // Each channel I may see, since its newest stored message: one just
+        // opened to me (spec § 9, Salons privés) comes whole.
+        // ponytail: one REQ per channel; batch the ones with history if communities grow big.
+        for channel in channels.iter().filter(|c| seen.contains(*c)) {
+            let chat = Filter::new()
+                .kinds([Kind::ChatMessage, Kind::GroupDeleteEvent])
+                .custom_tag(SingleLetterTag::LOWERCASE_H, channel);
+            let stored = self.client.database().query(chat.clone().limit(1)).await?;
+            let history = match stored.iter().map(|e| e.created_at).max() {
+                Some(last) => chat.since(last),
+                None => chat,
+            };
             backfill(history, |f| async move {
                 let events = self
                     .client
@@ -644,9 +722,8 @@ impl Session {
                 Ok(events.into_iter().collect())
             })
             .await?;
-            filters.push(chat.since(Timestamp::now()));
         }
-        self.resubscribe(subscription(id), relay, filters).await
+        Ok(channels)
     }
 
     /// Replaces the subscription `id`: nostr-sdk refuses an id already in use
@@ -697,20 +774,38 @@ impl Session {
         if !STATE_KINDS.contains(&ev.kind) || !self.is_relay_key(ev.pubkey) {
             return None;
         }
-        if ev.kind == Kind::GroupMetadata {
+        if matches!(
+            ev.kind,
+            Kind::GroupMetadata | Kind::GroupAdmins | Kind::GroupRoles
+        ) {
+            // Channels, roles or a channel's permissions changed: what I may see too.
+            // Fetch the history of channels just opened to me; follow new channels.
             let id = ev.tags.identifier()?;
-            // A community's channels changed: follow the new ones.
-            if let Some((_, relay)) = self
-                .group_list()
-                .await
-                .ok()?
-                .into_iter()
-                .find(|(c, _)| *c == id)
-            {
-                let _ = self.sync_community(&id, &relay).await;
+            if let Some((community, relay)) = self.community_of(ev.pubkey, &id).await {
+                let _ = if ev.kind == Kind::GroupMetadata && community == id {
+                    self.sync_community(&community, &relay).await
+                } else {
+                    self.catch_up(&community, &relay).await.map(drop)
+                };
             }
         }
         Some(Update::Communities)
+    }
+
+    /// The community of group `id` (itself, or the one listing it), with its relay.
+    async fn community_of(&self, key: PublicKey, id: &str) -> Option<(String, String)> {
+        for (community, relay) in self.group_list().await.ok()? {
+            let listed = self
+                .metadata(key, &community)
+                .await
+                .ok()
+                .flatten()
+                .is_some_and(|m| m.children.iter().any(|c| c == id));
+            if community == id || listed {
+                return Some((community, relay));
+            }
+        }
+        None
     }
 
     async fn community(&self, id: &str) -> Result<Option<Community>> {
@@ -742,9 +837,14 @@ impl Session {
             timeout: 0,
         };
         let now = Timestamp::now().as_secs();
+        let nobody = perms::Member::default();
         let mut channels = Vec::new();
         for child in meta.children {
             if let Some(m) = self.metadata(key, &child).await? {
+                let perms = policy.effective(&mine, Some(&m.overrides), now);
+                if !perms.has("view_channel") {
+                    continue; // a private channel I can't see
+                }
                 let participants = match m.voice {
                     true => self
                         .state(key, Kind::GroupLivekitParticipants, &child)
@@ -763,8 +863,11 @@ impl Session {
                     name: m.name,
                     voice: m.voice,
                     participants,
-                    // ponytail: no channel overrides until private channels (step 12e).
-                    perms: policy.effective(&mine, Some(&[]), now).names(),
+                    perms: perms.names(),
+                    private: !policy
+                        .effective(&nobody, Some(&m.overrides), now)
+                        .has("view_channel"),
+                    overrides: override_views(&m.overrides),
                     category,
                     topic: m.about,
                     slowmode: m.slowmode,
@@ -878,20 +981,22 @@ impl Session {
     }
 
     /// Fetches the relay-signed state of `groups` into the local store.
-    async fn fetch_state(&self, relay: &str, groups: &[String]) -> Result<()> {
+    /// Fetches the relay-signed state of `groups`; returns the ids it served.
+    async fn fetch_state(&self, relay: &str, groups: &[String]) -> Result<Vec<String>> {
         if groups.is_empty() {
-            return Ok(());
+            return Ok(Vec::new());
         }
         let key = self.relay_key(relay).await?;
         let filter = Filter::new()
             .author(key)
             .kinds(STATE_KINDS)
             .identifiers(groups.iter().cloned());
-        self.client
+        let events = self
+            .client
             .fetch_events(ReqTarget::single(relay, [filter]))
             .timeout(TIMEOUT)
             .await?;
-        Ok(())
+        Ok(events.iter().filter_map(|e| e.tags.identifier()).collect())
     }
 
     async fn state(&self, key: PublicKey, kind: Kind, group: &str) -> Result<Option<Event>> {
@@ -1040,10 +1145,15 @@ struct Metadata {
     owner: Option<String>,
     slowmode: u32,
     user_limit: u32,
+    /// A channel's allow and deny tags.
+    overrides: Vec<Override>,
 }
 
 fn metadata(ev: &Event) -> Metadata {
-    let mut meta = Metadata::default();
+    let mut meta = Metadata {
+        overrides: perms::parse_overrides(ev.tags.iter().map(|t| t.as_slice())),
+        ..Default::default()
+    };
     for tag in ev.tags.iter() {
         match tag.as_slice() {
             [k, v, ..] if k == "name" => meta.name = v.clone(),

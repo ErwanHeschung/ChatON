@@ -376,6 +376,15 @@
     "category.delete-confirm": "Ses salons restent, au-dessus des catégories.",
     "channel.delete": "Supprimer le salon",
     "category.delete": "Supprimer la catégorie",
-    "channel.slowmode-off": "Désactivé"
+    "channel.slowmode-off": "Désactivé",
+    "channel.tab-general": "Général",
+    "channel.tab-permissions": "Permissions",
+    "channel.private": "Salon privé",
+    "channel.private-hint": "Seuls les rôles et membres autorisés plus bas le voient, avec le propriétaire et les administrateurs.",
+    "channel.override-target": "Permissions de",
+    "channel.override-hint": "• : réglé dans ce salon. Ce qui ne l'est pas vient des rôles.",
+    "override.deny": "Refuser",
+    "override.inherit": "Hériter",
+    "override.allow": "Autoriser"
   }
 }

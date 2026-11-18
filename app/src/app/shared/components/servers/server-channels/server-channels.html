@@ -122,6 +122,15 @@
                 >
                   <svg [lucideIcon]="icons.voice" size="18"></svg>
                   <span>{{ channel.name }}</span>
+                  @if (channel.private) {
+                    <svg
+                      class="lock"
+                      [lucideIcon]="icons.lock"
+                      size="12"
+                      role="img"
+                      [attr.aria-label]="privateLabel"
+                    ></svg>
+                  }
                   @if (channel.user_limit) {
                     <span class="limit"
                       >{{ participants(channel).length }}/{{ channel.user_limit }}</span
@@ -137,9 +146,20 @@
                 >
                   <svg [lucideIcon]="icons.hash" size="18"></svg>
                   <span>{{ channel.name }}</span>
+                  @if (channel.private) {
+                    <svg
+                      class="lock"
+                      [lucideIcon]="icons.lock"
+                      size="12"
+                      role="img"
+                      [attr.aria-label]="privateLabel"
+                    ></svg>
+                  }
                 </button>
               }
-              @if (store.canIn(channel, 'manage_channels')) {
+              @if (
+                store.canIn(channel, 'manage_channels') || store.canIn(channel, 'manage_roles')
+              ) {
                 <button
                   type="button"
                   class="btn btn-ghost btn-icon btn-sm hover-action gear"

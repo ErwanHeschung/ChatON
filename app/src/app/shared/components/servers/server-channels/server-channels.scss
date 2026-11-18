@@ -201,3 +201,8 @@
 .section.cdk-drop-list-dragging .channel:not(.cdk-drag-placeholder) {
   transition: transform var(--duration-base) var(--ease-out);
 }
+
+.lock {
+  flex-shrink: 0;
+  color: var(--content-secondary);
+}

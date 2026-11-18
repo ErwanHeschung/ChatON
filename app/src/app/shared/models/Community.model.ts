@@ -18,6 +18,16 @@ export interface Channel {
   slowmode: number;
   /** Most people in a voice channel, 0: no limit. */
   user_limit: number;
+  /** A member without roles can't see it (spec § 9, Salons privés). */
+  private: boolean;
+  overrides: ChannelOverride[];
+}
+
+/** What a channel allows and denies one target: a role id, `everyone` or a key. */
+export interface ChannelOverride {
+  target: string;
+  allow: Permission[];
+  deny: Permission[];
 }
 
 /** Groups channels; its id is stable, its name free (spec § 9, Salons et catégories). */
@@ -32,6 +42,8 @@ export interface ChannelEdit {
   topic?: string;
   slowmode?: number;
   user_limit?: number;
+  /** Every override of the channel. */
+  overrides?: ChannelOverride[];
 }
 
 export interface Community {

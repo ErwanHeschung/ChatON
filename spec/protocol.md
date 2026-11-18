@@ -299,7 +299,7 @@ Pour lire les événements d'une communauté, il faut s'être authentifié (NIP-
 | invitations (`9009`), entrées (`9021`) | `view_audit_log` ou `manage_invites` |
 | autres demandes (`9000`, `9001`, `9002`, `9007`, `9008`, `9022`) | `view_audit_log` |
 
-On lit toujours ses propres événements. L'état signé par le relais (`39000`–`39003`) reste lisible par tous.
+On lit toujours ses propres événements. L'état signé par le relais (`39000`–`39004`) reste lisible par tous, sauf celui d'un salon privé (« Salons privés »).
 
 ### Créer une communauté et ses salons
 
@@ -333,6 +333,21 @@ Un `9002` remplace **toutes** les métadonnées du groupe (NIP-29) : le client r
 - `["user_limit", <n>]` : un salon vocal accueille au plus `n` personnes (1 à 99 ; absent : pas de limite).
 
 Un salon vocal ne reçoit pas de messages (`9`), une communauté non plus : on écrit dans ses salons texte.
+
+### Salons privés
+
+Le `9002` et le `39000` d'un salon portent ses **surcharges** (« Permissions effectives », étape 3) :
+
+```
+["allow", <cible>, <permission>…]
+["deny",  <cible>, <permission>…]      cible = un id de rôle, everyone, ou une clé (hex)
+```
+
+- Au plus un `allow` et un `deny` par cible, 100 surcharges au plus. Seules les permissions de portée « salon » y ont un sens ; une autre est refusée.
+- Un salon est **privé** quand un membre sans rôle n'y a pas `view_channel` (en pratique : `["deny", "everyone", "view_channel"]`). Le propriétaire et `administrator` y voient tout.
+- **Modifier les surcharges** exige `manage_roles` dans le salon. Pour chaque cible dont une surcharge change : un rôle doit être `everyone` ou strictement sous le rôle le plus haut de l'acteur, une clé celle d'un membre de rang strictement inférieur ; et chaque permission ajoutée ou retirée d'un `allow` ou d'un `deny` doit être une que l'acteur a dans ce salon. Un client renvoie les surcharges inchangées dans tout autre `9002` du salon.
+- **Lecture** : l'état d'un salon privé (`39000`, `39004`), comme ses messages, n'est servi qu'à une clé authentifiée qui y a `view_channel`. Une requête non authentifiée qui le vise par `#d` est refusée (`auth-required:`). Le `39000` de la communauté liste quand même son identifiant (`child`).
+- Un membre qui reçoit l'accès lit tout l'historique du salon : le client rattrape chaque salon depuis son dernier message connu **dans ce salon** (vecteur `channel_private`).
 
 ### Réglages
 

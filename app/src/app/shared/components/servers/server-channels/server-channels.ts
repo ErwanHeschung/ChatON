@@ -20,6 +20,7 @@ import {
   LucideChevronDown,
   LucideDynamicIcon,
   LucideHash,
+  LucideLock,
   LucidePlus,
   LucideSettings,
   LucideVolume2,
@@ -72,7 +73,9 @@ export class ServerChannels implements OnInit, OnDestroy {
     voice: LucideVolume2,
     settings: LucideSettings,
     chevron: LucideChevronDown,
+    lock: LucideLock,
   };
+  protected readonly privateLabel = $localize`:@@channel.private:Private channel`;
   protected readonly joinTitle = $localize`:@@channels.join-voice:Join the voice channel`;
   protected readonly insideTitle = $localize`:@@channels.in-voice:You're in this voice channel`;
   /** The section ('' above the categories, or a category id) showing the "new channel" field. */

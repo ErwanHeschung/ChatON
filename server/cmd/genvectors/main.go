@@ -218,6 +218,8 @@ func generate() []byte {
 		valid("channel_edit_settings", alice, 9002, nostr.Tags{v0, {"h", channel1}, {"name", "général"}, {"about", "On parle de chats"},
 			{"parent", community}, {"slowmode", "10"}}, ""),
 		valid("voice_channel_edit_limit", alice, 9002, nostr.Tags{v0, {"h", voice}, {"name", "Vocal"}, {"parent", community}, {"livekit"}, {"user_limit", "5"}}, ""),
+		valid("channel_private", alice, 9002, nostr.Tags{v0, {"h", channel1}, {"name", "staff"}, {"parent", community},
+			{"deny", "everyone", "view_channel"}, {"allow", "moderator", "view_channel"}, {"allow", bob.pk, "view_channel", "send_messages"}}, ""),
 		valid("community_layout", relay, 39000, nostr.Tags{v0, {"d", community}, {"name", "Les chatons"}, {"private"}, {"restricted"}, {"closed"},
 			{"child", channel1, "texte"}, {"child", voice, "vocal"}, {"owner", alice.pk}, {"category", "texte", "Salons textuels"}, {"category", "vocal", "Salons vocaux"}}, ""),
 		valid("call_rumor", alice, 14, nostr.Tags{v0, {"p", bob.pk}, {"call", callID, "https://chaton.example", callKey}}, "📞 Appel vocal"),

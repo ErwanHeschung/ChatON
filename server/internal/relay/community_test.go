@@ -460,3 +460,93 @@ func tagOf(ev nostr.Event, name string) string {
 	}
 	return ""
 }
+
+// Step 12e: private channels (spec § 9, Salons privés).
+func TestPrivateChannels(t *testing.T) {
+	alice, bob, carol := newUser(), newUser(), newUser()
+	path, key := filepath.Join(t.TempDir(), "r.bolt"), nostr.Generate()
+	url, stop := serve(t, path, key, alice, bob, carol)
+	a, b, c := connect(t, url, &alice), connect(t, url, &bob), connect(t, url, &carol)
+	at := func(s int) time.Time { return time.Now().Add(time.Duration(s) * time.Second) }
+	const staff = "s0000000000s"
+	private := nostr.Tags{h(staff), {"name", "staff"}, {"parent", communityID}, {"deny", "everyone", "view_channel"}, {"allow", "moderator", "view_channel"}}
+
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateGroup, nostr.Tags{h(communityID)}, at(0)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateInvite, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	mustPublish(t, c, event(carol, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", carol.pk.Hex(), "moderator"}}, at(0)))
+	mustPublish(t, a, channel(alice, staff, "staff", at(1)))
+
+	// Carol, moderator, can't change channel permissions (no manage_roles); Alice can.
+	mustReject(t, c, event(carol, nostr.KindSimpleGroupEditMetadata, private, at(1)), "overrides without manage_roles")
+	mustReject(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, append(slices.Clone(private), nostr.Tag{"allow", "everyone", "kick_members"}), at(1)), "a community permission in an override")
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, private, at(1)))
+	secret := event(alice, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(staff)}, at(2))
+	mustPublish(t, a, secret)
+
+	inStaff := nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupChatMessage}, Tags: nostr.TagMap{"h": {staff}}}
+	staffState := nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupMetadata}, Tags: nostr.TagMap{"d": {staff}}}
+	count := func(r *nostr.Relay, f nostr.Filter) int {
+		evs, closed := query(t, r, f)
+		if closed != "" {
+			t.Fatalf("closed: %s", closed)
+		}
+		return len(evs)
+	}
+	// Bob, plain member: no history, no name, can't write; Carol, moderator: all of it.
+	if n, m := count(b, inStaff), count(b, staffState); n != 0 || m != 0 {
+		t.Fatalf("bob reads %d messages and %d states of the private channel", n, m)
+	}
+	if n, m := count(c, inStaff), count(c, staffState); n != 1 || m != 1 {
+		t.Fatalf("carol reads %d messages and %d states", n, m)
+	}
+	mustReject(t, b, event(bob, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(staff)}, at(2)), "message without view_channel")
+	if _, closed := query(t, connect(t, url, nil), staffState); !strings.HasPrefix(closed, "auth-required:") {
+		t.Errorf("anonymous state of a private channel: closed %q", closed)
+	}
+
+	// Live: the next message reaches Carol, not Bob.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	bs, cs := subscribe(ctx, t, b, inStaff), subscribe(ctx, t, c, inStaff)
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(staff)}, at(3)))
+	select {
+	case <-cs.Events:
+	case <-ctx.Done():
+		t.Fatal("carol got nothing live")
+	}
+	select {
+	case ev := <-bs.Events:
+		t.Fatalf("bob got %q live", ev.Content)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// Bob admin: only below himself, only what he has.
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", bob.pk.Hex(), "admin"}}, at(4)))
+	if n := count(b, inStaff); n != 2 {
+		t.Fatalf("bob, admin, reads %d messages, want the whole history", n)
+	}
+	mustReject(t, b, event(bob, nostr.KindSimpleGroupEditMetadata, append(slices.Clone(private), nostr.Tag{"deny", "admin", "send_messages"}), at(5)), "override on his own role")
+	mustReject(t, b, event(bob, nostr.KindSimpleGroupEditMetadata, append(slices.Clone(private), nostr.Tag{"deny", alice.pk.Hex(), "send_messages"}), at(5)), "override on the owner")
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupEditMetadata, append(slices.Clone(private), nostr.Tag{"allow", carol.pk.Hex(), "send_messages"}), at(5)))
+
+	// It all survives a restart.
+	stop()
+	url, _ = serve(t, path, key, alice, bob, carol)
+	b, c = connect(t, url, &bob), connect(t, url, &carol)
+	mustPublish(t, connect(t, url, &alice), event(alice, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", bob.pk.Hex()}}, at(6)))
+	if n := count(b, inStaff); n != 0 {
+		t.Fatalf("after restart, bob (member again) reads %d messages", n)
+	}
+	meta := state(t, url, nostr.KindSimpleGroupMetadata, communityID)
+	if !slices.ContainsFunc(meta.Tags, func(tag nostr.Tag) bool { return len(tag) > 1 && tag[0] == "child" && tag[1] == staff }) {
+		t.Fatalf("community lost the private channel: %v", meta.Tags)
+	}
+	evs, _ := query(t, c, staffState)
+	if len(evs) != 1 || !slices.ContainsFunc(evs[0].Tags, func(tag nostr.Tag) bool {
+		return len(tag) > 2 && tag[0] == "allow" && tag[1] == carol.pk.Hex() && tag[2] == "send_messages"
+	}) {
+		t.Fatalf("overrides after restart: %v", evs)
+	}
+}

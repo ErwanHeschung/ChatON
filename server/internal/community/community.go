@@ -216,8 +216,10 @@ func (g *Groups) Bind(rl *khatru.Relay) {
 	rl.QueryStored = func(ctx context.Context, f nostr.Filter) iter.Seq[nostr.Event] {
 		readers := khatru.GetAllAuthed(ctx)
 		return func(yield func(nostr.Event) bool) {
+			// Collected first: Readable takes g.mu, which a writer may hold while
+			// bbolt waits for this read transaction to end (deadlock).
 			// ponytail: filtered after the store's limit, so a page can come back short.
-			for ev := range stored(ctx, f) {
+			for _, ev := range slices.Collect(stored(ctx, f)) {
 				if g.Readable(readers, ev) && !yield(ev) {
 					return
 				}
@@ -302,9 +304,46 @@ func (g *Groups) perms(c *nip29.Group, pk nostr.PubKey, ch *nip29.Group) Perms {
 	}
 	var channel []Override
 	if ch != nil && ch != c {
-		channel = []Override{} // ponytail: channel overrides come with private channels (step 12e)
+		channel = g.layout(ch.Address.ID).overrides()
 	}
 	return p.Effective(member(c, pk), channel, nostr.Now())
+}
+
+// private: a member without roles can't see channel ch of c (spec § 9, Salons privés).
+func (g *Groups) private(c, ch *nip29.Group) bool {
+	return !g.policy(c).Effective(Member{}, g.layout(ch.Address.ID).overrides(), nostr.Now()).Has("view_channel")
+}
+
+// checkOverrides: author may change channel ch's overrides from old to next.
+func (g *Groups) checkOverrides(c *nip29.Group, author nostr.PubKey, can Perms, old, next []Override) error {
+	changed := changedOverrides(old, next)
+	if len(changed) == 0 {
+		return nil
+	}
+	if !can.Has("manage_roles") {
+		return errors.New("restricted: channel permissions need manage_roles")
+	}
+	policy, actor := g.policy(c), member(c, author)
+	for target, perms := range changed {
+		pk, err := nostr.PubKeyFromHex(target)
+		switch {
+		case perms&^can != 0:
+			return fmt.Errorf("restricted: you don't have %v here", (perms &^ can).Names())
+		case target == Everyone:
+		case err == nil:
+			if !policy.Outranks(actor, member(c, pk)) {
+				return fmt.Errorf("restricted: %s isn't below you", target)
+			}
+		default:
+			if _, ok := policy.role(target); !ok {
+				return fmt.Errorf("invalid: unknown role %q", target)
+			}
+			if !policy.RoleBelow(actor, target) {
+				return fmt.Errorf("restricted: role %q isn't below yours", target)
+			}
+		}
+	}
+	return nil
 }
 
 // symmetricDiff: the ids in exactly one of a and b.
@@ -400,6 +439,9 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 			return reject("invalid: unknown category %q", cat)
 		}
 		if err := checkChannel(ev, nil); err != nil {
+			return reject("%s", err)
+		}
+		if err := g.checkOverrides(c, ev.PubKey, g.perms(c, ev.PubKey, nil), nil, ParseOverrides(ev.Tags)); err != nil {
 			return reject("%s", err)
 		}
 		return false, ""
@@ -526,8 +568,20 @@ func (g *Groups) checkEdit(ev nostr.Event, group *nip29.Group) (bool, string) {
 		if err := checkChannel(ev, group); err != nil {
 			return reject("%s", err)
 		}
-		if !g.perms(g.groups[group.Parent], ev.PubKey, group).Has("manage_channels") {
+		c := g.groups[group.Parent]
+		can := g.perms(c, ev.PubKey, group)
+		old, next := g.layout(group.Address.ID).Overrides, ParseOverrides(ev.Tags)
+		changedOther := tagValue(ev, "name") != group.Name || tagValue(ev, "about") != group.About ||
+			channelLayout(ev.Tags).Slowmode != g.layout(group.Address.ID).Slowmode ||
+			channelLayout(ev.Tags).UserLimit != g.layout(group.Address.ID).UserLimit
+		if changedOther && !can.Has("manage_channels") {
 			return reject("restricted: editing channels needs manage_channels")
+		}
+		if !changedOther && len(changedOverrides(old, next)) == 0 && !can.Has("manage_channels") && !can.Has("manage_roles") {
+			return reject("restricted: editing channels needs manage_channels")
+		}
+		if err := g.checkOverrides(c, ev.PubKey, can, old, next); err != nil {
+			return reject("%s", err)
 		}
 	default:
 		can := g.perms(group, ev.PubKey, nil)
@@ -594,6 +648,10 @@ func (g *Groups) checkDelete(ev nostr.Event, c *nip29.Group) (bool, string) {
 // CheckFilter: group events (messages, moderation) are only served to members,
 // and only with an explicit #h. Group state (39000+) stays public.
 func (g *Groups) CheckFilter(ctx context.Context, f nostr.Filter) (bool, string) {
+	// A private channel's state, asked by #d: authenticate first, or it's filtered out unseen.
+	if len(khatru.GetAllAuthed(ctx)) == 0 && g.asksPrivate(f) {
+		return reject("auth-required: private channels are for those who may see them")
+	}
 	touches := len(f.Tags["h"]) > 0 || len(f.Kinds) == 0
 	for _, k := range f.Kinds {
 		touches = touches || slices.Contains(ClientKinds, k)
@@ -619,6 +677,17 @@ func (g *Groups) CheckFilter(ctx context.Context, f nostr.Filter) (bool, string)
 	return false, ""
 }
 
+func (g *Groups) asksPrivate(f nostr.Filter) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, id := range f.Tags["d"] {
+		if !g.seesChannel(nil, id) {
+			return true
+		}
+	}
+	return false
+}
+
 // PreventBroadcast applies Readable to live events too: CheckFilter only runs
 // when the subscription opens, and a member can lose a permission or leave since.
 func (g *Groups) PreventBroadcast(ws *khatru.WebSocket, _ nostr.Filter, ev nostr.Event) bool {
@@ -628,6 +697,11 @@ func (g *Groups) PreventBroadcast(ws *khatru.WebSocket, _ nostr.Filter, ev nostr
 // Readable: one of readers may read ev (spec § 9, Lecture). Anything but
 // requests from clients is left to the other policies.
 func (g *Groups) Readable(readers []nostr.PubKey, ev nostr.Event) bool {
+	if ev.Kind == nostr.KindSimpleGroupMetadata || ev.Kind == nostr.KindSimpleGroupLiveKitParticipants {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		return g.seesChannel(readers, ev.Tags.GetD())
+	}
 	if !slices.Contains(ClientKinds, ev.Kind) {
 		return true
 	}
@@ -657,6 +731,20 @@ func (g *Groups) Readable(readers []nostr.PubKey, ev nostr.Event) bool {
 		}
 	}
 	return false
+}
+
+// seesChannel: group id isn't a private channel, or one of readers has
+// view_channel in it (spec § 9, Salons privés). g.mu held.
+func (g *Groups) seesChannel(readers []nostr.PubKey, id string) bool {
+	ch := g.groups[id]
+	if ch == nil || ch.Parent == "" {
+		return true
+	}
+	c := g.groups[ch.Parent]
+	if c == nil || !g.private(c, ch) {
+		return true
+	}
+	return slices.ContainsFunc(readers, func(pk nostr.PubKey) bool { return g.perms(c, pk, ch).Has("view_channel") })
 }
 
 // saved applies an accepted group event and publishes the new state.
@@ -713,8 +801,7 @@ func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
 	switch {
 	case ev.Kind == nostr.KindSimpleGroupEditMetadata && group.Parent != "":
 		group.Children = nil
-		l := parseLayout(ev.Tags)
-		g.layouts[id] = &layout{In: map[string]string{}, Slowmode: l.Slowmode, UserLimit: l.UserLimit}
+		g.layouts[id] = channelLayout(ev.Tags)
 	case ev.Kind == nostr.KindSimpleGroupEditMetadata:
 		group.Children = arrange(before, group.Children)
 		l := parseLayout(ev.Tags)
@@ -749,8 +836,7 @@ func (g *Groups) createChannel(ctx context.Context, ev nostr.Event, parent strin
 	ch, c := g.groups[id], g.groups[parent]
 	ch.Parent, ch.Name, ch.About = parent, tagValue(ev, "name"), tagValue(ev, "about")
 	ch.LiveKit = ev.Tags.Has("livekit")
-	l := parseLayout(ev.Tags)
-	g.layouts[id] = &layout{In: map[string]string{}, Slowmode: l.Slowmode, UserLimit: l.UserLimit}
+	g.layouts[id] = channelLayout(ev.Tags)
 	c.Children = append(slices.Clone(c.Children), id)
 	if cat := tagValue(ev, "category"); cat != "" {
 		g.layout(parent).In[id] = cat
@@ -832,7 +918,7 @@ func (g *Groups) emit(ctx context.Context, id string, events ...nostr.Event) {
 	}
 }
 
-// VoiceAccess tells whether id is a voice channel (spec § 11) and pk a member of its community.
+// VoiceAccess tells whether id is a voice channel (spec § 11) and pk may connect to it (spec § 9).
 func (g *Groups) VoiceAccess(id string, pk nostr.PubKey) (voice, member bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -841,7 +927,7 @@ func (g *Groups) VoiceAccess(id string, pk nostr.PubKey) (voice, member bool) {
 		return false, false
 	}
 	c := g.community(id)
-	return true, c != nil && isMember(c, pk)
+	return true, c != nil && g.perms(c, pk, group).Has("connect")
 }
 
 // VoiceChannels lists the voice channels of a community, or of every community when it's "".

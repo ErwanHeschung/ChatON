@@ -19,7 +19,14 @@ const (
 	maxUserLimit  = 99
 	maxName       = 100
 	maxTopic      = 1024
+	maxOverrides  = 100
 )
+
+// channelPerms: the permissions a channel's overrides may name (spec § 9, scope « salon »).
+var channelPerms = permsOf([]string{
+	"manage_channels", "manage_roles", "manage_messages", "mention_everyone", "view_channel", "send_messages",
+	"attach_files", "add_reactions", "connect", "speak", "stream", "mute_members", "move_members",
+})
 
 var categoryRe = regexp.MustCompile(`^[a-z0-9_-]{1,32}$`)
 
@@ -27,16 +34,23 @@ var categoryRe = regexp.MustCompile(`^[a-z0-9_-]{1,32}$`)
 type Category struct{ ID, Name string }
 
 // layout is what the library drops from a 39000. A community: its categories
-// and the one each channel sits in. A channel: slow mode and user limit.
+// and the one each channel sits in. A channel: slow mode, user limit, overrides.
 type layout struct {
 	Categories []Category
 	In         map[string]string // channel → category id
 	Slowmode   int
 	UserLimit  int
+	Overrides  []Override
+}
+
+// channelLayout: what a channel keeps from its 9007 or 9002.
+func channelLayout(tags nostr.Tags) *layout {
+	l := parseLayout(tags)
+	return &layout{In: map[string]string{}, Slowmode: l.Slowmode, UserLimit: l.UserLimit, Overrides: l.Overrides}
 }
 
 func parseLayout(tags nostr.Tags) *layout {
-	l := &layout{In: map[string]string{}}
+	l := &layout{In: map[string]string{}, Overrides: ParseOverrides(tags)}
 	for _, t := range tags {
 		switch {
 		case len(t) >= 3 && t[0] == "category":
@@ -83,6 +97,70 @@ func (l *layout) apply(meta *nostr.Event) {
 	if l.UserLimit > 0 {
 		meta.Tags = append(meta.Tags, nostr.Tag{"user_limit", strconv.Itoa(l.UserLimit)})
 	}
+	for _, o := range l.Overrides {
+		kind := "deny"
+		if o.Allow {
+			kind = "allow"
+		}
+		meta.Tags = append(meta.Tags, append(nostr.Tag{kind, o.Target}, o.Perms.Names()...))
+	}
+}
+
+// overrides of a channel's layout, never nil: nil means "the community" to Effective.
+func (l *layout) overrides() []Override {
+	if l.Overrides == nil {
+		return []Override{}
+	}
+	return l.Overrides
+}
+
+// checkOverrideTags: a channel's allow and deny tags, on their own.
+func checkOverrideTags(tags nostr.Tags) error {
+	seen := map[string]bool{}
+	for _, t := range tags {
+		if len(t) == 0 || (t[0] != "allow" && t[0] != "deny") {
+			continue
+		}
+		switch {
+		case len(t) < 2:
+			return errors.New("invalid: an override names its target")
+		case seen[t[0]+t[1]]:
+			return fmt.Errorf("invalid: two %s for %q", t[0], t[1])
+		case len(seen) >= maxOverrides:
+			return fmt.Errorf("invalid: %d overrides at most", maxOverrides)
+		case permsOf(t[2:])&^channelPerms != 0:
+			return fmt.Errorf("invalid: %v aren't channel permissions", (permsOf(t[2:]) &^ channelPerms).Names())
+		}
+		seen[t[0]+t[1]] = true
+	}
+	return nil
+}
+
+// changedOverrides: per target, the permissions added to or taken from its allow or deny.
+func changedOverrides(old, next []Override) map[string]Perms {
+	sides := func(os []Override) map[string][2]Perms {
+		m := map[string][2]Perms{}
+		for _, o := range os {
+			s := m[o.Target]
+			if o.Allow {
+				s[0] |= o.Perms
+			} else {
+				s[1] |= o.Perms
+			}
+			m[o.Target] = s
+		}
+		return m
+	}
+	a, b := sides(old), sides(next)
+	out := map[string]Perms{}
+	for _, m := range []map[string][2]Perms{a, b} {
+		for target := range m {
+			if d := a[target][0] ^ b[target][0] | a[target][1] ^ b[target][1]; d != 0 {
+				out[target] = d
+			}
+		}
+	}
+	return out
 }
 
 // checkCategories: a community 9002's categories, and child tags naming only those.
@@ -125,6 +203,9 @@ func checkChannel(ev nostr.Event, group *nip29.Group) error {
 		if n, err := strconv.Atoi(t[1]); err != nil || n < 0 || n > maxSlowmode {
 			return fmt.Errorf("invalid: slow mode is 0 to %d seconds", maxSlowmode)
 		}
+	}
+	if err := checkOverrideTags(ev.Tags); err != nil {
+		return err
 	}
 	if t := ev.Tags.Find("user_limit"); t != nil {
 		if n, err := strconv.Atoi(t[1]); err != nil || n < 1 || n > maxUserLimit {
