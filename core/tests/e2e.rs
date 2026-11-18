@@ -1381,3 +1381,147 @@ async fn invites_listed_used_up_and_revoked() {
     assert!(alice.invites(&community.id).await.unwrap().is_empty());
     assert!(matches!(carol.join(&open).await, Err(Error::InvalidInvite)));
 }
+
+/// Step 12h (spec § 11, Modération vocale): mute, move, disconnect.
+#[cfg(feature = "voice")]
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a running server with LiveKit, see the module docs"]
+async fn voice_moderation_mute_move_disconnect() {
+    use base64::Engine;
+    use chaton_core::voice::VoiceTarget;
+
+    let (server, _) = setup();
+    let register = |name: &'static str| {
+        let server = server.clone();
+        async move {
+            Arc::new(
+                Session::register(&temp_dir(name), &server, &unique(name))
+                    .await
+                    .unwrap(),
+            )
+        }
+    };
+    let (alice, bob) = (register("alice").await, register("bob").await);
+    let (tx, mut bob_rx) = tokio::sync::mpsc::unbounded_channel();
+    let listener = bob.clone();
+    tokio::spawn(async move { listener.listen(move |u| drop(tx.send(u))).await });
+    let community = alice.create_community("Vocal").await.unwrap();
+    let hall = alice
+        .create_channel(&community.id, "Salon", true, None)
+        .await
+        .unwrap();
+    let corner = alice
+        .create_channel(&community.id, "Coin", true, None)
+        .await
+        .unwrap();
+    bob.join(&alice.invite(&community.id).await.unwrap())
+        .await
+        .unwrap();
+    let bob_pk = bob.account().pubkey;
+    bob.join_voice_channel(&community.id, &hall.id, false)
+        .await
+        .unwrap();
+    // The channel as Alice sees it: (participants, muted).
+    let seen = |id: String| {
+        let (alice, community) = (alice.clone(), community.id.clone());
+        async move {
+            let all = alice.communities().await.ok()?;
+            let ch = all
+                .into_iter()
+                .find(|c| c.id == community)?
+                .channels
+                .into_iter()
+                .find(|ch| ch.id == id)?;
+            Some((ch.participants, ch.muted))
+        }
+    };
+    eventually("bob in the hall", || {
+        let seen = seen(hall.id.clone());
+        async move { seen.await.filter(|(p, _)| p.contains(&bob_pk)) }
+    })
+    .await;
+
+    // Members can't.
+    assert!(matches!(
+        bob.moderate_voice(
+            &community.id,
+            &hall.id,
+            &alice.account().pubkey,
+            "mute",
+            None
+        )
+        .await,
+        Err(Error::NotAllowed)
+    ));
+
+    // Mute: everyone sees it, and Bob's next token has no microphone.
+    alice
+        .moderate_voice(&community.id, &hall.id, &bob_pk, "mute", None)
+        .await
+        .unwrap();
+    eventually("bob shown muted", || {
+        let seen = seen(hall.id.clone());
+        async move { seen.await.filter(|(_, m)| m == &[bob_pk]) }
+    })
+    .await;
+    let video = |token: String| {
+        let payload = token.split('.').nth(1).unwrap().to_string();
+        let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(payload)
+            .unwrap();
+        serde_json::from_slice::<serde_json::Value>(&raw).unwrap()["video"].clone()
+    };
+    let token = bob.channel_token(&community.id, &hall.id).await.unwrap();
+    assert_eq!(
+        video(token.participant_token)["canPublishSources"],
+        serde_json::json!(["screen_share"])
+    );
+    alice
+        .moderate_voice(&community.id, &hall.id, &bob_pk, "unmute", None)
+        .await
+        .unwrap();
+    eventually("bob unmuted", || {
+        let seen = seen(hall.id.clone());
+        async move { seen.await.filter(|(_, m)| m.is_empty()) }
+    })
+    .await;
+
+    // Move: Bob is told, and joins the corner (what the app does).
+    alice
+        .moderate_voice(&community.id, &hall.id, &bob_pk, "move", Some(&corner.id))
+        .await
+        .unwrap();
+    let corner_id = corner.id.clone();
+    let Update::VoiceMove {
+        community: c,
+        channel,
+    } = next_matching(&mut bob_rx, "bob told to move", |u| {
+        matches!(u, Update::VoiceMove { .. })
+    })
+    .await
+    else {
+        unreachable!()
+    };
+    assert_eq!(
+        (c.as_str(), channel.as_str()),
+        (community.id.as_str(), corner_id.as_str())
+    );
+    let st = bob.join_voice_channel(&c, &channel, false).await.unwrap();
+    assert!(matches!(&st.target, VoiceTarget::Channel { channel, .. } if *channel == corner_id));
+    eventually("bob in the corner", || {
+        let seen = seen(corner.id.clone());
+        async move { seen.await.filter(|(p, _)| p == &[bob_pk]) }
+    })
+    .await;
+
+    // Disconnect: Bob is out.
+    alice
+        .moderate_voice(&community.id, &corner.id, &bob_pk, "disconnect", None)
+        .await
+        .unwrap();
+    next_matching(&mut bob_rx, "bob disconnected", |u| {
+        matches!(u, Update::Voice { state: None })
+    })
+    .await;
+    assert!(bob.voice_state().await.is_none());
+}

@@ -39,4 +39,10 @@ export interface ScreenSource {
 
 /** `voice` events from core's listener. */
 export type VoiceUpdate =
-  { type: 'ring'; message: DmMessage; until: number } | { type: 'voice'; state: VoiceState | null };
+  | { type: 'ring'; message: DmMessage; until: number }
+  | { type: 'voice'; state: VoiceState | null }
+  /** A moderator moves me: join `channel`. */
+  | { type: 'voice_move'; community: string; channel: string };
+
+/** What a moderator does to someone in a voice channel (spec § 11). */
+export type VoiceAction = 'mute' | 'unmute' | 'deafen' | 'undeafen' | 'disconnect' | 'move';

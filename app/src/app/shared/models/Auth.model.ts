@@ -37,6 +37,7 @@ export interface CmdError {
     | 'banned'
     | 'not_allowed'
     | 'voice_disabled'
+    | 'full'
     | 'voice'
     | 'screen_capture'
     | 'no_distributor'

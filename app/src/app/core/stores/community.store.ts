@@ -10,6 +10,7 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { CmdError } from '@models/Auth.model';
+import { VoiceAction } from '@models/Voice.model';
 import {
   AuditEntry,
   Ban,
@@ -323,6 +324,12 @@ export const CommunityStore = signalStore(
         ).ok;
         if (ok) await loadMembers();
         return ok;
+      },
+
+      /** In voice `channel` (spec § 11): mute, deafen, disconnect, or move `target` to `to`. */
+      async moderateVoice(channel: string, target: string, action: VoiceAction, to?: string) {
+        const community = store.selected();
+        return (await run('moderate_voice', { community, channel, target, action, to })).ok;
       },
 
       async unban(pubkey: string) {

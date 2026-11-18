@@ -142,6 +142,9 @@ pub struct Channel {
     pub voice: bool,
     /// Who is in it, by the relay's 39004 (voice channels only).
     pub participants: Vec<PublicKey>,
+    /// Who of them moderators muted, or deafened (spec § 11, Modération vocale).
+    pub muted: Vec<PublicKey>,
+    pub deafened: Vec<PublicKey>,
     /// My permissions in this channel (spec § 9).
     pub perms: Vec<String>,
     /// Its category's id; none: above the categories.
@@ -359,6 +362,12 @@ pub enum Update {
     /// The voice channel or call I'm in changed; `None`: I'm in none.
     Voice {
         state: Option<crate::voice::VoiceState>,
+    },
+    /// A moderator moves me to voice `channel` (spec § 11, Modération
+    /// vocale): join it (`join_voice_channel`), which leaves this one.
+    VoiceMove {
+        community: String,
+        channel: String,
     },
 }
 
@@ -1193,13 +1202,18 @@ impl Session {
                 if !perms.has("view_channel") {
                     continue; // a private channel I can't see
                 }
-                let participants = match m.voice {
-                    true => self
-                        .state(key, Kind::GroupLivekitParticipants, &child)
-                        .await?
-                        .map(|ev| participants(&ev))
-                        .unwrap_or_default(),
-                    false => Vec::new(),
+                let present = match m.voice {
+                    true => {
+                        self.state(key, Kind::GroupLivekitParticipants, &child)
+                            .await?
+                    }
+                    false => None,
+                };
+                let list = |name| {
+                    present
+                        .as_ref()
+                        .map(|ev| tag_keys(ev, name))
+                        .unwrap_or_default()
                 };
                 let category = meta
                     .placement
@@ -1210,7 +1224,9 @@ impl Session {
                     id: child,
                     name: m.name,
                     voice: m.voice,
-                    participants,
+                    participants: list("participant"),
+                    muted: list("muted"),
+                    deafened: list("deafened"),
                     perms: perms.names(),
                     private: !policy
                         .effective(&nobody, Some(&m.overrides), now)
@@ -1542,9 +1558,9 @@ fn admins(ev: &Event) -> HashMap<PublicKey, Vec<String>> {
         .collect()
 }
 
-/// Keys in a voice channel, from a 39004 (each once).
-fn participants(ev: &Event) -> Vec<PublicKey> {
-    let mut all: Vec<PublicKey> = tag_values(ev, "participant")
+/// Keys of a 39004's `name` tags (`participant`, `muted`, `deafened`), each once.
+fn tag_keys(ev: &Event, name: &str) -> Vec<PublicKey> {
+    let mut all: Vec<PublicKey> = tag_values(ev, name)
         .filter_map(|pk| PublicKey::from_hex(pk).ok())
         .collect();
     all.sort();
@@ -1722,7 +1738,7 @@ mod tests {
         );
         let mut both = vec![alice, bob];
         both.sort();
-        assert_eq!(participants(&present), both);
+        assert_eq!(tag_keys(&present, "participant"), both);
         let roles = ev(
             &relay,
             Kind::GroupAdmins,

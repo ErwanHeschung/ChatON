@@ -9,6 +9,9 @@ export interface Channel {
   voice: boolean;
   /** Who is in it (voice channels), by the relay. */
   participants: string[];
+  /** Who of them moderators muted, or deafened (spec § 11). */
+  muted: string[];
+  deafened: string[];
   /** My permissions in this channel (spec § 9). */
   perms: Permission[];
   /** Its category's id; null: above the categories. */

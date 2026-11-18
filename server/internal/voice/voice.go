@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +38,9 @@ const (
 	WellKnown = "/.well-known/nip29/livekit" // GET: voice on? POST /<channel>: token
 	CallPath  = "/api/voice/call"
 	HookPath  = "/api/voice/webhook"
+	ModPath   = "/api/voice/moderate"
+	MoveTopic = "chaton.move" // the data message that moves a client (spec § 11)
+	moveGrace = 15 * time.Second
 	tokenTTL  = 10 * time.Minute
 	maxCall   = 10 // members of a DM room (spec § 5)
 )
@@ -68,7 +72,19 @@ type Voice struct {
 
 	mu    sync.Mutex
 	rooms map[string]map[string]bool // LiveKit room → identities in it
+	// What moderators set, by community then key (spec § 11, Modération vocale).
+	// ponytail: in memory, a restart forgets it; store it if that bites.
+	forced map[string]map[nostr.PubKey]forced
+	// Keys being moved into a room, until when: the user limit lets them in.
+	moving map[move]time.Time
 }
+
+type move struct {
+	room string
+	pk   nostr.PubKey
+}
+
+type forced struct{ muted, deafened bool }
 
 func New(cfg Config, groups *community.Groups, dir Directory, publicURL string) *Voice {
 	api := strings.Replace(strings.Replace(cfg.URL, "wss://", "https://", 1), "ws://", "http://", 1)
@@ -81,6 +97,8 @@ func New(cfg Config, groups *community.Groups, dir Directory, publicURL string) 
 		client:    &http.Client{Timeout: 10 * time.Second},
 		now:       time.Now,
 		rooms:     map[string]map[string]bool{},
+		forced:    map[string]map[nostr.PubKey]forced{},
+		moving:    map[move]time.Time{},
 	}
 }
 
@@ -91,6 +109,7 @@ func (v *Voice) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+WellKnown+"/{id}", v.channelToken)
 	mux.HandleFunc("POST "+CallPath, v.callToken)
 	mux.HandleFunc("POST "+HookPath, v.webhook)
+	mux.HandleFunc("POST "+ModPath, v.moderate)
 }
 
 // Bind ejects members who are removed or leave from their community's voice channels.
@@ -115,6 +134,19 @@ func (v *Voice) saved(ev nostr.Event) {
 		}
 	case nostr.KindSimpleGroupLeaveRequest:
 		gone = append(gone, ev.PubKey)
+	case nostr.KindSimpleGroupPutUser: // a timeout: only view_channel is left
+		t := ev.Tags.Find("timeout")
+		if t == nil {
+			return
+		}
+		if until, err := strconv.ParseInt(t[1], 10, 64); err != nil || until <= time.Now().Unix() {
+			return
+		}
+		for t := range ev.Tags.FindAll("p") {
+			if pk, err := nostr.PubKeyFromHex(t[1]); err == nil {
+				gone = append(gone, pk)
+			}
+		}
 	default:
 		return
 	}
@@ -171,15 +203,216 @@ func (v *Voice) channelToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	room := r.PathValue("id")
-	voice, member := v.groups.VoiceAccess(room, pubkey)
+	ch, voice := v.groups.Voice(room, pubkey)
 	switch {
 	case !voice:
 		handlers.HandleError(w, dto.ErrNotFound("No such voice channel", nil))
-	case !member:
-		handlers.HandleError(w, dto.ErrForbidden("Members of the community only", nil))
+	case !ch.Perms.Has("connect"):
+		handlers.HandleError(w, dto.ErrForbidden("Not allowed to connect here", nil))
+	case v.full(room, ch, pubkey):
+		handlers.HandleError(w, dto.ErrConflict("This voice channel is full", nil))
 	default:
-		v.respond(w, pubkey, room)
+		v.respond(w, pubkey, v.grant(room, ch, pubkey))
 	}
+}
+
+// full: room has reached its user limit, and pk is neither in it nor exempt (move_members).
+func (v *Voice) full(room string, ch community.VoiceChannel, pk nostr.PubKey) bool {
+	if ch.UserLimit == 0 || ch.Perms.Has("move_members") {
+		return false
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if until, ok := v.moving[move{room, pk}]; ok {
+		delete(v.moving, move{room, pk})
+		if v.now().Before(until) {
+			return false
+		}
+	}
+	present := keys(v.rooms[room])
+	return !slices.Contains(present, pk) && len(present) >= ch.UserLimit
+}
+
+// grant: what pk may do in voice channel room, from its permissions there and what moderators set.
+func (v *Voice) grant(room string, ch community.VoiceChannel, pk nostr.PubKey) grant {
+	v.mu.Lock()
+	f := v.forced[ch.Community][pk]
+	v.mu.Unlock()
+	var sources []string
+	if ch.Perms.Has("speak") && !f.muted {
+		sources = append(sources, "microphone")
+	}
+	if ch.Perms.Has("stream") {
+		sources = append(sources, "screen_share")
+	}
+	publish, subscribe, no := len(sources) > 0, !f.deafened, false
+	return grant{Room: room, RoomJoin: true, CanPublish: &publish, CanSubscribe: &subscribe, CanPublishData: &no, CanPublishSources: sources}
+}
+
+type moderateRequest struct {
+	Channel string `json:"channel"`
+	Target  string `json:"target"`
+	Action  string `json:"action"`
+	To      string `json:"to"`
+}
+
+// needs: the permission each moderation action asks for, in the channel.
+var needs = map[string]string{
+	"mute": "mute_members", "unmute": "mute_members", "deafen": "mute_members", "undeafen": "mute_members",
+	"disconnect": "move_members", "move": "move_members",
+}
+
+// moderate: a moderator mutes, deafens, disconnects or moves someone in a voice channel.
+func (v *Voice) moderate(w http.ResponseWriter, r *http.Request) {
+	actor, body, ok := v.authed(w, r)
+	if !ok {
+		return
+	}
+	var req moderateRequest
+	if err := json.Unmarshal(body, &req); err != nil || needs[req.Action] == "" {
+		handlers.HandleError(w, dto.ErrInvalidInput("Expected {channel, target, action: mute|unmute|deafen|undeafen|disconnect|move, to?}", err))
+		return
+	}
+	target, err := nostr.PubKeyFromHex(req.Target)
+	if err != nil {
+		handlers.HandleError(w, dto.ErrInvalidInput("Bad target key", err))
+		return
+	}
+	ch, voice := v.groups.Voice(req.Channel, actor)
+	switch {
+	case !voice:
+		handlers.HandleError(w, dto.ErrNotFound("No such voice channel", nil))
+		return
+	case !ch.Perms.Has(needs[req.Action]):
+		handlers.HandleError(w, dto.ErrForbidden("Needs "+needs[req.Action], nil))
+		return
+	}
+	ctx := r.Context()
+	ids := v.identitiesOf(req.Channel, target)
+	switch req.Action {
+	case "mute", "unmute", "deafen", "undeafen":
+		v.mu.Lock()
+		if v.forced[ch.Community] == nil {
+			v.forced[ch.Community] = map[nostr.PubKey]forced{}
+		}
+		f := v.forced[ch.Community][target]
+		switch req.Action {
+		case "mute", "unmute":
+			f.muted = req.Action == "mute"
+		default:
+			f.deafened = req.Action == "deafen"
+		}
+		v.forced[ch.Community][target] = f
+		if f == (forced{}) {
+			delete(v.forced[ch.Community], target)
+		}
+		v.mu.Unlock()
+		v.regrant(ctx, req.Channel, target, ids)
+		v.publish(ctx, req.Channel)
+	case "disconnect":
+		if len(ids) == 0 {
+			handlers.HandleError(w, dto.ErrNotFound("Not in this voice channel", nil))
+			return
+		}
+		for _, id := range ids {
+			if err := v.twirp(ctx, "RemoveParticipant", req.Channel, map[string]string{"room": req.Channel, "identity": id}, nil); err != nil {
+				handlers.HandleError(w, err)
+				return
+			}
+		}
+	case "move":
+		to, voice := v.groups.Voice(req.To, actor)
+		theirs, _ := v.groups.Voice(req.To, target)
+		switch {
+		case !voice || to.Community != ch.Community || req.To == req.Channel:
+			handlers.HandleError(w, dto.ErrNotFound("No such voice channel to move to", nil))
+			return
+		case !to.Perms.Has("move_members") || !theirs.Perms.Has("connect"):
+			handlers.HandleError(w, dto.ErrForbidden("Needs move_members there, and them connect", nil))
+			return
+		case len(ids) == 0:
+			handlers.HandleError(w, dto.ErrNotFound("Not in this voice channel", nil))
+			return
+		}
+		// Self-hosted LiveKit has no MoveParticipant: the client moves itself,
+		// told by a data message only the server can send (canPublishData is
+		// off for everyone), and the limit lets it in for a while.
+		v.mu.Lock()
+		v.moving[move{req.To, target}] = v.now().Add(moveGrace)
+		v.mu.Unlock()
+		data, _ := json.Marshal(map[string]string{"community": ch.Community, "channel": req.To})
+		body := map[string]any{"room": req.Channel, "data": data, "kind": "RELIABLE", "destination_identities": ids, "topic": MoveTopic}
+		if err := v.twirp(ctx, "SendData", req.Channel, body, nil); err != nil {
+			handlers.HandleError(w, err)
+			return
+		}
+		// A client that doesn't follow leaves anyway (a new device would have a new identity).
+		time.AfterFunc(moveGrace, func() { v.remove(req.Channel, ids) })
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// regrant gives target's devices (ids) in room what they may do there now.
+func (v *Voice) regrant(ctx context.Context, room string, target nostr.PubKey, ids []string) {
+	ch, ok := v.groups.Voice(room, target)
+	if !ok {
+		return
+	}
+	g := v.grant(room, ch, target)
+	sources := []string{} // the API's names, not the token's
+	for _, s := range g.CanPublishSources {
+		sources = append(sources, strings.ToUpper(s))
+	}
+	permission := map[string]any{
+		"canPublish": *g.CanPublish, "canSubscribe": *g.CanSubscribe, "canPublishData": false, "canPublishSources": sources,
+	}
+	for _, id := range ids {
+		body := map[string]any{"room": room, "identity": id, "permission": permission}
+		if err := v.twirp(ctx, "UpdateParticipant", room, body, nil); err != nil {
+			log.Printf("voice: permissions of %s in %s: %v", id, room, err)
+		}
+	}
+}
+
+// remove takes ids out of room, those still in it.
+func (v *Voice) remove(room string, ids []string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	present := v.identities(room)
+	for _, id := range ids {
+		if slices.Contains(present, id) {
+			if err := v.twirp(ctx, "RemoveParticipant", room, map[string]string{"room": room, "identity": id}, nil); err != nil {
+				log.Printf("voice: remove %s from %s: %v", id, room, err)
+			}
+		}
+	}
+}
+
+// identitiesOf: pk's devices in room.
+func (v *Voice) identitiesOf(room string, pk nostr.PubKey) []string {
+	return slices.DeleteFunc(v.identities(room), func(id string) bool { return !strings.HasPrefix(id, pk.Hex()+":") })
+}
+
+// publish: who is in voice channel room, and who of them is muted or deafened (39004).
+func (v *Voice) publish(ctx context.Context, room string) {
+	ch, ok := v.groups.Voice(room, nostr.ZeroPK)
+	if !ok {
+		return
+	}
+	v.mu.Lock()
+	pks := keys(v.rooms[room])
+	var muted, deafened []nostr.PubKey
+	for _, pk := range pks {
+		f := v.forced[ch.Community][pk]
+		if f.muted {
+			muted = append(muted, pk)
+		}
+		if f.deafened {
+			deafened = append(deafened, pk)
+		}
+	}
+	v.mu.Unlock()
+	v.groups.SetVoiceParticipants(ctx, room, pks, muted, deafened)
 }
 
 type callRequest struct {
@@ -218,7 +451,11 @@ func (v *Voice) callToken(w http.ResponseWriter, r *http.Request) {
 	case !slices.ContainsFunc(members, v.dir.IsLocal):
 		handlers.HandleError(w, dto.ErrForbidden("No member of this call has a handle here", nil))
 	default:
-		v.respond(w, pubkey, CallRoom(req.ID, members))
+		yes, no := true, false
+		v.respond(w, pubkey, grant{
+			Room: CallRoom(req.ID, members), RoomJoin: true, CanPublish: &yes, CanSubscribe: &yes, CanPublishData: &no,
+			CanPublishSources: []string{"microphone", "screen_share"},
+		})
 	}
 }
 
@@ -233,14 +470,10 @@ func CallRoom(id string, members []nostr.PubKey) string {
 	return "call-" + hex.EncodeToString(sum[:])
 }
 
-func (v *Voice) respond(w http.ResponseWriter, pubkey nostr.PubKey, room string) {
+func (v *Voice) respond(w http.ResponseWriter, pubkey nostr.PubKey, g grant) {
 	suffix := make([]byte, 4)
 	_, _ = rand.Read(suffix)
-	yes, no := true, false
-	token, err := v.token(pubkey.Hex()+":"+hex.EncodeToString(suffix), grant{
-		Room: room, RoomJoin: true, CanPublish: &yes, CanSubscribe: &yes, CanPublishData: &no,
-		CanPublishSources: []string{"microphone", "screen_share"},
-	})
+	token, err := v.token(pubkey.Hex()+":"+hex.EncodeToString(suffix), g)
 	if err != nil {
 		handlers.HandleError(w, err)
 		return
@@ -321,10 +554,9 @@ func (v *Voice) webhook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	pks := keys(v.rooms[room])
 	v.mu.Unlock()
 	if groupRe.MatchString(room) { // DM calls ("call-…") publish nothing
-		v.groups.SetVoiceParticipants(r.Context(), room, pks)
+		v.publish(r.Context(), room)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -382,10 +614,7 @@ func (v *Voice) Reconcile(ctx context.Context) {
 		v.mu.Unlock()
 	}
 	for _, id := range v.groups.VoiceChannels("") {
-		v.mu.Lock()
-		pks := keys(v.rooms[id])
-		v.mu.Unlock()
-		v.groups.SetVoiceParticipants(ctx, id, pks)
+		v.publish(ctx, id)
 	}
 }
 

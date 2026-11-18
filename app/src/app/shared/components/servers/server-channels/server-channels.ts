@@ -16,11 +16,21 @@ import {
   moveItemInArray,
   transferArrayItem,
 } from '@angular/cdk/drag-drop';
+import { ConnectedPosition } from '@angular/cdk/overlay';
+import { CdkContextMenuTrigger, CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import {
+  LucideArrowRightLeft,
   LucideChevronDown,
+  LucideChevronRight,
   LucideDynamicIcon,
+  LucideEllipsis,
   LucideHash,
+  LucideHeadphoneOff,
+  LucideHeadphones,
   LucideLock,
+  LucideMic,
+  LucideMicOff,
+  LucidePhoneOff,
   LucidePlus,
   LucideSettings,
   LucideVolume2,
@@ -32,6 +42,7 @@ import { UserCard } from '@components/users/user-card/user-card';
 import { ProfileDirective } from '@directives/profile';
 import { Category, Channel } from '@models/Community.model';
 import { UserShort } from '@models/User.model';
+import { VoiceAction } from '@models/Voice.model';
 import { ModalService } from '@services/modal.service';
 import { ShellService } from '@services/shell.service';
 import { CommunityStore } from '@stores/community.store';
@@ -46,6 +57,10 @@ import { VoiceStore } from '@stores/voice.store';
 @Component({
   selector: 'app-server-channels',
   imports: [
+    CdkContextMenuTrigger,
+    CdkMenu,
+    CdkMenuItem,
+    CdkMenuTrigger,
     CdkDrag,
     CdkDropList,
     CdkDropListGroup,
@@ -74,7 +89,17 @@ export class ServerChannels implements OnInit, OnDestroy {
     settings: LucideSettings,
     chevron: LucideChevronDown,
     lock: LucideLock,
+    more: LucideEllipsis,
+    mic: LucideMic,
+    micOff: LucideMicOff,
+    deaf: LucideHeadphones,
+    deafOff: LucideHeadphoneOff,
+    move: LucideArrowRightLeft,
+    next: LucideChevronRight,
+    disconnect: LucidePhoneOff,
   };
+  protected readonly mutedLabel = $localize`:@@voice-mod.muted:Muted by a moderator`;
+  protected readonly deafenedLabel = $localize`:@@voice-mod.deafened:Deafened by a moderator`;
   protected readonly privateLabel = $localize`:@@channel.private:Private channel`;
   protected readonly joinTitle = $localize`:@@channels.join-voice:Join the voice channel`;
   protected readonly insideTitle = $localize`:@@channels.in-voice:You're in this voice channel`;
@@ -152,6 +177,36 @@ export class ServerChannels implements OnInit, OnDestroy {
       username: this.dm.label(pk),
       picture: this.dm.peers()[pk]?.picture,
     }));
+  }
+
+  /* --- VOICE MODERATION (spec § 11, Modération vocale) --- */
+  /** Someone else, and I may mute or move people in this channel. */
+  protected moderable(channel: Channel, pubkey: string): boolean {
+    return (
+      !this.isMe(pubkey) &&
+      (this.store.canIn(channel, 'mute_members') || this.store.canIn(channel, 'move_members'))
+    );
+  }
+
+  /** Beside the item, else under it (a phone): never over the item that opened it. */
+  protected readonly submenuAt: ConnectedPosition[] = [
+    { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top' },
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
+  ];
+
+  /** The other voice channels I may move people into. */
+  protected moveTargets(channel: Channel): Channel[] {
+    const all = this.store.current()?.channels ?? [];
+    return all.filter((c) => c.voice && c.id !== channel.id && this.store.canIn(c, 'move_members'));
+  }
+
+  protected moderateVoice(
+    channel: Channel,
+    pubkey: string,
+    action: VoiceAction,
+    to?: string,
+  ): void {
+    void this.store.moderateVoice(channel.id, pubkey, action, to);
   }
 
   /** Shares a screen (known once I'm in the channel). */

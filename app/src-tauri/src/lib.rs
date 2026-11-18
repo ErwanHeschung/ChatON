@@ -54,6 +54,7 @@ impl From<Error> for CmdError {
             Error::TooLarge => "too_large",
             Error::NotAllowed => "not_allowed",
             Error::VoiceDisabled => "voice_disabled",
+            Error::Full => "full",
             Error::Voice(_) => "voice",
             Error::ScreenCapture => "screen_capture",
             Error::Invalid(_) | Error::Nostr(_) => "invalid",
@@ -129,6 +130,7 @@ async fn start(app: &AppHandle, state: &App, session: Session) -> Account {
                         }
                         handle.emit("voice", voice)
                     }
+                    moved @ Update::VoiceMove { .. } => handle.emit("voice", moved),
                     other => handle.emit("community", other),
                 };
             })
@@ -476,6 +478,22 @@ async fn join_voice_channel(
     Ok(session(&state)
         .await?
         .join_voice_channel(&community, &channel, voice::prepare(&app).await)
+        .await?)
+}
+
+/// A moderator's action in a voice channel (spec § 11, Modération vocale).
+#[tauri::command]
+async fn moderate_voice(
+    state: State<'_, App>,
+    community: String,
+    channel: String,
+    target: PublicKey,
+    action: String,
+    to: Option<String>,
+) -> Res<()> {
+    Ok(session(&state)
+        .await?
+        .moderate_voice(&community, &channel, &target, &action, to.as_deref())
         .await?)
 }
 
@@ -955,6 +973,7 @@ pub fn run() {
             set_roles,
             remove_member,
             invites,
+            moderate_voice,
             revoke_invite,
             ban,
             unban,

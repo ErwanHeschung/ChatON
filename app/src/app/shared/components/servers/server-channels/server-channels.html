@@ -180,7 +180,11 @@
                     i18n-aria-label="@@channels.inside"
                   >
                     @for (person of inside; track person.id) {
-                      <li>
+                      @let mod = moderable(channel, person.id);
+                      <li
+                        [cdkContextMenuTriggerFor]="mod ? voiceMenu : null"
+                        [cdkContextMenuTriggerData]="{ $implicit: person.id, channel }"
+                      >
                         <button type="button" class="list-row" [appProfile]="person.id">
                           <app-user-card
                             [user]="person"
@@ -188,6 +192,40 @@
                             [speaking]="speaking(person.id)"
                           ></app-user-card>
                         </button>
+                        @if (channel.muted.includes(person.id)) {
+                          <svg
+                            class="forced"
+                            [lucideIcon]="icons.micOff"
+                            size="14"
+                            role="img"
+                            [attr.aria-label]="mutedLabel"
+                          >
+                            <title>{{ mutedLabel }}</title>
+                          </svg>
+                        }
+                        @if (channel.deafened.includes(person.id)) {
+                          <svg
+                            class="forced"
+                            [lucideIcon]="icons.deafOff"
+                            size="14"
+                            role="img"
+                            [attr.aria-label]="deafenedLabel"
+                          >
+                            <title>{{ deafenedLabel }}</title>
+                          </svg>
+                        }
+                        @if (mod) {
+                          <button
+                            type="button"
+                            class="btn btn-ghost btn-icon btn-sm hover-action"
+                            [cdkMenuTriggerFor]="voiceMenu"
+                            [cdkMenuTriggerData]="{ $implicit: person.id, channel }"
+                            i18n-title="@@moderate.menu"
+                            title="Moderate"
+                          >
+                            <svg [lucideIcon]="icons.more" size="14"></svg>
+                          </button>
+                        }
                         @if (here && live(person.id)) {
                           <button
                             type="button"
@@ -224,3 +262,75 @@
     </p>
   </div>
 }
+
+<ng-template #voiceMenu let-pubkey let-channel="channel">
+  <div class="menu" cdkMenu>
+    @if (store.canIn(channel, 'mute_members')) {
+      @let muted = channel.muted.includes(pubkey);
+      <button
+        class="menu-item"
+        cdkMenuItem
+        (cdkMenuItemTriggered)="moderateVoice(channel, pubkey, muted ? 'unmute' : 'mute')"
+      >
+        <svg [lucideIcon]="muted ? icons.mic : icons.micOff" size="16"></svg>
+        @if (muted) {
+          <ng-container i18n="@@voice-mod.unmute">Let them speak</ng-container>
+        } @else {
+          <ng-container i18n="@@voice-mod.mute">Mute for everyone</ng-container>
+        }
+      </button>
+      @let deafened = channel.deafened.includes(pubkey);
+      <button
+        class="menu-item"
+        cdkMenuItem
+        (cdkMenuItemTriggered)="moderateVoice(channel, pubkey, deafened ? 'undeafen' : 'deafen')"
+      >
+        <svg [lucideIcon]="deafened ? icons.deaf : icons.deafOff" size="16"></svg>
+        @if (deafened) {
+          <ng-container i18n="@@voice-mod.undeafen">Let them hear</ng-container>
+        } @else {
+          <ng-container i18n="@@voice-mod.deafen">Deafen</ng-container>
+        }
+      </button>
+    }
+    @if (store.canIn(channel, 'move_members')) {
+      @let targets = moveTargets(channel);
+      @if (targets.length) {
+        <button
+          class="menu-item"
+          cdkMenuItem
+          [cdkMenuTriggerFor]="moveMenu"
+          [cdkMenuPosition]="submenuAt"
+          [cdkMenuTriggerData]="{ $implicit: pubkey, channel, targets }"
+        >
+          <svg [lucideIcon]="icons.move" size="16"></svg>
+          <ng-container i18n="@@voice-mod.move">Move to</ng-container>
+          <svg class="submenu" [lucideIcon]="icons.next" size="14"></svg>
+        </button>
+      }
+      <button
+        class="menu-item danger"
+        cdkMenuItem
+        (cdkMenuItemTriggered)="moderateVoice(channel, pubkey, 'disconnect')"
+      >
+        <svg [lucideIcon]="icons.disconnect" size="16"></svg>
+        <ng-container i18n="@@voice-mod.disconnect">Disconnect</ng-container>
+      </button>
+    }
+  </div>
+</ng-template>
+
+<ng-template #moveMenu let-pubkey let-channel="channel" let-targets="targets">
+  <div class="menu" cdkMenu>
+    @for (to of targets; track to.id) {
+      <button
+        class="menu-item"
+        cdkMenuItem
+        (cdkMenuItemTriggered)="moderateVoice(channel, pubkey, 'move', to.id)"
+      >
+        <svg [lucideIcon]="icons.voice" size="16"></svg>
+        {{ to.name }}
+      </button>
+    }
+  </div>
+</ng-template>

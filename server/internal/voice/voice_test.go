@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -391,5 +392,136 @@ func TestReconcile(t *testing.T) {
 	}
 	if in.lk.called(`ListParticipants {"room":"call-abc"}`) {
 		t.Error("DM call rooms have no presence")
+	}
+}
+
+// voiceTags: the tags of voice channel id's 39004.
+func voiceTags(t *testing.T, in instance, id string) nostr.Tags {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	for ev := range connect(t, in.ws, nil).QueryEvents(nostr.Filter{
+		Kinds: []nostr.Kind{nostr.KindSimpleGroupLiveKitParticipants}, Tags: nostr.TagMap{"d": {id}},
+	}) {
+		_ = ctx
+		return ev.Tags
+	}
+	return nil
+}
+
+// Step 12h (spec § 11, Modération vocale).
+func TestModerate(t *testing.T) {
+	alice, bob, carol := newUser(), newUser(), newUser()
+	in := serve(t, alice, bob, carol)
+	setupCommunity(t, in, alice, bob)
+	const small = "w9t3r6m2d5dd" // one person at most
+	a := connect(t, in.ws, &alice)
+	publish(t, a, alice, nostr.KindSimpleGroupCreateGroup, nostr.Tag{"h", small}, nostr.Tag{"name", "small"},
+		nostr.Tag{"parent", communityID}, nostr.Tag{"livekit"}, nostr.Tag{"user_limit", "1"})
+	video := func(u user, id string) (int, map[string]any) {
+		status, out := post(t, in, voice.WellKnown+"/"+id, &u, map[string]any{})
+		if status != http.StatusCreated {
+			return status, nil
+		}
+		v, _ := claims(t, out["participant_token"])["video"].(map[string]any)
+		return status, v
+	}
+	mod := func(u user, action, target, to string) int {
+		status, _ := post(t, in, voice.ModPath, &u, map[string]string{"channel": room, "target": target, "action": action, "to": to})
+		return status
+	}
+	bobID := bob.pk.Hex() + ":0a0b0c0d"
+	if hook(t, in, apiSecret, "participant_joined", room, bobID) != http.StatusNoContent {
+		t.Fatal("hook")
+	}
+
+	// Members can't; bad bodies are refused.
+	if s := mod(bob, "mute", alice.pk.Hex(), ""); s != http.StatusForbidden {
+		t.Errorf("bob mutes alice: %d", s)
+	}
+	if s := mod(alice, "shout", bob.pk.Hex(), ""); s != http.StatusBadRequest {
+		t.Errorf("unknown action: %d", s)
+	}
+
+	// Mute: the devices lose the microphone, the 39004 says so, the next token too.
+	if s := mod(alice, "mute", bob.pk.Hex(), ""); s != http.StatusNoContent {
+		t.Fatalf("mute: %d", s)
+	}
+	if !in.lk.called(`UpdateParticipant {"identity":"` + bobID + `","permission":{"canPublish":true,"canPublishData":false,"canPublishSources":["SCREEN_SHARE"],"canSubscribe":true}`) {
+		t.Errorf("mute not applied: %v", in.lk.calls)
+	}
+	if tags := voiceTags(t, in, room); !slices.ContainsFunc(tags, func(t nostr.Tag) bool { return t[0] == "muted" && t[1] == bob.pk.Hex() }) {
+		t.Errorf("39004 without muted: %v", tags)
+	}
+	if _, v := video(bob, room); !slices.Equal(v["canPublishSources"].([]any), []any{"screen_share"}) {
+		t.Errorf("muted token: %v", v)
+	}
+	// Deafen: nothing to hear.
+	if s := mod(alice, "deafen", bob.pk.Hex(), ""); s != http.StatusNoContent {
+		t.Fatalf("deafen: %d", s)
+	}
+	if _, v := video(bob, room); v["canSubscribe"] != false {
+		t.Errorf("deafened token: %v", v)
+	}
+	mod(alice, "unmute", bob.pk.Hex(), "")
+	mod(alice, "undeafen", bob.pk.Hex(), "")
+	if _, v := video(bob, room); v["canSubscribe"] != true || len(v["canPublishSources"].([]any)) != 2 {
+		t.Errorf("token after unmute and undeafen: %v", v)
+	}
+	if tags := voiceTags(t, in, room); slices.ContainsFunc(tags, func(t nostr.Tag) bool { return t[0] == "muted" || t[0] == "deafened" }) {
+		t.Errorf("39004 still marked: %v", tags)
+	}
+
+	// The limit: carol joins small; bob can't, alice (move_members) can.
+	hook(t, in, apiSecret, "participant_joined", small, carol.pk.Hex()+":00000000")
+	if s, _ := video(bob, small); s != http.StatusConflict {
+		t.Errorf("full channel: %d", s)
+	}
+	if s, _ := video(alice, small); s != http.StatusCreated {
+		t.Errorf("full channel with move_members: %d", s)
+	}
+
+	// Move: the client is told (data only the server sends), and the limit lets it in.
+	if s := mod(alice, "move", bob.pk.Hex(), textID); s != http.StatusNotFound {
+		t.Errorf("move to a text channel: %d", s)
+	}
+	if s := mod(alice, "move", bob.pk.Hex(), small); s != http.StatusNoContent {
+		t.Fatalf("move: %d", s)
+	}
+	if !in.lk.called(`SendData {"data":`) || !in.lk.called(`SendData {"data":"`+base64.StdEncoding.EncodeToString([]byte(`{"channel":"`+small+`","community":"`+communityID+`"}`))+`","destination_identities":["`+bobID+`"],"kind":"RELIABLE","room":"`+room+`","topic":"chaton.move"}`) {
+		t.Errorf("move not sent: %v", in.lk.calls)
+	}
+	if s, _ := video(bob, small); s != http.StatusCreated {
+		t.Errorf("moved into a full channel: %d", s)
+	}
+	if s, _ := video(bob, small); s != http.StatusConflict {
+		t.Errorf("the pass is used once: %d", s)
+	}
+
+	// Disconnect, from where bob is.
+	hook(t, in, apiSecret, "participant_left", room, bobID)
+	if s := mod(alice, "disconnect", bob.pk.Hex(), ""); s != http.StatusNotFound {
+		t.Errorf("disconnect from where bob isn't: %d", s)
+	}
+	hook(t, in, apiSecret, "participant_joined", room, bobID)
+	if s := mod(alice, "disconnect", bob.pk.Hex(), ""); s != http.StatusNoContent || !in.lk.called(`RemoveParticipant {"identity":"`+bobID) {
+		t.Errorf("disconnect: %d %v", s, in.lk.calls)
+	}
+
+	// A timeout ejects, and no token while it runs.
+	in.lk.mu.Lock()
+	in.lk.calls = nil
+	in.lk.mu.Unlock()
+	until := strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10)
+	publish(t, a, alice, nostr.KindSimpleGroupPutUser, nostr.Tag{"h", communityID}, nostr.Tag{"p", bob.pk.Hex()}, nostr.Tag{"timeout", until})
+	deadline := time.Now().Add(2 * time.Second)
+	for !in.lk.called(`RemoveParticipant {"identity":"`+bobID) && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !in.lk.called(`RemoveParticipant {"identity":"` + bobID) {
+		t.Error("timed out member left in voice")
+	}
+	if s, _ := video(bob, room); s != http.StatusForbidden {
+		t.Errorf("token while timed out: %d", s)
 	}
 }

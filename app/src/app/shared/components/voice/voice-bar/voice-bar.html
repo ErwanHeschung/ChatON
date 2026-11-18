@@ -137,7 +137,10 @@
         >
       }
       @case ('not_allowed') {
-        <span i18n="@@voice.error-not-allowed">Members only: you're not in this one.</span>
+        <span i18n="@@voice.error-not-allowed">You can't join this one.</span>
+      }
+      @case ('full') {
+        <span i18n="@@voice.error-full">This voice channel is full.</span>
       }
       @default {
         <span i18n="@@voice.error">Couldn't reach the voice server.</span>

@@ -205,7 +205,7 @@
     "voice.deafen": "Couper le son",
     "voice.hang-up": "Raccrocher",
     "voice.error-disabled": "La voix est désactivée sur cette instance. Son admin peut l’activer.",
-    "voice.error-not-allowed": "Réservé aux membres : vous n’en faites pas partie.",
+    "voice.error-not-allowed": "Vous ne pouvez pas rejoindre ce salon.",
     "voice.error": "Impossible de joindre le serveur vocal.",
     "voice.dismiss": "Fermer",
     "call.started-mine": "Vous avez lancé un appel",
@@ -439,6 +439,15 @@
     "invites.copy": "Copier",
     "invites.revoke": " Révoquer ",
     "invites.none": "Aucune invitation en cours. Créez-en une depuis le menu de la communauté.",
-    "server-settings.invites": "Invitations"
+    "server-settings.invites": "Invitations",
+    "voice-mod.unmute": "Rendre la parole",
+    "voice-mod.mute": "Rendre muet pour tous",
+    "voice-mod.undeafen": "Rendre l’écoute",
+    "voice-mod.deafen": "Rendre sourd",
+    "voice-mod.move": "Déplacer vers",
+    "voice-mod.disconnect": "Déconnecter",
+    "voice-mod.muted": "Rendu muet par la modération",
+    "voice-mod.deafened": "Rendu sourd par la modération",
+    "voice.error-full": "Ce salon vocal est plein."
   }
 }

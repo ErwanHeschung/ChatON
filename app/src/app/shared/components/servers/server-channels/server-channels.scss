@@ -82,6 +82,22 @@
     border: none;
     cursor: pointer;
   }
+
+  // Set by a moderator: red-free, like the timeout clock.
+  .forced {
+    flex: none;
+    color: var(--content-secondary);
+  }
+
+  li:hover .hover-action,
+  li:focus-within .hover-action,
+  .hover-action[aria-expanded='true'] {
+    opacity: 1;
+  }
+}
+
+.menu-item .submenu {
+  margin-left: auto;
 }
 
 // The voice room I'm in: green like the rest of "me, live", without the fill of the open

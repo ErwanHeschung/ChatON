@@ -13,6 +13,7 @@ use crate::{Error, Result, media};
 
 const WELL_KNOWN: &str = "/.well-known/nip29/livekit";
 const CALL_PATH: &str = "/api/voice/call";
+const MOD_PATH: &str = "/api/voice/moderate";
 
 /// Where I'm talking.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -92,6 +93,30 @@ impl Session {
         token(self.nip98(Method::POST, &url, "{}".into()).await?).await
     }
 
+    /// A moderator's action on `target` in voice `channel` (spec § 11,
+    /// Modération vocale): `mute`, `unmute`, `deafen`, `undeafen`,
+    /// `disconnect`, or `move` to voice channel `to`.
+    pub async fn moderate_voice(
+        &self,
+        community: &str,
+        channel: &str,
+        target: &PublicKey,
+        action: &str,
+        to: Option<&str>,
+    ) -> Result<()> {
+        let relay = self.relay_of(community).await?;
+        let url = format!("{}{MOD_PATH}", media::http_base(&relay));
+        let body = serde_json::json!({
+            "channel": channel, "target": target, "action": action, "to": to.unwrap_or_default(),
+        });
+        let resp = self.nip98(Method::POST, &url, body.to_string()).await?;
+        match resp.status() {
+            StatusCode::NO_CONTENT => Ok(()),
+            StatusCode::NOT_FOUND => Err(Error::NotFound),
+            status => Err(status_error(status, resp.text().await.unwrap_or_default())),
+        }
+    }
+
     /// `base`: the caller's instance. The key never goes there.
     pub async fn call_token(&self, base: &str, id: &str, room: &[PublicKey]) -> Result<Token> {
         let body = serde_json::json!({ "id": id, "members": room }).to_string();
@@ -111,6 +136,7 @@ fn status_error(status: StatusCode, text: String) -> Error {
     match status {
         StatusCode::FORBIDDEN => Error::NotAllowed,
         StatusCode::NOT_FOUND => Error::VoiceDisabled,
+        StatusCode::CONFLICT => Error::Full,
         StatusCode::BAD_REQUEST => Error::Invalid(text),
         _ => Error::Server(format!("{status}: {text}")),
     }
@@ -186,6 +212,9 @@ mod live {
             }
         }
     }
+
+    /// The topic of the server's data message that moves me.
+    const MOVE_TOPIC: &str = "chaton.move";
 
     /// Receives the screen I watch, as JPEG images.
     pub type Sink = Arc<dyn Fn(Vec<u8>) + Send + Sync>;
@@ -616,6 +645,44 @@ mod live {
                         }
                         continue;
                     }
+                    // A moderator moves me (spec § 11, Modération vocale): only
+                    // the server sends data here (no participant).
+                    RoomEvent::DataReceived {
+                        payload,
+                        topic,
+                        participant: None,
+                        ..
+                    } if topic.as_deref() == Some(MOVE_TOPIC) => {
+                        #[derive(serde::Deserialize)]
+                        struct Move {
+                            community: String,
+                            channel: String,
+                        }
+                        if let Ok(to) = serde_json::from_slice::<Move>(&payload)
+                            && matches!(&st.target, VoiceTarget::Channel { community, .. } if *community == to.community)
+                        {
+                            drop(updates.send(Update::VoiceMove {
+                                community: to.community,
+                                channel: to.channel,
+                            }));
+                        }
+                        continue;
+                    }
+                    // A moderator's mute took my microphone away (the server
+                    // unpublished it); lifted, it comes back.
+                    RoomEvent::ParticipantPermissionChanged {
+                        participant: Participant::Local(_),
+                        permission: Some(permission),
+                    } => {
+                        // livekit's proto types are private: MICROPHONE is 2.
+                        let mic = permission.can_publish
+                            && (permission.can_publish_sources.is_empty()
+                                || permission.can_publish_sources.contains(&2));
+                        if mic {
+                            tokio::spawn(republish_microphone(slot.clone(), state.clone()));
+                        }
+                        continue;
+                    }
                     RoomEvent::ActiveSpeakersChanged { speakers } => {
                         st.speaking = keys(speakers.iter().map(|p| p.identity().to_string()));
                     }
@@ -633,6 +700,34 @@ mod live {
         if slot.as_ref().is_some_and(|a| Arc::ptr_eq(&a.state, &state)) {
             *slot = None;
             drop(updates.send(Update::Voice { state: None }));
+        }
+    }
+
+    /// Publishes my microphone again, if I had one and it's not published.
+    async fn republish_microphone(slot: Slot, state: Arc<Mutex<VoiceState>>) {
+        let slot = slot.lock().await;
+        let Some(active) = slot.as_ref().filter(|a| Arc::ptr_eq(&a.state, &state)) else {
+            return;
+        };
+        let Some(mic) = &active.mic else { return };
+        let local = active.room.local_participant();
+        if local
+            .track_publications()
+            .values()
+            .any(|p| p.source() == TrackSource::Microphone)
+        {
+            return;
+        }
+        let options = TrackPublishOptions {
+            source: TrackSource::Microphone,
+            ..Default::default()
+        };
+        if local
+            .publish_track(LocalTrack::Audio(mic.clone()), options)
+            .await
+            .is_ok()
+        {
+            apply(active, &snapshot(&state)); // still self-muted, if I was
         }
     }
 

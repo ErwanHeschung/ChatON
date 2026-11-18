@@ -217,6 +217,7 @@ func generate() []byte {
 		// voice (spec § 11): voice channel, its participants (relay), DM call and its end (rumors)
 		valid("voice_channel_edit_metadata", alice, 9002, nostr.Tags{v0, {"h", voice}, {"name", "Vocal"}, {"parent", community}, {"livekit"}}, ""),
 		valid("group_voice_participants", relay, 39004, nostr.Tags{v0, {"d", voice}, {"participant", alice.pk}, {"participant", bob.pk}}, ""),
+		valid("group_voice_participants_moderated", relay, 39004, nostr.Tags{v0, {"d", voice}, {"participant", alice.pk}, {"participant", bob.pk}, {"muted", bob.pk}, {"deafened", bob.pk}}, ""),
 		// channels and categories (spec § 9): one 9007 per channel, layout in the community's 9002
 		valid("channel_create", bob, 9007, nostr.Tags{v0, {"h", channel1}, {"parent", community}, {"name", "général"}, {"category", "texte"}}, ""),
 		valid("channel_create_voice", bob, 9007, nostr.Tags{v0, {"h", voice}, {"parent", community}, {"name", "Vocal"}, {"livekit"}}, ""),

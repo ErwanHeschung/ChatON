@@ -65,6 +65,8 @@ pub enum Error {
     NotAllowed,
     #[error("voice is off on this instance")]
     VoiceDisabled,
+    #[error("this voice channel is full")]
+    Full,
     #[error("voice: {0}")]
     Voice(String),
     #[error("can't capture the screen here")]

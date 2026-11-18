@@ -1094,16 +1094,23 @@ func (g *Groups) emit(ctx context.Context, id string, events ...nostr.Event) {
 	}
 }
 
-// VoiceAccess tells whether id is a voice channel (spec § 11) and pk may connect to it (spec § 9).
-func (g *Groups) VoiceAccess(id string, pk nostr.PubKey) (voice, member bool) {
+// Voice: channel id as a voice channel (spec § 11), with pk's permissions in it (§ 9); false if it isn't one.
+func (g *Groups) Voice(id string, pk nostr.PubKey) (VoiceChannel, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	group := g.groups[id]
-	if group == nil || !group.LiveKit || group.Parent == "" {
-		return false, false
-	}
 	c := g.community(id)
-	return true, c != nil && g.perms(c, pk, group).Has("connect")
+	if group == nil || !group.LiveKit || group.Parent == "" || c == nil {
+		return VoiceChannel{}, false
+	}
+	return VoiceChannel{Community: c.Address.ID, Perms: g.perms(c, pk, group), UserLimit: g.layout(id).UserLimit}, true
+}
+
+// VoiceChannel is what voice needs of a voice channel (spec § 11).
+type VoiceChannel struct {
+	Community string
+	Perms     Perms // the key's, in this channel
+	UserLimit int   // 0: none
 }
 
 // VoiceChannels lists the voice channels of a community, or of every community when it's "".
@@ -1119,8 +1126,9 @@ func (g *Groups) VoiceChannels(community string) []string {
 	return ids
 }
 
-// SetVoiceParticipants publishes who is in voice channel id (39004, signed by the relay).
-func (g *Groups) SetVoiceParticipants(ctx context.Context, id string, pks []nostr.PubKey) {
+// SetVoiceParticipants publishes who is in voice channel id, and who of them
+// moderators muted or deafened (39004, signed by the relay; spec § 11).
+func (g *Groups) SetVoiceParticipants(ctx context.Context, id string, pks, muted, deafened []nostr.PubKey) {
 	g.mu.Lock()
 	defer g.unlock()
 	group := g.groups[id]
@@ -1128,7 +1136,14 @@ func (g *Groups) SetVoiceParticipants(ctx context.Context, id string, pks []nost
 		return
 	}
 	group.LiveKitParticipants = pks
-	g.emit(ctx, id, group.ToLiveKitParticipantsEvent())
+	ev := group.ToLiveKitParticipantsEvent()
+	for _, pk := range muted {
+		ev.Tags = append(ev.Tags, nostr.Tag{"muted", pk.Hex()})
+	}
+	for _, pk := range deafened {
+		ev.Tags = append(ev.Tags, nostr.Tag{"deafened", pk.Hex()})
+	}
+	g.emit(ctx, id, ev)
 }
 
 func (g *Groups) sign(ev *nostr.Event) {

@@ -193,6 +193,10 @@ export const VoiceStore = signalStore(
           patchState(store, update.state ? { state: update.state, error: null } : { state: null });
           return;
         }
+        if (update.type === 'voice_move') {
+          void join('join_voice_channel', { community: update.community, channel: update.channel });
+          return;
+        }
         clearTimeout(ringTimer);
         patchState(store, { ring: { message: update.message, until: update.until } });
         ringTimer = setTimeout(stopRing, Math.max(0, update.until * 1000 - Date.now()));
