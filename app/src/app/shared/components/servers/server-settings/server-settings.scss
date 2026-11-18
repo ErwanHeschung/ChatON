@@ -1,0 +1,222 @@
+@use 'variables' as vars;
+
+// Layout, rows and groups come from the account's settings (settings.scss).
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.grow {
+  flex: 1;
+}
+
+.row.error {
+  margin: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.field.wide {
+  width: 100%;
+}
+
+.banner-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  width: 100%;
+}
+
+.banner {
+  width: 100%;
+  aspect-ratio: 3 / 1;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+}
+
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+label.row {
+  cursor: pointer;
+}
+
+.dot {
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--radius-full);
+  background-color: var(--content-tertiary);
+}
+
+/* --- ROLES: the order on the left, the open role on the right --- */
+.roles {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-6);
+}
+
+.role-list {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+
+  ol {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: flex;
+    align-items: center;
+  }
+
+  .list-row {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  // Arrows show on the row in hand, so the list reads as names.
+  .order {
+    display: flex;
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-out);
+  }
+
+  li:hover .order,
+  li:focus-within .order {
+    opacity: 1;
+  }
+
+  .hint {
+    margin: 0;
+  }
+}
+
+.role-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+
+  > .hint {
+    margin: 0;
+  }
+
+  .section-label {
+    margin-bottom: calc(var(--space-2) - var(--space-4));
+  }
+
+  .delete {
+    align-self: flex-start;
+  }
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.swatch {
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+
+  &[aria-checked='true'] {
+    outline: 2px solid var(--content-primary);
+    outline-offset: 2px;
+  }
+
+  &.none {
+    border-color: var(--border-strong);
+    background: linear-gradient(
+      135deg,
+      transparent calc(50% - 1px),
+      var(--danger) calc(50% - 1px) calc(50% + 1px),
+      transparent calc(50% + 1px)
+    );
+  }
+}
+
+// Pinned under the editor while the draft differs from what the relay holds.
+.save-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background-color: var(--surface-raised);
+  box-shadow: var(--shadow-popover);
+}
+
+/* --- MEMBERS --- */
+.member {
+  justify-content: flex-start;
+  gap: var(--space-3);
+
+  app-user-card {
+    min-width: 0;
+  }
+
+  .actions {
+    margin-left: auto;
+  }
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+
+  .badge {
+    gap: var(--space-1);
+  }
+}
+
+.btn.danger {
+  color: var(--danger);
+}
+
+.menu-item input {
+  margin: 0;
+  pointer-events: none;
+}
+
+@media (max-width: #{vars.$breakpoint-md - 1px}) {
+  .roles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .role-list {
+    position: static;
+
+    .order {
+      opacity: 1;
+    }
+  }
+}

@@ -2,7 +2,7 @@
 //! `server/internal/community/perms.go`, held to `spec/test-vectors/permissions.json`.
 //! Keys are lowercase hex here, as in the tags.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// In spec order: one bit each.
 pub const PERMISSIONS: [&str; 21] = [
@@ -63,7 +63,7 @@ impl Perms {
 }
 
 /// A `["role", id, name, color, attr…]` tag; attributes are permissions, `hoist`, `mentionable`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Role {
     pub id: String,
     pub name: String,
@@ -109,11 +109,12 @@ pub fn default_roles() -> Vec<Role> {
         attrs: attrs.iter().map(|a| a.to_string()).collect(),
     };
     vec![
-        role("admin", "Admin", &["administrator"]),
+        role("admin", "Admin", &["hoist", "administrator"]),
         role(
             "moderator",
             "Modérateur",
             &[
+                "hoist",
                 "manage_messages",
                 "kick_members",
                 "ban_members",
@@ -233,6 +234,17 @@ impl Policy {
             }
         }
         best
+    }
+
+    /// Ids of the roles strictly below `m`'s highest, `everyone` included.
+    pub fn roles_below(&self, m: &Member) -> Vec<String> {
+        let rank = self.rank(m);
+        self.roles
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i as isize > rank)
+            .map(|(_, r)| r.id.clone())
+            .collect()
     }
 
     /// `a` is strictly above `b`.

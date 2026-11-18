@@ -14,6 +14,7 @@ import {
   ChannelMessage,
   Community,
   CommunityUpdate,
+  CommunityEdit,
   Member,
   Permission,
 } from '@models/Community.model';
@@ -193,19 +194,44 @@ export const CommunityStore = signalStore(
         }
       },
 
-      /** Admin: new community picture (public, on this community's instance). */
-      async setPicture(file: File) {
+      /** manage_community: new picture or banner (public, on my instance). */
+      async setPicture(file: File, banner = false) {
         const community = store.selected();
         if (!community) {
-          return;
+          return false;
         }
         try {
-          await media.upload('set_community_picture', file, { community });
+          await media.upload('set_community_picture', file, {
+            community,
+            ...(banner ? { banner: '1' } : {}),
+          });
           patchState(store, { error: null });
           await load();
+          return true;
         } catch (e) {
           patchState(store, { error: (e as CmdError).code ?? 'internal' });
+          return false;
         }
+      },
+
+      /** Name, description, roles or owner: core sends the whole settings (spec § 9). */
+      async update(edit: CommunityEdit) {
+        const res = await run('update_community', { community: store.selected(), edit });
+        if (res.ok) {
+          await load();
+          await loadMembers();
+        }
+        return res.ok;
+      },
+
+      /** Owner: deletes it for everyone. */
+      async deleteCommunity() {
+        const community = store.selected();
+        if (community && (await run('delete_community', { community })).ok) {
+          await load();
+          return true;
+        }
+        return false;
       },
 
       async remove(id: string) {

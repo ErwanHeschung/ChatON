@@ -81,6 +81,20 @@ type Groups struct {
 	origins map[nostr.PubKey]string
 	// Owner and roles of each community (39000 owner, 39003), by community id.
 	policies map[string]*Policy
+	// Communities whose stored state predates owner and roles: republished by Bind.
+	stale []string
+	// Relay events to broadcast once mu is released: PreventBroadcast takes it.
+	outbox []nostr.Event
+}
+
+// unlock releases mu, then broadcasts what was published under it.
+func (g *Groups) unlock() {
+	out := g.outbox
+	g.outbox = nil
+	g.mu.Unlock()
+	for _, ev := range out {
+		g.relay.BroadcastEvent(ev)
+	}
 }
 
 // Verifier says which instance a handle is on, if it names this key there (NIP-05).
@@ -147,8 +161,11 @@ func New(key nostr.SecretKey, relayURL string, store eventstore.Store, dir Direc
 			continue
 		}
 		p := &Policy{Owner: owners[id], Roles: roles[id]}
+		if p.Roles == nil || p.Owner == (nostr.PubKey{}) {
+			g.stale = append(g.stale, id)
+		}
 		if p.Roles == nil {
-			p.Roles = defaultRoles()
+			p.Roles = DefaultRoles()
 		}
 		if p.Owner == (nostr.PubKey{}) {
 			p.Owner = g.creator(id)
@@ -179,6 +196,25 @@ func (g *Groups) Bind(rl *khatru.Relay) {
 	rl.Info.Self = &g.self
 	rl.OnEventSaved = g.saved
 	rl.PreventBroadcast = g.PreventBroadcast
+	// Clients send back the owner and roles they read: give them some.
+	g.mu.Lock()
+	for _, id := range g.stale {
+		g.publish(context.Background(), id)
+	}
+	g.stale = nil
+	g.unlock()
+	stored := rl.QueryStored
+	rl.QueryStored = func(ctx context.Context, f nostr.Filter) iter.Seq[nostr.Event] {
+		readers := khatru.GetAllAuthed(ctx)
+		return func(yield func(nostr.Event) bool) {
+			// ponytail: filtered after the store's limit, so a page can come back short.
+			for ev := range stored(ctx, f) {
+				if g.Readable(readers, ev) && !yield(ev) {
+					return
+				}
+			}
+		}
+	}
 }
 
 // The bbolt store preallocates `limit` slots: keep it bounded.
@@ -224,7 +260,7 @@ func (g *Groups) creator(id string) nostr.PubKey {
 func (g *Groups) policy(c *nip29.Group) *Policy {
 	p := g.policies[c.Address.ID]
 	if p == nil {
-		p = &Policy{Roles: defaultRoles()}
+		p = &Policy{Roles: DefaultRoles()}
 		g.policies[c.Address.ID] = p
 	}
 	return p
@@ -424,8 +460,8 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 }
 
 // checkEdit: a channel is edited with manage_channels in its community, which it
-// gets once (spec § 9, channel creation); a community's name and picture need
-// manage_community, its channel list manage_channels.
+// gets once (spec § 9, channel creation). A community's 9002 carries all its
+// settings; each one changed needs its permission (spec § 9, Réglages).
 func (g *Groups) checkEdit(ev nostr.Event, group *nip29.Group) (bool, string) {
 	parent := ""
 	if t := ev.Tags.Find("parent"); t != nil {
@@ -460,6 +496,26 @@ func (g *Groups) checkEdit(ev nostr.Event, group *nip29.Group) (bool, string) {
 			tagValue(ev, "about") != group.About || tagValue(ev, "banner") != group.Banner {
 			if !can.Has("manage_community") {
 				return reject("restricted: editing the community needs manage_community")
+			}
+		}
+		// Without them, an older client's 9002 would wipe the roles: refused.
+		owner, err := nostr.PubKeyFromHex(tagValue(ev, "owner"))
+		roles := ParseRoles(ev.Tags)
+		if err != nil || roles == nil {
+			return reject("invalid: a community's 9002 carries its owner and roles; update the app")
+		}
+		policy := g.policy(group)
+		if owner != policy.Owner {
+			switch {
+			case ev.PubKey != policy.Owner:
+				return reject("restricted: only the owner gives the community away")
+			case !isMember(group, owner):
+				return reject("invalid: the new owner must be a member")
+			}
+		}
+		if !slices.EqualFunc(roles, policy.Roles, Role.equal) {
+			if err := policy.CheckRoles(member(group, ev.PubKey), roles); err != nil {
+				return reject("%s", err)
 			}
 		}
 	}
@@ -514,16 +570,44 @@ func (g *Groups) CheckFilter(ctx context.Context, f nostr.Filter) (bool, string)
 	return false, ""
 }
 
-// PreventBroadcast stops live group events to connections that are no longer
-// members: CheckFilter only runs when the subscription opens.
+// PreventBroadcast applies Readable to live events too: CheckFilter only runs
+// when the subscription opens, and a member can lose a permission or leave since.
 func (g *Groups) PreventBroadcast(ws *khatru.WebSocket, _ nostr.Filter, ev nostr.Event) bool {
+	return !g.Readable(ws.AuthedPublicKeys, ev)
+}
+
+// Readable: one of readers may read ev (spec § 9, Lecture). Anything but
+// requests from clients is left to the other policies.
+func (g *Groups) Readable(readers []nostr.PubKey, ev nostr.Event) bool {
 	if !slices.Contains(ClientKinds, ev.Kind) {
-		return false
+		return true
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	c := g.community(groupID(ev))
-	return c == nil || !slices.ContainsFunc(ws.AuthedPublicKeys, func(pk nostr.PubKey) bool { return isMember(c, pk) })
+	if c == nil {
+		return false
+	}
+	for _, pk := range readers {
+		if pk == ev.PubKey {
+			return true
+		}
+		switch ev.Kind {
+		case nostr.KindSimpleGroupChatMessage, nostr.KindSimpleGroupDeleteEvent:
+			if g.perms(c, pk, g.groups[groupID(ev)]).Has("view_channel") {
+				return true
+			}
+		case nostr.KindSimpleGroupCreateInvite, nostr.KindSimpleGroupJoinRequest:
+			if can := g.perms(c, pk, nil); can.Has("view_audit_log") || can.Has("manage_invites") {
+				return true
+			}
+		default:
+			if g.perms(c, pk, nil).Has("view_audit_log") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // saved applies an accepted group event and publishes the new state.
@@ -532,13 +616,13 @@ func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
 		return
 	}
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	defer g.unlock()
 
 	id := groupID(ev)
 	switch ev.Kind {
 	case nostr.KindSimpleGroupCreateGroup:
 		g.groups[id] = g.newGroup(id)
-		g.policies[id] = &Policy{Owner: ev.PubKey, Roles: defaultRoles()}
+		g.policies[id] = &Policy{Owner: ev.PubKey, Roles: DefaultRoles()}
 		g.put(ctx, id, ev.PubKey, RoleAdmin)
 		g.publish(ctx, id)
 		return
@@ -572,13 +656,43 @@ func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
 		return
 	}
 	action.Apply(group)
-	if ev.Kind == nostr.KindSimpleGroupEditMetadata && group.Parent != "" {
+	switch {
+	case ev.Kind == nostr.KindSimpleGroupEditMetadata && group.Parent != "":
 		// ponytail: a channel only keeps name and parent; topics, pictures later.
 		group.Children = nil
 		delete(g.policies, id) // created as a group of its own, it's a channel now
+	case ev.Kind == nostr.KindSimpleGroupEditMetadata:
+		g.applySettings(group, ev)
+	case ev.Kind == nostr.KindSimpleGroupDeleteGroup && group.Parent == "":
+		// A deleted community takes its channels and invites with it.
+		group.InviteCodes = nil
+		for _, child := range group.Children {
+			if ch := g.groups[child]; ch != nil {
+				action.Apply(ch)
+				g.publish(ctx, child)
+			}
+		}
 	}
 	if ev.Kind != nostr.KindSimpleGroupCreateInvite { // codes stay secret
 		g.publish(ctx, id)
+	}
+}
+
+// applySettings keeps the owner and roles of an accepted community 9002 (the
+// library drops those tags); members lose the roles that are gone.
+func (g *Groups) applySettings(c *nip29.Group, ev nostr.Event) {
+	p := g.policy(c)
+	if owner, err := nostr.PubKeyFromHex(tagValue(ev, "owner")); err == nil {
+		p.Owner = owner
+	}
+	if roles := ParseRoles(ev.Tags); roles != nil {
+		p.Roles = roles
+	}
+	for pk, roles := range c.Members {
+		c.Members[pk] = slices.DeleteFunc(roles, func(r *nip29.Role) bool {
+			_, ok := p.role(r.Name)
+			return !ok
+		})
 	}
 }
 
@@ -600,7 +714,7 @@ func (g *Groups) relayEvent(_ context.Context, kind nostr.Kind, id string, tags 
 	if err := g.store.SaveEvent(ev); err != nil {
 		g.relay.Log.Printf("community: save %s: %v", ev.Kind, err)
 	}
-	g.relay.BroadcastEvent(ev)
+	g.outbox = append(g.outbox, ev)
 	return ev
 }
 
@@ -632,7 +746,7 @@ func (g *Groups) emit(ctx context.Context, id string, events ...nostr.Event) {
 			g.relay.Log.Printf("community: replace %s: %v", ev.Kind, err)
 			continue
 		}
-		g.relay.BroadcastEvent(ev)
+		g.outbox = append(g.outbox, ev)
 	}
 }
 
@@ -664,7 +778,7 @@ func (g *Groups) VoiceChannels(community string) []string {
 // SetVoiceParticipants publishes who is in voice channel id (39004, signed by the relay).
 func (g *Groups) SetVoiceParticipants(ctx context.Context, id string, pks []nostr.PubKey) {
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	defer g.unlock()
 	group := g.groups[id]
 	if group == nil || !group.LiveKit {
 		return

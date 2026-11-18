@@ -1,10 +1,12 @@
 package community
 
 import (
+	"slices"
 	"testing"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/eventstore/slicestore"
+	"fiatjaf.com/nostr/khatru"
 )
 
 type noDir struct{}
@@ -46,6 +48,18 @@ func TestLegacyCommunityGetsDefaultsAndOwner(t *testing.T) {
 		t.Errorf("owner %s, want the creator", p.Owner.Hex())
 	case len(p.Roles) != 3 || p.Roles[2].ID != Everyone:
 		t.Errorf("roles %v, want the defaults", p.Roles)
+	}
+	// Bound to a relay, it republishes the state with them.
+	rl := khatru.NewRelay()
+	rl.UseEventstore(store, 100)
+	g.Bind(rl)
+	for ev := range store.QueryEvents(nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupMetadata}, Authors: []nostr.PubKey{key.Public()}}, 1) {
+		if owner := ev.Tags.Find("owner"); owner == nil || owner[1] != alice.Public().Hex() {
+			t.Errorf("39000 not republished with its owner: %v", ev.Tags)
+		}
+	}
+	if ParseRoles(slices.Collect(store.QueryEvents(nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupRoles}}, 1))[0].Tags) == nil {
+		t.Error("39003 not republished in ChatON's format")
 	}
 	moderator := p.Effective(Member{PubKey: nostr.Generate().Public(), Roles: []string{RoleModerator}}, nil, 0)
 	if !moderator.Has("ban_members", "kick_members", "manage_messages") || moderator.Has("manage_roles") {

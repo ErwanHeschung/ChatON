@@ -8,6 +8,7 @@ import { CommunityRail } from '@components/community-rail/community-rail';
 import { UserPanel } from '@components/users/user-panel/user-panel';
 import { UsersList } from '@components/users/users-list/users-list';
 import { Settings } from '@components/settings/settings';
+import { ServerSettings } from '@components/servers/server-settings/server-settings';
 import { CallBanner } from '@components/voice/call-banner/call-banner';
 import { ScreenStage } from '@components/voice/screen-stage/screen-stage';
 import { VoiceBar } from '@components/voice/voice-bar/voice-bar';
@@ -32,6 +33,7 @@ import { VoiceStore } from '@stores/voice.store';
     UserPanel,
     Chat,
     Settings,
+    ServerSettings,
     VoiceBar,
     CallBanner,
     ScreenStage,

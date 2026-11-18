@@ -7,7 +7,7 @@
     [ears]="ears()"
   ></app-avatar>
 </span>
-<span class="name" [title]="user().username">
+<span class="name" [title]="user().username" [style.color]="color()">
   @if (nick(); as nick) {
     {{ nick }} <span class="instance">{{ user().username }}</span>
   } @else {

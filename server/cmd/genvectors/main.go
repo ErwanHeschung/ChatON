@@ -173,7 +173,11 @@ func generate() []byte {
 		valid("http_auth", alice, 27235, nostr.Tags{v0, {"u", "https://chaton.example/api/handle"}, {"method", "POST"}, {"payload", hex.EncodeToString(payload[:])}}, ""),
 		// communities (spec § 9): C = community, S = channel
 		valid("group_create", alice, 9007, nostr.Tags{v0, {"h", community}}, ""),
-		valid("group_edit_metadata", alice, 9002, nostr.Tags{v0, {"h", community}, {"name", "Les chatons"}, {"child", channel1}}, ""),
+		valid("group_edit_metadata", alice, 9002, nostr.Tags{v0, {"h", community}, {"name", "Les chatons"}, {"about", "Pour les chats"},
+			{"child", channel1}, {"owner", alice.pk},
+			{"role", "admin", "Admin", "", "administrator"},
+			{"role", "gardien", "Gardien", "#e5a50a", "hoist", "kick_members"},
+			{"role", "everyone", "@everyone", "", "view_channel", "send_messages"}}, ""),
 		valid("group_put_user", relay, 9000, nostr.Tags{v0, {"h", community}, {"p", alice.pk, "admin"}}, ""),
 		valid("group_create_invite", alice, 9009, nostr.Tags{v0, {"h", community}, {"code", "AB12CD34"}}, ""),
 		valid("group_join_request", bob, 9021, nostr.Tags{v0, {"h", community}, {"code", "AB12CD34"}}, ""),

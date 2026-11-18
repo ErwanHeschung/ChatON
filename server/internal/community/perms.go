@@ -1,6 +1,9 @@
 package community
 
 import (
+	"errors"
+	"fmt"
+	"regexp"
 	"slices"
 
 	"fiatjaf.com/nostr"
@@ -83,11 +86,12 @@ type Override struct {
 	Perms  Perms
 }
 
-func defaultRoles() []Role {
+// DefaultRoles: a new community's, and an older one's (spec § 9).
+func DefaultRoles() []Role {
 	return []Role{
-		{ID: RoleAdmin, Name: "Admin", Attrs: []string{"administrator"}},
+		{ID: RoleAdmin, Name: "Admin", Attrs: []string{"hoist", "administrator"}},
 		{ID: RoleModerator, Name: "Modérateur", Attrs: []string{
-			"manage_messages", "kick_members", "ban_members", "moderate_members",
+			"hoist", "manage_messages", "kick_members", "ban_members", "moderate_members",
 			"create_invite", "view_audit_log", "mute_members", "move_members",
 		}},
 		{ID: Everyone, Name: "@everyone", Attrs: []string{
@@ -212,4 +216,59 @@ func (p *Policy) Outranks(a, b Member) bool {
 func (p *Policy) RoleBelow(a Member, id string) bool {
 	i := slices.IndexFunc(p.Roles, func(r Role) bool { return r.ID == id })
 	return i >= 0 && id != Everyone && p.rank(a) < i
+}
+
+var (
+	roleIDRe = regexp.MustCompile(`^[a-z0-9_-]{1,32}$`)
+	colorRe  = regexp.MustCompile(`^#[0-9a-f]{6}$`)
+)
+
+// MaxRoles per community, everyone included.
+const MaxRoles = 100
+
+func (r Role) equal(o Role) bool {
+	return r.ID == o.ID && r.Name == o.Name && r.Color == o.Color && slices.Equal(r.Attrs, o.Attrs)
+}
+
+// CheckRoles: actor may replace p.Roles with next (spec § 9, Modifier les rôles).
+// Roles at or above the actor's own don't change; roles below it may be added,
+// edited, moved or removed, but gain only permissions the actor has.
+func (p *Policy) CheckRoles(actor Member, next []Role) error {
+	if len(next) == 0 || next[len(next)-1].ID != Everyone {
+		return errors.New("invalid: everyone must be the last role")
+	}
+	if len(next) > MaxRoles {
+		return fmt.Errorf("invalid: at most %d roles", MaxRoles)
+	}
+	seen := map[string]bool{}
+	for _, r := range next {
+		switch {
+		case !roleIDRe.MatchString(r.ID):
+			return fmt.Errorf("invalid: role id %q", r.ID)
+		case seen[r.ID]:
+			return fmt.Errorf("invalid: role %q twice", r.ID)
+		case r.Name == "" || len(r.Name) > 100:
+			return fmt.Errorf("invalid: role %q needs a name of 1 to 100 bytes", r.ID)
+		case r.Color != "" && !colorRe.MatchString(r.Color):
+			return fmt.Errorf("invalid: role %q color must be #rrggbb", r.ID)
+		}
+		seen[r.ID] = true
+	}
+	can := p.Effective(actor, nil, nostr.Now())
+	if !can.Has("manage_roles") {
+		return errors.New("restricted: editing roles needs manage_roles")
+	}
+	// Up to and including the actor's highest role: as they are, where they are.
+	for i := 0; i <= p.rank(actor) && i < len(p.Roles); i++ {
+		if i >= len(next) || !next[i].equal(p.Roles[i]) {
+			return fmt.Errorf("restricted: role %q is not below yours", p.Roles[i].ID)
+		}
+	}
+	for _, r := range next {
+		before, _ := p.role(r.ID)
+		if gained := r.Perms() &^ before.Perms(); gained&^can != 0 {
+			return fmt.Errorf("restricted: you can't give %v", (gained &^ can).Names())
+		}
+	}
+	return nil
 }

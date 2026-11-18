@@ -365,9 +365,53 @@ async fn a_community_with_channels_invites_and_moderation() {
     let random_msgs = alice.channel_messages(&random.id).await.unwrap();
     assert_eq!(random_msgs.len(), 1);
 
-    // Alice removes Carol: her posts are refused, the community leaves her list.
+    // Alice adds a Gardien role (kick_members, listed apart) and describes the community.
+    let mut roles = alice.communities().await.unwrap()[0].all_roles.clone();
+    roles.insert(
+        2,
+        chaton_core::perms::Role {
+            id: "gardien".into(),
+            name: "Gardien".into(),
+            color: "#e5a50a".into(),
+            attrs: vec!["hoist".into(), "kick_members".into()],
+        },
+    );
+    let edit = chaton_core::community::CommunityEdit {
+        about: Some("Pour les chats".into()),
+        roles: Some(roles),
+        ..Default::default()
+    };
+    alice.update_community(&community.id, edit).await.unwrap();
+    let edited = &alice.communities().await.unwrap()[0];
+    assert_eq!(edited.about.as_deref(), Some("Pour les chats"));
+    assert_eq!(edited.all_roles[2].id, "gardien");
     alice
-        .remove_member(&community.id, carol.account().pubkey)
+        .set_roles(&community.id, bob.account().pubkey, &["gardien"])
+        .await
+        .unwrap();
+    let bob_as_member = alice
+        .members(&community.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|m| m.pubkey == bob.account().pubkey)
+        .unwrap();
+    assert_eq!(bob_as_member.hoist.as_deref(), Some("gardien"));
+    assert_eq!(bob_as_member.color.as_deref(), Some("#e5a50a"));
+
+    // Bob, Gardien, can't remove the owner nor give himself more, but removes Carol:
+    // her posts are refused, the community leaves her list.
+    let res = bob
+        .remove_member(&community.id, alice.account().pubkey)
+        .await;
+    assert!(matches!(res, Err(Error::NotDelivered(_))), "{res:?}");
+    let grab = chaton_core::community::CommunityEdit {
+        owner: Some(bob.account().pubkey),
+        ..Default::default()
+    };
+    let res = bob.update_community(&community.id, grab).await;
+    assert!(matches!(res, Err(Error::NotDelivered(_))), "{res:?}");
+    bob.remove_member(&community.id, carol.account().pubkey)
         .await
         .unwrap();
     let res = carol
@@ -515,7 +559,7 @@ async fn files_in_channels_dms_and_pictures() {
     // Pictures: public, shown when hosted by their own instance.
     let png = b"\x89PNG\r\n\x1a\n pretend".to_vec();
     alice
-        .set_community_picture(&community.id, png.clone(), "image/png")
+        .set_community_picture(&community.id, png.clone(), "image/png", false)
         .await
         .unwrap();
     let url = eventually("bob sees the community picture", || async {

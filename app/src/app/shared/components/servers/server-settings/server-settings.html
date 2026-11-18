@@ -1,0 +1,589 @@
+<nav class="list" aria-labelledby="server-settings-title">
+  <h1 id="server-settings-title">{{ community()?.name }}</h1>
+  @for (s of sections(); track s.id) {
+    <button
+      type="button"
+      class="list-row"
+      [attr.aria-current]="s.id === section() ? 'true' : null"
+      (click)="open(s.id)"
+    >
+      <svg [lucideIcon]="s.icon" size="18"></svg>
+      <span>{{ s.label }}</span>
+    </button>
+  }
+</nav>
+
+<main class="sheet">
+  <header>
+    <button
+      type="button"
+      class="btn btn-ghost btn-icon btn-sm back"
+      (click)="listOpen.set(true)"
+      i18n-title="@@shell.back"
+      title="Back"
+    >
+      <svg [lucideIcon]="icons.back" size="18"></svg>
+    </button>
+    <h2>{{ current()?.label }}</h2>
+    <button
+      type="button"
+      class="btn btn-ghost btn-sm close"
+      (click)="close()"
+      i18n-title="@@modal.close"
+      title="Close"
+    >
+      <svg [lucideIcon]="icons.close" size="18"></svg>
+      <kbd>Esc</kbd>
+    </button>
+  </header>
+
+  @if (community(); as c) {
+    <div class="content">
+      @switch (section()) {
+        @case ('overview') {
+          <div class="sections">
+            <input
+              #picture
+              type="file"
+              accept="image/*"
+              hidden
+              (change)="setImage(picture, false)"
+            />
+            <input #banner type="file" accept="image/*" hidden (change)="setImage(banner, true)" />
+            <div class="group">
+              <div class="row">
+                <app-avatar
+                  [picture]="c.picture"
+                  [name]="c.name"
+                  [seed]="c.id"
+                  size="lg"
+                  shape="square"
+                ></app-avatar>
+                <div class="text grow">
+                  <span class="label" i18n="@@picture-title">Picture</span>
+                  <span class="hint" i18n="@@server-settings.picture-hint"
+                    >Public, stored on your instance.</span
+                  >
+                </div>
+                <button
+                  type="button"
+                  class="btn"
+                  [disabled]="image() === 'picture'"
+                  [attr.aria-busy]="image() === 'picture'"
+                  (click)="picture.click()"
+                  i18n="@@server-settings.change"
+                >
+                  Change
+                </button>
+              </div>
+              <div class="row stack">
+                <div class="banner-row">
+                  <div class="text grow">
+                    <span class="label" i18n="@@server-settings.banner">Banner</span>
+                    <span class="hint" i18n="@@server-settings.banner-hint"
+                      >Wide, above the channels.</span
+                    >
+                  </div>
+                  <button
+                    type="button"
+                    class="btn"
+                    [disabled]="image() === 'banner'"
+                    [attr.aria-busy]="image() === 'banner'"
+                    (click)="banner.click()"
+                    i18n="@@server-settings.change"
+                  >
+                    Change
+                  </button>
+                </div>
+                @if (c.banner; as url) {
+                  @if (media.picture(url) | async; as src) {
+                    <img class="banner" [src]="src" alt="" />
+                  }
+                }
+              </div>
+              @switch (image()) {
+                @case ('idle') {}
+                @case ('picture') {}
+                @case ('banner') {}
+                @case ('too_large') {
+                  <p class="row error" i18n="@@chat.too-large">File too large (25 MB max)</p>
+                }
+                @default {
+                  <p class="row error" i18n="@@form.unknown-error">
+                    Something went wrong. Try again, it works on my machine.
+                  </p>
+                }
+              }
+            </div>
+
+            <form
+              class="group"
+              (submit)="$event.preventDefault(); saveOverview(name.value, about.value)"
+            >
+              <div class="row stack">
+                <div class="field wide">
+                  <label for="server-name" i18n="@@server-settings.name">Name</label>
+                  <input
+                    #name
+                    id="server-name"
+                    [value]="c.name"
+                    maxlength="64"
+                    autocomplete="off"
+                    required
+                  />
+                </div>
+                <div class="field wide">
+                  <label for="server-about" i18n="@@server-settings.about">Description</label>
+                  <textarea
+                    #about
+                    id="server-about"
+                    rows="3"
+                    maxlength="500"
+                    [value]="c.about ?? ''"
+                  ></textarea>
+                </div>
+                <div class="actions">
+                  <button
+                    type="submit"
+                    class="btn btn-primary"
+                    [disabled]="overview() === 'saving'"
+                    [attr.aria-busy]="overview() === 'saving'"
+                    i18n="@@nick.save"
+                  >
+                    Save
+                  </button>
+                  @switch (overview()) {
+                    @case ('idle') {}
+                    @case ('saving') {}
+                    @case ('done') {
+                      <span class="hint ok" i18n="@@nick.done">Saved.</span>
+                    }
+                    @default {
+                      <span class="error" i18n="@@form.unknown-error"
+                        >Something went wrong. Try again, it works on my machine.</span
+                      >
+                    }
+                  }
+                </div>
+              </div>
+            </form>
+          </div>
+        }
+
+        @case ('roles') {
+          <div class="roles">
+            <div class="role-list">
+              <ol>
+                @for (r of draft(); track r.id; let i = $index) {
+                  <li>
+                    <button
+                      type="button"
+                      class="list-row"
+                      [attr.aria-current]="r.id === picking() ? 'true' : null"
+                      (click)="picking.set(r.id)"
+                    >
+                      <span class="dot" [style.background-color]="r.color || null"></span>
+                      <span class="name">
+                        @if (r.id === everyone) {
+                          &#64;everyone
+                        } @else {
+                          {{ r.name }}
+                        }
+                      </span>
+                    </button>
+                    @if (r.id !== everyone && manageable(r)) {
+                      <span class="order">
+                        <button
+                          type="button"
+                          class="btn btn-ghost btn-icon btn-sm"
+                          [disabled]="!canMove(i, -1)"
+                          (click)="move(i, -1)"
+                          i18n-title="@@role.up"
+                          title="Move up"
+                        >
+                          <svg [lucideIcon]="icons.up" size="14"></svg>
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-ghost btn-icon btn-sm"
+                          [disabled]="!canMove(i, 1)"
+                          (click)="move(i, 1)"
+                          i18n-title="@@role.down"
+                          title="Move down"
+                        >
+                          <svg [lucideIcon]="icons.down" size="14"></svg>
+                        </button>
+                      </span>
+                    }
+                  </li>
+                }
+              </ol>
+              <button type="button" class="btn btn-sm" (click)="addRole()">
+                <svg [lucideIcon]="icons.plus" size="16"></svg>
+                <ng-container i18n="@@role.create">Create a role</ng-container>
+              </button>
+              <p class="hint" i18n="@@role.order-hint">
+                Higher roles win, and act on those below them.
+              </p>
+            </div>
+
+            @if (role(); as r) {
+              <div class="role-editor">
+                @if (!manageable(r)) {
+                  <p class="hint" i18n="@@role.locked">
+                    At or above your highest role: you can't change it.
+                  </p>
+                }
+                <fieldset class="group" [disabled]="!manageable(r)">
+                  @if (r.id !== everyone) {
+                    <div class="row stack">
+                      <div class="field wide">
+                        <label for="role-name" i18n="@@role.name">Role name</label>
+                        <input
+                          id="role-name"
+                          [value]="r.name"
+                          maxlength="32"
+                          autocomplete="off"
+                          (input)="editRole({ name: $any($event.target).value })"
+                        />
+                      </div>
+                      <div class="field">
+                        <span class="label" i18n="@@role.color">Color</span>
+                        <div
+                          class="swatches"
+                          role="radiogroup"
+                          aria-label="Color"
+                          i18n-aria-label="@@role.color"
+                        >
+                          <button
+                            type="button"
+                            class="swatch none"
+                            role="radio"
+                            [attr.aria-checked]="!r.color"
+                            (click)="editRole({ color: '' })"
+                            i18n-title="@@role.no-color"
+                            title="No color"
+                          ></button>
+                          @for (color of colors; track color) {
+                            <button
+                              type="button"
+                              class="swatch"
+                              role="radio"
+                              [style.background-color]="color"
+                              [attr.aria-checked]="r.color === color"
+                              [title]="color"
+                              (click)="editRole({ color })"
+                            ></button>
+                          }
+                        </div>
+                      </div>
+                    </div>
+                    <label class="row">
+                      <span class="text">
+                        <span class="label" i18n="@@role.hoist">Show apart</span>
+                        <span class="hint" i18n="@@role.hoist-hint"
+                          >Its members get their own section in the member list.</span
+                        >
+                      </span>
+                      <input
+                        type="checkbox"
+                        class="switch"
+                        role="switch"
+                        [checked]="r.attrs.includes('hoist')"
+                        (change)="toggle('hoist')"
+                      />
+                    </label>
+                    <label class="row">
+                      <span class="text">
+                        <span class="label" i18n="@@role.mentionable">Mentionable</span>
+                        <span class="hint" i18n="@@role.mentionable-hint"
+                          >Anyone can notify its members at once.</span
+                        >
+                      </span>
+                      <input
+                        type="checkbox"
+                        class="switch"
+                        role="switch"
+                        [checked]="r.attrs.includes('mentionable')"
+                        (change)="toggle('mentionable')"
+                      />
+                    </label>
+                  } @else {
+                    <div class="row">
+                      <span class="hint" i18n="@@role.everyone-hint"
+                        >Everybody in the community has this role. Other roles add to it.</span
+                      >
+                    </div>
+                  }
+                </fieldset>
+
+                @for (g of groups; track g.label) {
+                  <h3 class="section-label">{{ g.label }}</h3>
+                  <div class="group">
+                    @for (p of g.perms; track p.id) {
+                      <label class="row">
+                        <span class="text">
+                          <span class="label">{{ p.label }}</span>
+                          @if (p.hint) {
+                            <span class="hint">{{ p.hint }}</span>
+                          }
+                        </span>
+                        <input
+                          type="checkbox"
+                          class="switch"
+                          role="switch"
+                          [checked]="r.attrs.includes(p.id)"
+                          [disabled]="!canGrant(r, p.id)"
+                          (change)="toggle(p.id)"
+                        />
+                      </label>
+                    }
+                  </div>
+                }
+
+                @if (r.id !== everyone && manageable(r)) {
+                  <button type="button" class="btn btn-danger delete" (click)="deleteRole(r)">
+                    <svg [lucideIcon]="icons.trash" size="16"></svg>
+                    <ng-container i18n="@@role.delete">Delete this role</ng-container>
+                  </button>
+                }
+              </div>
+            }
+          </div>
+
+          @if (dirty() || rolesState() !== 'idle') {
+            <div class="save-bar" role="status">
+              @switch (rolesState()) {
+                @case ('done') {
+                  <span class="ok" i18n="@@nick.done">Saved.</span>
+                }
+                @case ('idle') {
+                  <span i18n="@@role.unsaved">Unsaved changes.</span>
+                }
+                @case ('saving') {
+                  <span i18n="@@nick.saving">Saving…</span>
+                }
+                @default {
+                  <span class="error" i18n="@@form.unknown-error"
+                    >Something went wrong. Try again, it works on my machine.</span
+                  >
+                }
+              }
+              @if (dirty()) {
+                <div class="actions">
+                  <button
+                    type="button"
+                    class="btn btn-ghost"
+                    (click)="resetRoles()"
+                    i18n="@@role.reset"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    [disabled]="rolesState() === 'saving' || !named()"
+                    [attr.aria-busy]="rolesState() === 'saving'"
+                    (click)="saveRoles()"
+                    i18n="@@nick.save"
+                  >
+                    Save
+                  </button>
+                </div>
+              }
+            </div>
+          }
+        }
+
+        @case ('members') {
+          <div class="group">
+            @for (m of store.members(); track m.pubkey) {
+              <div class="row member">
+                <app-user-card
+                  [user]="card(m.pubkey)"
+                  [ears]="m.pubkey === me()"
+                  [color]="m.color"
+                ></app-user-card>
+                <div class="badges">
+                  @if (m.owner) {
+                    <span class="badge" i18n="@@member.owner">Owner</span>
+                  }
+                  @for (id of m.roles; track id) {
+                    <span class="badge">
+                      <span class="dot" [style.background-color]="roleColor(id)"></span>
+                      {{ roleName(id) }}
+                    </span>
+                  }
+                </div>
+                @if (m.manageable) {
+                  <div class="actions">
+                    @if (store.can('manage_roles') && givable().length) {
+                      <button
+                        type="button"
+                        class="btn btn-sm"
+                        [cdkMenuTriggerFor]="roleMenu"
+                        [cdkMenuTriggerData]="{ $implicit: m }"
+                      >
+                        <ng-container i18n="@@member.roles">Roles</ng-container>
+                        <svg [lucideIcon]="icons.chevron" size="14"></svg>
+                      </button>
+                    }
+                    @if (store.can('kick_members')) {
+                      <button
+                        type="button"
+                        class="btn btn-ghost btn-sm danger"
+                        (click)="removeMember(m)"
+                        i18n="@@member.remove"
+                      >
+                        Remove
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
+
+          <ng-template #roleMenu let-m>
+            <div class="menu" cdkMenu>
+              @for (r of givable(); track r.id) {
+                <button
+                  class="menu-item"
+                  cdkMenuItemCheckbox
+                  [cdkMenuItemChecked]="m.roles.includes(r.id)"
+                  (cdkMenuItemTriggered)="toggleRole(m, r.id)"
+                >
+                  <input
+                    type="checkbox"
+                    tabindex="-1"
+                    aria-hidden="true"
+                    [checked]="m.roles.includes(r.id)"
+                  />
+                  <span class="dot" [style.background-color]="r.color || null"></span>
+                  {{ r.name }}
+                </button>
+              }
+            </div>
+          </ng-template>
+        }
+
+        @case ('ownership') {
+          <div class="sections">
+            <div class="group">
+              <div class="row stack">
+                <div class="text">
+                  <span class="label" i18n="@@owner.transfer">Transfer ownership</span>
+                  <span class="hint" i18n="@@owner.transfer-hint"
+                    >The new owner gets every right, you keep your roles. Only they can give it
+                    back.</span
+                  >
+                </div>
+                @if (confirmTransfer()) {
+                  <p class="error" i18n="@@owner.transfer-confirm">
+                    Give {{ store.current()?.name }} to {{ dm.label(heir()) }}?
+                  </p>
+                  <div class="actions">
+                    <button
+                      type="button"
+                      class="btn btn-danger"
+                      [disabled]="ownership() === 'saving'"
+                      (click)="transfer()"
+                      i18n="@@owner.transfer-button"
+                    >
+                      Transfer
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-ghost"
+                      (click)="confirmTransfer.set(false)"
+                      i18n="@@logout.cancel"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                } @else {
+                  <div class="actions">
+                    <select
+                      aria-label="New owner"
+                      i18n-aria-label="@@owner.heir"
+                      [value]="heir()"
+                      (change)="heir.set($any($event.target).value)"
+                    >
+                      <option value="" i18n="@@owner.pick">Pick a member</option>
+                      @for (m of heirs(); track m.pubkey) {
+                        <option [value]="m.pubkey">{{ dm.label(m.pubkey) }}</option>
+                      }
+                    </select>
+                    <button
+                      type="button"
+                      class="btn"
+                      [disabled]="!heir()"
+                      (click)="confirmTransfer.set(true)"
+                      i18n="@@owner.transfer-button"
+                    >
+                      Transfer
+                    </button>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <div class="group danger">
+              <div class="row" [class.stack]="confirmDelete()">
+                <div class="text">
+                  <span class="label" i18n="@@owner.delete">Delete the community</span>
+                  <span class="hint" [class.error]="confirmDelete()" i18n="@@owner.delete-hint"
+                    >Its channels and history go for everyone, for good.</span
+                  >
+                </div>
+                @if (confirmDelete()) {
+                  <div class="actions">
+                    <button
+                      type="button"
+                      class="btn btn-danger"
+                      [disabled]="ownership() === 'saving'"
+                      (click)="deleteCommunity()"
+                      i18n="@@owner.delete-button"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-ghost"
+                      (click)="confirmDelete.set(false)"
+                      i18n="@@logout.cancel"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                } @else {
+                  <button
+                    type="button"
+                    class="btn btn-danger"
+                    (click)="confirmDelete.set(true)"
+                    i18n="@@owner.delete-button"
+                  >
+                    Delete
+                  </button>
+                }
+              </div>
+            </div>
+
+            @switch (ownership()) {
+              @case ('idle') {}
+              @case ('saving') {}
+              @case ('done') {
+                <p class="hint ok" i18n="@@owner.done">Ownership transferred.</p>
+              }
+              @default {
+                <p class="error" i18n="@@form.unknown-error">
+                  Something went wrong. Try again, it works on my machine.
+                </p>
+              }
+            }
+          </div>
+        }
+      }
+    </div>
+  }
+</main>

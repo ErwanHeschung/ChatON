@@ -17,6 +17,8 @@ export class UserCard {
   public readonly size = input<'sm' | 'md'>('sm');
   /** Cat ears on the avatar: it's me. */
   public readonly ears = input(false);
+  /** Their highest role's color, on the name (the instance stays dimmed). */
+  public readonly color = input<string | null | undefined>(null);
   /** In a voice room, talking right now: a green ring. */
   public readonly speaking = input(false);
   protected readonly parts = computed(() => splitHandle(this.user().username));

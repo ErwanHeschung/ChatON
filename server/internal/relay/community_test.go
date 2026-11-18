@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"fiatjaf.com/nostr"
+
+	"github.com/ErwanHeschung/ChatON/server/internal/community"
 )
 
 const (
@@ -17,6 +19,11 @@ const (
 )
 
 func h(id string) nostr.Tag { return nostr.Tag{"h", id} }
+
+// settings: what a community 9002 carries besides name and channels, its owner and the default roles.
+func settings(owner user, tags ...nostr.Tag) nostr.Tags {
+	return append(append(tags, nostr.Tag{"owner", owner.pk.Hex()}), community.RoleTags(community.DefaultRoles())...)
+}
 
 // state returns the relay-signed group state event of kind for id (public).
 func state(t *testing.T, url string, kind nostr.Kind, id string) nostr.Event {
@@ -61,7 +68,7 @@ func TestCommunity(t *testing.T) {
 
 	// Alice creates the community and becomes its admin.
 	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateGroup, nostr.Tags{h(communityID)}, at(0)))
-	mustPublish(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, nostr.Tags{h(communityID), {"name", "Les chatons"}}, at(0)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, settings(alice, h(communityID), nostr.Tag{"name", "Les chatons"}), at(0)))
 	if ev := state(t, url, nostr.KindSimpleGroupAdmins, communityID); !hasP(ev, alice.pk, "admin") || ev.PubKey != key.Public() {
 		t.Fatalf("admins: %v by %s", ev.Tags, ev.PubKey)
 	}
@@ -75,7 +82,7 @@ func TestCommunity(t *testing.T) {
 	// A channel: create, attach to the community, list it.
 	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateGroup, nostr.Tags{h(channelID)}, at(1)))
 	mustPublish(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, nostr.Tags{h(channelID), {"name", "general"}, {"parent", communityID}}, at(1)))
-	mustPublish(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, nostr.Tags{h(communityID), {"name", "Les chatons"}, {"child", channelID}}, at(1)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, settings(alice, h(communityID), nostr.Tag{"name", "Les chatons"}, nostr.Tag{"child", channelID}), at(1)))
 	if meta := state(t, url, nostr.KindSimpleGroupMetadata, communityID); meta.Tags.Find("child")[1] != channelID {
 		t.Fatalf("children: %v", meta.Tags)
 	}
@@ -216,6 +223,143 @@ func TestCommunityOwnerAndHierarchy(t *testing.T) {
 	mustReject(t, c, event(carol, nostr.KindSimpleGroupRemoveUser, nostr.Tags{h(communityID), {"p", bob.pk.Hex()}}, at(3)), "moderator removes an admin")
 	mustPublish(t, b, event(bob, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", carol.pk.Hex()}}, at(3))) // back to member
 	mustReject(t, c, event(carol, nostr.KindSimpleGroupCreateInvite, nostr.Tags{h(communityID), {"code", "CAROL001"}}, at(4)), "member invites")
-	mustReject(t, c, event(carol, nostr.KindSimpleGroupEditMetadata, nostr.Tags{h(communityID), {"name", "À moi"}}, at(4)), "member renames")
+	mustReject(t, c, event(carol, nostr.KindSimpleGroupEditMetadata, settings(alice, h(communityID), nostr.Tag{"name", "À moi"}), at(4)), "member renames")
 	mustPublish(t, b, event(bob, nostr.KindSimpleGroupRemoveUser, nostr.Tags{h(communityID), {"p", carol.pk.Hex()}}, at(4)))
+}
+
+// Step 12b: invites and joins only for those who may read them, stored and live (spec § 9, Lecture).
+func TestCommunityReads(t *testing.T) {
+	alice, bob, carol := newUser(), newUser(), newUser()
+	url := startRelay(t, alice, bob, carol)
+	a, b, c := connect(t, url, &alice), connect(t, url, &bob), connect(t, url, &carol)
+	at := func(s int) time.Time { return time.Now().Add(time.Duration(s) * time.Second) }
+
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateGroup, nostr.Tags{h(communityID)}, at(0)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateInvite, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	mustPublish(t, c, event(carol, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", carol.pk.Hex(), "moderator"}}, at(1)))
+
+	all := nostr.Filter{Kinds: community.ClientKinds, Tags: nostr.TagMap{"h": {communityID}}}
+	seen := func(r *nostr.Relay) (kinds map[nostr.Kind]int, others int) {
+		evs, closed := query(t, r, all)
+		if closed != "" {
+			t.Fatalf("closed: %s", closed)
+		}
+		kinds = map[nostr.Kind]int{}
+		for _, ev := range evs {
+			kinds[ev.Kind]++
+			if ev.Kind == nostr.KindSimpleGroupJoinRequest && ev.PubKey != bob.pk {
+				others++
+			}
+		}
+		return kinds, others
+	}
+	// Bob, plain member: his own join, no invite, nobody else's join, no moderation.
+	if kinds, others := seen(b); kinds[nostr.KindSimpleGroupCreateInvite] != 0 || others != 0 ||
+		kinds[nostr.KindSimpleGroupJoinRequest] != 1 || kinds[nostr.KindSimpleGroupPutUser] != 0 {
+		t.Fatalf("member reads %v (%d joins of others)", kinds, others)
+	}
+	// Carol, moderator (view_audit_log): all of it.
+	if kinds, others := seen(c); kinds[nostr.KindSimpleGroupCreateInvite] != 1 || others != 1 || kinds[nostr.KindSimpleGroupPutUser] == 0 {
+		t.Fatalf("moderator reads %v (%d joins of others)", kinds, others)
+	}
+
+	// Live: a new invite reaches Carol, not Bob; the message after it reaches both.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	live := nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupCreateInvite, nostr.KindSimpleGroupChatMessage}, Tags: nostr.TagMap{"h": {communityID}}}
+	bs, cs := subscribe(ctx, t, b, live), subscribe(ctx, t, c, live)
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateInvite, nostr.Tags{h(communityID), {"code", "LIVE0001"}}, at(2)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(communityID)}, at(2)))
+	for name, s := range map[string]*nostr.Subscription{"bob": bs, "carol": cs} {
+		select {
+		case ev := <-s.Events:
+			if want := map[string]nostr.Kind{"bob": nostr.KindSimpleGroupChatMessage, "carol": nostr.KindSimpleGroupCreateInvite}[name]; ev.Kind != want {
+				t.Errorf("%s got %d first, want %d", name, ev.Kind, want)
+			}
+		case <-ctx.Done():
+			t.Fatalf("%s got nothing", name)
+		}
+	}
+
+	// The relay's own 9000 (Dave joins) goes out live too, without blocking the relay.
+	dave := newUser()
+	d := connect(t, url, &dave)
+	audit := nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupPutUser}, Tags: nostr.TagMap{"h": {communityID}}}
+	as := subscribe(ctx, t, c, audit)
+	mustPublish(t, d, event(dave, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "LIVE0001"}}, at(3)))
+	select {
+	case ev := <-as.Events:
+		if !hasP(ev, dave.pk) {
+			t.Errorf("carol got %v", ev.Tags)
+		}
+	case <-ctx.Done():
+		t.Fatal("carol didn't see dave join")
+	}
+}
+
+// Step 12c: settings, custom roles, transfer, deletion (spec § 9, Réglages).
+func TestCommunitySettings(t *testing.T) {
+	alice, bob, carol := newUser(), newUser(), newUser()
+	url := startRelay(t, alice, bob, carol)
+	a, b, c := connect(t, url, &alice), connect(t, url, &bob), connect(t, url, &carol)
+	at := func(s int) time.Time { return time.Now().Add(time.Duration(s) * time.Second) }
+	edit := func(owner user, roles []community.Role, extra ...nostr.Tag) nostr.Tags {
+		tags := append(nostr.Tags{h(communityID), {"name", "Les chatons"}, {"owner", owner.pk.Hex()}}, community.RoleTags(roles)...)
+		return append(tags, extra...)
+	}
+	roles := func() []string {
+		var ids []string
+		for tag := range state(t, url, nostr.KindSimpleGroupRoles, communityID).Tags.FindAll("role") {
+			ids = append(ids, tag[1])
+		}
+		return ids
+	}
+	defaults := community.DefaultRoles()
+	gardien := community.Role{ID: "gardien", Name: "Gardien", Color: "#e5a50a", Attrs: []string{"hoist", "kick_members"}}
+	withGardien := append(defaults[:2:2], gardien, defaults[2])
+
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateGroup, nostr.Tags{h(communityID)}, at(0)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateInvite, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	mustPublish(t, c, event(carol, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+
+	mustReject(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, nostr.Tags{h(communityID), {"name", "Les chatons"}}, at(1)), "a 9002 without owner nor roles")
+	mustReject(t, b, event(bob, nostr.KindSimpleGroupEditMetadata, edit(alice, withGardien), at(1)), "a member adds a role")
+
+	// A Gardien removes members below, not the owner; his role shows in 39001.
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, edit(alice, withGardien), at(1)))
+	if got := roles(); !slices.Equal(got, []string{"admin", "moderator", "gardien", "everyone"}) {
+		t.Fatalf("roles: %v", got)
+	}
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", bob.pk.Hex(), "gardien"}}, at(2)))
+	mustReject(t, b, event(bob, nostr.KindSimpleGroupRemoveUser, nostr.Tags{h(communityID), {"p", alice.pk.Hex()}}, at(2)), "gardien removes the owner")
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupRemoveUser, nostr.Tags{h(communityID), {"p", carol.pk.Hex()}}, at(2)))
+	if !hasP(state(t, url, nostr.KindSimpleGroupAdmins, communityID), bob.pk, "gardien") {
+		t.Fatal("bob isn't gardien in 39001")
+	}
+
+	// Removing the role takes it from Bob.
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, edit(alice, defaults), at(3)))
+	if hasP(state(t, url, nostr.KindSimpleGroupAdmins, communityID), bob.pk, "gardien") {
+		t.Fatal("bob kept a deleted role")
+	}
+
+	// Only the owner gives the community away, to a member; then they may leave, Bob may not.
+	mustReject(t, b, event(bob, nostr.KindSimpleGroupEditMetadata, edit(bob, defaults), at(4)), "a member takes the community")
+	mustReject(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, edit(carol, defaults), at(4)), "giving it to a non-member")
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, edit(bob, defaults), at(4)))
+	if owner := state(t, url, nostr.KindSimpleGroupMetadata, communityID).Tags.Find("owner"); owner[1] != bob.pk.Hex() {
+		t.Fatalf("owner: %v", owner)
+	}
+	mustReject(t, b, event(bob, nostr.KindSimpleGroupLeaveRequest, nostr.Tags{h(communityID)}, at(5)), "the new owner leaves")
+	mustReject(t, a, event(alice, nostr.KindSimpleGroupDeleteGroup, nostr.Tags{h(communityID)}, at(5)), "the former owner deletes it")
+
+	// Deleted: nobody left, the invite no longer opens it.
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupDeleteGroup, nostr.Tags{h(communityID)}, at(6)))
+	if members := state(t, url, nostr.KindSimpleGroupMembers, communityID); members.Tags.Find("p") != nil {
+		t.Fatalf("members left: %v", members.Tags)
+	}
+	mustReject(t, c, event(carol, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(7)), "joining a deleted community")
 }

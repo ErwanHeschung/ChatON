@@ -35,6 +35,10 @@
   <app-settings />
 }
 
+@if (shell.serverSettings()) {
+  <app-server-settings />
+}
+
 @if (voice.ring()) {
   <app-call-banner />
 }

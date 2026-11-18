@@ -15,7 +15,7 @@ use nostr_sdk::prelude::{
 use serde::{Deserialize, Serialize};
 
 use crate::media::{self, Attachment};
-use crate::perms::{self, Policy};
+use crate::perms::{self, Policy, Role};
 use crate::session::{Session, TIMEOUT, backfill, http, is_local_host};
 use crate::{Error, Result, event, link};
 
@@ -40,6 +40,8 @@ pub struct Community {
     pub relay: String,
     pub name: String,
     pub picture: Option<String>,
+    pub about: Option<String>,
+    pub banner: Option<String>,
     pub channels: Vec<Channel>,
     /// My role ids here, empty for a plain member.
     pub roles: Vec<String>,
@@ -47,6 +49,21 @@ pub struct Community {
     pub owner: Option<PublicKey>,
     /// My permissions in the community (spec § 9), in spec order.
     pub perms: Vec<String>,
+    /// Every role, highest first, `everyone` last.
+    pub all_roles: Vec<Role>,
+    /// The roles strictly below mine: those I may edit, move, delete and give.
+    pub manageable_roles: Vec<String>,
+}
+
+/// What `update_community` changes; `None` keeps it (spec § 9, Réglages).
+#[derive(Debug, Default, Deserialize)]
+pub struct CommunityEdit {
+    pub name: Option<String>,
+    pub about: Option<String>,
+    /// The whole list, highest first, `everyone` last.
+    pub roles: Option<Vec<Role>>,
+    /// Gives the community away (owner only).
+    pub owner: Option<PublicKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -69,6 +86,10 @@ pub struct Member {
     pub owner: bool,
     /// Strictly below me in the hierarchy: I may act on them, given the permission.
     pub manageable: bool,
+    /// The color of their highest colored role.
+    pub color: Option<String>,
+    /// Their highest `hoist` role: the section they're listed under.
+    pub hoist: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -167,9 +188,9 @@ impl Session {
         let id = random_id()?;
         self.group_event(&relay, Kind::GroupCreateGroup, &id, [], "")
             .await?;
-        self.edit_metadata(&relay, &id, name, None, None, &[], false)
-            .await?;
         self.add_to_list(&id, &relay).await?;
+        self.edit_community(&id, |meta, _| meta.name = name.into())
+            .await?;
         self.create_channel(&id, "general", false).await?;
         self.community(&id)
             .await?
@@ -185,32 +206,20 @@ impl Session {
         voice: bool,
     ) -> Result<Channel> {
         let relay = self.relay_of(community).await?;
-        // Fresh state: 9002 replaces every tag, so it must list every child.
-        self.fetch_state(&relay, &[community.to_string()]).await?;
-        let key = self.relay_key(&relay).await?;
-        let meta = self
-            .metadata(key, community)
-            .await?
-            .ok_or_else(|| Error::Server("community state not found".into()))?;
-
         let id = random_id()?;
         self.group_event(&relay, Kind::GroupCreateGroup, &id, [], "")
             .await?;
-        self.edit_metadata(&relay, &id, name, None, Some(community), &[], voice)
+        let mut tags = vec![
+            Tag::parse(["name", name])?,
+            Tag::parse(["parent", community])?,
+        ];
+        if voice {
+            tags.push(Tag::parse(["livekit"])?);
+        }
+        self.group_event(&relay, Kind::GroupEditMetadata, &id, tags, "")
             .await?;
-        let mut children = meta.children;
-        children.push(id.clone());
-        self.edit_metadata(
-            &relay,
-            community,
-            &meta.name,
-            meta.picture.as_deref(),
-            None,
-            &children,
-            false,
-        )
-        .await?;
-        self.sync_community(community, &relay).await?;
+        self.edit_community(community, |meta, _| meta.children.push(id.clone()))
+            .await?;
         let perms = self
             .communities()
             .await?
@@ -332,8 +341,17 @@ impl Session {
             .filter_map(|pk| PublicKey::from_hex(pk).ok())
             .map(|pubkey| {
                 let hex = pubkey.to_hex();
+                let mine = roles.get(&pubkey).map(Vec::as_slice).unwrap_or_default();
+                let highest = |pick: &dyn Fn(&perms::Role) -> bool| {
+                    policy
+                        .roles
+                        .iter()
+                        .find(|r| mine.contains(&r.id) && pick(r))
+                };
                 Member {
-                    roles: roles.get(&pubkey).cloned().unwrap_or_default(),
+                    color: highest(&|r| !r.color.is_empty()).map(|r| r.color.clone()),
+                    hoist: highest(&|r| r.attrs.iter().any(|a| a == "hoist")).map(|r| r.id.clone()),
+                    roles: mine.to_vec(),
                     owner: hex == policy.owner,
                     manageable: policy.outranks(
                         &as_member(&roles, &me, &me_hex),
@@ -414,32 +432,51 @@ impl Session {
         message(&ev).ok_or_else(|| Error::Invalid("empty message".into()))
     }
 
-    /// Admins: a public picture, uploaded to my instance (spec § 10).
+    /// `manage_community`: a public picture or banner, uploaded to my instance (spec § 10).
     pub async fn set_community_picture(
         &self,
         community: &str,
         bytes: Vec<u8>,
         mime: &str,
+        banner: bool,
     ) -> Result<()> {
-        let relay = self.relay_of(community).await?;
         let url = media::upload(&self.keys, &self.account().relay, bytes, mime).await?;
-        self.fetch_state(&relay, &[community.to_string()]).await?;
-        let key = self.relay_key(&relay).await?;
-        let meta = self
-            .metadata(key, community)
-            .await?
-            .ok_or_else(|| Error::Server("community state not found".into()))?;
-        self.edit_metadata(
-            &relay,
-            community,
-            &meta.name,
-            Some(&url),
-            None,
-            &meta.children,
-            false,
-        )
-        .await?;
-        self.sync_community(community, &relay).await
+        self.edit_community(community, |meta, _| match banner {
+            true => meta.banner = Some(url),
+            false => meta.picture = Some(url),
+        })
+        .await
+    }
+
+    /// Name, description, roles, owner: each needs its permission (spec § 9, Réglages).
+    pub async fn update_community(&self, community: &str, edit: CommunityEdit) -> Result<()> {
+        self.edit_community(community, |meta, policy| {
+            if let Some(name) = edit.name {
+                meta.name = name;
+            }
+            if let Some(about) = edit.about {
+                meta.about = Some(about).filter(|a| !a.is_empty());
+            }
+            if let Some(roles) = edit.roles {
+                policy.roles = roles;
+            }
+            if let Some(owner) = edit.owner {
+                policy.owner = owner.to_hex();
+            }
+        })
+        .await
+    }
+
+    /// Owner only: deletes the community and its channels for everyone.
+    pub async fn delete_community(&self, community: &str) -> Result<()> {
+        let relay = self.relay_of(community).await?;
+        self.group_event(&relay, Kind::GroupDeleteGroup, community, [], "")
+            .await?;
+        let mut list = self.group_list().await?;
+        list.retain(|(id, _)| id != community);
+        self.publish_list(&list).await?;
+        self.client.unsubscribe(&subscription(community)).await?;
+        Ok(())
     }
 
     /// My own messages; any message for admins and moderators.
@@ -641,12 +678,19 @@ impl Session {
         let picture = meta
             .picture
             .filter(|url| media::allowed(url, &[host_of(&relay)]).is_some());
+        let banner = meta
+            .banner
+            .filter(|url| media::allowed(url, &[host_of(&relay)]).is_some());
         Ok(Some(Community {
             id: id.into(),
             relay,
             name: meta.name,
             picture,
+            about: meta.about,
+            banner,
             channels,
+            manageable_roles: policy.roles_below(&mine),
+            all_roles: policy.roles.clone(),
             perms: policy.effective(&mine, None, now).names(),
             owner: meta.owner.and_then(|pk| PublicKey::from_hex(&pk).ok()),
             roles,
@@ -672,34 +716,44 @@ impl Session {
         Ok(ev)
     }
 
-    /// 9002 replaces every tag (NIP-29): always send them all.
-    #[allow(clippy::too_many_arguments)]
-    async fn edit_metadata(
+    /// Sends a community's 9002 with every setting, from its state read just
+    /// before and changed by `edit` (spec § 9, Réglages), then syncs it.
+    async fn edit_community(
         &self,
-        relay: &str,
-        group: &str,
-        name: &str,
-        picture: Option<&str>,
-        parent: Option<&str>,
-        children: &[String],
-        voice: bool,
+        community: &str,
+        edit: impl FnOnce(&mut Metadata, &mut Policy),
     ) -> Result<()> {
-        let mut tags = vec![Tag::parse(["name", name])?];
-        if let Some(picture) = picture {
-            tags.push(Tag::parse(["picture", picture])?);
+        let relay = self.relay_of(community).await?;
+        self.fetch_state(&relay, &[community.to_string()]).await?;
+        let key = self.relay_key(&relay).await?;
+        let mut meta = self
+            .metadata(key, community)
+            .await?
+            .ok_or_else(|| Error::Server("community state not found".into()))?;
+        let mut policy = self.policy(key, community).await?;
+        edit(&mut meta, &mut policy);
+        let mut tags = vec![Tag::parse(["name", &meta.name])?];
+        for (k, v) in [
+            ("picture", &meta.picture),
+            ("about", &meta.about),
+            ("banner", &meta.banner),
+        ] {
+            if let Some(v) = v {
+                tags.push(Tag::parse([k, v])?);
+            }
         }
-        if let Some(parent) = parent {
-            tags.push(Tag::parse(["parent", parent])?);
-        }
-        for child in children {
+        for child in &meta.children {
             tags.push(Tag::parse(["child", child])?);
         }
-        if voice {
-            tags.push(Tag::parse(["livekit"])?);
+        tags.push(Tag::parse(["owner", &policy.owner])?);
+        for r in &policy.roles {
+            let mut tag = vec!["role", &r.id, &r.name, &r.color];
+            tag.extend(r.attrs.iter().map(String::as_str));
+            tags.push(Tag::parse(tag)?);
         }
-        self.group_event(relay, Kind::GroupEditMetadata, group, tags, "")
-            .await
-            .map(drop)
+        self.group_event(&relay, Kind::GroupEditMetadata, community, tags, "")
+            .await?;
+        self.sync_community(community, &relay).await
     }
 
     async fn publish_to(&self, relay: &str, ev: &Event) -> Result<()> {
@@ -871,6 +925,8 @@ impl Session {
 struct Metadata {
     name: String,
     picture: Option<String>,
+    about: Option<String>,
+    banner: Option<String>,
     children: Vec<String>,
     voice: bool,
     owner: Option<String>,
@@ -882,6 +938,8 @@ fn metadata(ev: &Event) -> Metadata {
         match tag.as_slice() {
             [k, v, ..] if k == "name" => meta.name = v.clone(),
             [k, v, ..] if k == "picture" => meta.picture = Some(v.clone()),
+            [k, v, ..] if k == "about" => meta.about = Some(v.clone()),
+            [k, v, ..] if k == "banner" => meta.banner = Some(v.clone()),
             [k, v, ..] if k == "child" => meta.children.push(v.clone()),
             [k, ..] if k == "livekit" => meta.voice = true,
             [k, v, ..] if k == "owner" => meta.owner = Some(v.clone()),
@@ -1038,6 +1096,7 @@ mod tests {
                 children: vec!["g7w2p5n1c4bb".into(), "a1b2c3d4e5f6".into()],
                 voice: false,
                 owner: None,
+                ..Default::default()
             }
         );
         let voice = ev(

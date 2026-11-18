@@ -25,6 +25,8 @@ export class ShellService {
   public readonly chatOpen = signal(false);
   /** Settings, full screen over the shell. */
   public readonly settings = signal(false);
+  /** The open community's settings, full screen too. */
+  public readonly serverSettings = signal(false);
   /** The network map in the sheet, until a conversation or channel is opened. */
   public readonly network = signal(false);
   /** Members panel: shown by default wherever it sits beside the conversation (not over it). */

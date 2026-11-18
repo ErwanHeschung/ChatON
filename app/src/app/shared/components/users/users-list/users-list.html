@@ -36,25 +36,23 @@
   </ul>
 }
 
-@for (section of sections(); track section.role) {
+@for (section of sections(); track section.id) {
   <h3 class="section-label">
-    @switch (section.role) {
-      @case ('admin') {
-        <span i18n="@@members.admins">Admins — {{ section.members.length }}</span>
-      }
-      @case ('moderator') {
-        <span i18n="@@members.moderators">Moderators — {{ section.members.length }}</span>
-      }
-      @default {
-        <span i18n="@@members.section">Members — {{ section.members.length }}</span>
-      }
+    @if (section.name; as name) {
+      <span>{{ name }} — {{ section.members.length }}</span>
+    } @else {
+      <span i18n="@@members.section">Members — {{ section.members.length }}</span>
     }
   </h3>
   <ul>
     @for (member of section.members; track member.pubkey) {
       <li class="member">
         <button type="button" class="list-row" [appProfile]="member.pubkey">
-          <app-user-card [user]="card(member)" [ears]="isMe(member)"></app-user-card>
+          <app-user-card
+            [user]="card(member)"
+            [ears]="isMe(member)"
+            [color]="member.color"
+          ></app-user-card>
         </button>
         @if (canPromote(member) || canRemove(member)) {
           <div class="actions">

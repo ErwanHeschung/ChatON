@@ -207,7 +207,7 @@ Une **communauté** (un « serveur » façon Discord) est un groupe NIP-29 hébe
 - Identifiant d'un groupe : 12 caractères `[a-z0-9]`, tirés au hasard par le client qui le crée. Adresse NIP-29 : `<hôte>'<id>`.
 - Une communauté ChatON est toujours `private` (seuls les membres lisent), `closed` (on entre avec un code d'invitation) et `restricted` (seuls les membres écrivent). Le relais impose ces trois drapeaux, quoi que dise un `9002`.
 - Les membres et les rôles sont ceux de la **communauté** ; ses salons en héritent.
-- L'état publié par le relais : `39000` (`d`, `name`, `picture`, drapeaux, `owner`, `parent` ou `child`), `39001` (`p` + identifiants de rôles), `39002` (`p` des membres), `39003` (les rôles, ci-dessous). Un client n'accepte ces événements que signés par la clé `self` du relais qui héberge le groupe.
+- L'état publié par le relais : `39000` (`d`, `name`, `picture`, `about`, `banner`, drapeaux, `owner`, `parent` ou `child`), `39001` (`p` + identifiants de rôles), `39002` (`p` des membres), `39003` (les rôles, ci-dessous). Un client n'accepte ces événements que signés par la clé `self` du relais qui héberge le groupe.
 
 ### Rôles et permissions
 
@@ -254,8 +254,8 @@ Les permissions sont des **noms**. Un nom inconnu est ignoré (un client plus an
 
 | id | Nom | Attributs |
 |---|---|---|
-| `admin` | Admin | `administrator` |
-| `moderator` | Modérateur | `manage_messages kick_members ban_members moderate_members create_invite view_audit_log mute_members move_members` |
+| `admin` | Admin | `hoist administrator` |
+| `moderator` | Modérateur | `hoist manage_messages kick_members ban_members moderate_members create_invite view_audit_log mute_members move_members` |
 | `everyone` | @everyone | `view_channel send_messages attach_files add_reactions connect speak stream` |
 
 **Permissions effectives** d'un membre, dans la communauté ou dans un salon (vecteurs : `spec/test-vectors/permissions.json`, que Rust et Go doivent reproduire) :
@@ -279,19 +279,46 @@ Seuls les noms de la table ci-dessus sortent du calcul : `hoist`, `mentionable` 
 | Créer une invitation (`9009`) | `create_invite` |
 | Retirer un membre (`9001`) | `kick_members`, et la cible plus bas que soi |
 | Donner des rôles (`9000`) | `manage_roles`, rôles et cible plus bas que soi |
-| Modifier la communauté (`9002`) | `manage_community` |
+| Modifier nom, image, description, bannière (`9002`) | `manage_community` |
+| Réordonner les salons (`9002`) | `manage_channels` |
+| Modifier les rôles (`9002`) | `manage_roles`, voir « Réglages » |
+| Transférer la communauté (`9002`) | le propriétaire, à un membre |
 | Créer, modifier un salon (`9007`, `9002`) | `manage_channels` |
 | Supprimer un salon (`9008`) | `manage_channels` |
 | Supprimer la communauté (`9008`) | le propriétaire |
 | Quitter (`9022`) | tout membre sauf le propriétaire |
 
+### Lecture
+
+Pour lire les événements d'une communauté, il faut s'être authentifié (NIP-42) avec la clé d'un membre : une requête qui vise par `#h` une communauté (ou l'un de ses salons) dont on n'est pas membre est refusée en entier. Ensuite, le relais **retire des résultats**, stockés comme en direct, ce que cette clé n'a pas le droit de lire :
+
+| Événements | Lisibles avec |
+|---|---|
+| messages (`9`), suppressions (`9005`) | `view_channel` dans leur salon |
+| invitations (`9009`), entrées (`9021`) | `view_audit_log` ou `manage_invites` |
+| autres demandes (`9000`, `9001`, `9002`, `9007`, `9008`, `9022`) | `view_audit_log` |
+
+On lit toujours ses propres événements. L'état signé par le relais (`39000`–`39003`) reste lisible par tous.
+
 ### Créer une communauté et ses salons
 
 1. `9007` `["h", C]` : seule une clé qui a un handle sur l'instance peut créer une communauté. Le relais en fait le propriétaire (`owner`) et l'`admin`, en publiant lui-même un `9000` `["h", C], ["p", créateur, "admin"]`, et la dote des rôles par défaut.
-2. `9002` `["h", C], ["name", …]` (et `picture`).
+2. `9002` `["h", C], ["name", …]`, avec le propriétaire et les rôles que le relais vient de publier (« Réglages »).
 3. Pour chaque salon S : `9007` `["h", S]`, puis `9002` `["h", S], ["name", …], ["parent", C]` (l'auteur doit avoir `manage_channels` dans C), puis `9002` sur C avec **toute** la liste `child`.
 
-Un `9002` remplace **toutes** les métadonnées du groupe (NIP-29) : le client renvoie toujours chaque tag (`name`, `picture`, `parent`, tous les `child`). Le propriétaire et les rôles ne passent pas par ce `9002` : le relais les garde.
+Un `9002` remplace **toutes** les métadonnées du groupe (NIP-29) : le client renvoie toujours chaque tag (`name`, `picture`, `parent`, tous les `child`).
+
+### Réglages
+
+Un `9002` de communauté porte **tous** ses réglages : `name`, `picture`, `about`, `banner`, tous les `child`, `["owner", pk]` et tous les `role`, `everyone` en dernier. Le client relit l'état (`39000`, `39003`) juste avant de l'envoyer. Un `9002` de communauté sans `owner` ou sans rôles à ce format est **refusé** : c'est celui d'un ancien client, qui effacerait les rôles.
+
+Le relais compare chaque réglage à l'état et exige la permission de ce qui change (« Qui fait quoi »). Pour les rôles :
+
+- identifiant `[a-z0-9_-]{1,32}`, unique ; nom de 1 à 100 octets ; couleur vide ou `#rrggbb` ; 100 rôles au plus ;
+- les rôles **au-dessus de l'acteur et le sien** restent identiques et à leur place ; ceux en dessous peuvent être ajoutés, modifiés, déplacés ou supprimés ;
+- un rôle ne gagne que des permissions que l'acteur a lui-même (`administrator` et le propriétaire les ont toutes).
+
+Un rôle supprimé est retiré de ses membres (`39001`). Changer `owner` est réservé au propriétaire, et le nouveau doit être membre ; l'ancien garde ses rôles. Un `9008` de la communauté (propriétaire seulement) la vide de ses membres, supprime ses salons et invalide ses invitations.
 
 ### Invitations
 

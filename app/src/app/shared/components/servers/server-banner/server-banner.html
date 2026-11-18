@@ -3,7 +3,6 @@
     <h2>{{ community.name }}</h2>
     <svg [lucideIcon]="icons.chevron" size="18"></svg>
   </button>
-  <input #picture type="file" accept="image/*" hidden (change)="setPicture(picture)" />
 
   <ng-template #menu>
     <div class="menu" cdkMenu>
@@ -13,13 +12,17 @@
           <ng-container i18n="@@community.invite">Invite</ng-container>
         </button>
       }
-      @if (store.can('manage_community')) {
-        <button class="menu-item" cdkMenuItem (cdkMenuItemTriggered)="picture.click()">
-          <svg [lucideIcon]="icons.picture" size="16"></svg>
-          <ng-container i18n="@@community.change-picture-long">Change the picture</ng-container>
+      @if (canSettings()) {
+        <button
+          class="menu-item"
+          cdkMenuItem
+          (cdkMenuItemTriggered)="shell.serverSettings.set(true)"
+        >
+          <svg [lucideIcon]="icons.settings" size="16"></svg>
+          <ng-container i18n="@@community.settings">Community settings</ng-container>
         </button>
       }
-      <!-- The owner can't leave (spec § 9); transferring comes with the settings. -->
+      <!-- The owner can't leave (spec § 9): they transfer it first, in the settings. -->
       @if (!store.isOwner()) {
         <button class="menu-item danger" cdkMenuItem (cdkMenuItemTriggered)="leave()">
           <svg [lucideIcon]="icons.leave" size="16"></svg>

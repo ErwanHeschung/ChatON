@@ -25,16 +25,19 @@ export class UsersList {
   protected readonly community = inject(CommunityStore);
   protected readonly addPeopleIcon = LucideUserPlus;
 
-  /** Admins, moderators, then the rest, as sections. Only in the server view. */
+  /** One section per role shown apart (`hoist`, in role order), then the rest. Server view only. */
   public readonly sections = computed(() => {
     const members = this.community.channel() === null ? [] : this.community.members();
-    const admins = members.filter((m) => this.isAdmin(m));
-    const moderators = members.filter((m) => !this.isAdmin(m) && this.isModerator(m));
-    const others = members.filter((m) => !this.isAdmin(m) && !this.isModerator(m));
+    const hoisted = (this.community.current()?.all_roles ?? []).filter((r) =>
+      r.attrs.includes('hoist'),
+    );
     return [
-      { role: ROLE_ADMIN, members: admins },
-      { role: ROLE_MODERATOR, members: moderators },
-      { role: 'member', members: others },
+      ...hoisted.map((r) => ({
+        id: r.id,
+        name: r.name as string | null,
+        members: members.filter((m) => m.hoist === r.id),
+      })),
+      { id: '', name: null, members: members.filter((m) => !m.hoist) },
     ].filter((s) => s.members.length);
   });
 
@@ -89,8 +92,13 @@ export class UsersList {
     return this.community.can('kick_members') && member.manageable;
   }
 
+  /** Adds or takes `moderator`, keeping their other roles. */
   public toggleModerator(member: Member): void {
-    void this.community.setRoles(member.pubkey, this.isModerator(member) ? [] : [ROLE_MODERATOR]);
+    const others = member.roles.filter((r) => r !== ROLE_MODERATOR);
+    void this.community.setRoles(
+      member.pubkey,
+      this.isModerator(member) ? others : [...others, ROLE_MODERATOR],
+    );
   }
 
   public remove(member: Member): void {

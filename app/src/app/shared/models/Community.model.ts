@@ -25,7 +25,48 @@ export interface Community {
   owner: string | null;
   /** My permissions in the community (spec § 9). */
   perms: Permission[];
+  about: string | null;
+  banner: string | null;
+  /** Every role, highest first, `everyone` last. */
+  all_roles: Role[];
+  /** Roles strictly below mine: those I may edit, move, delete and give. */
+  manageable_roles: string[];
 }
+
+/** `["role", id, name, color, attr…]`: attrs are permissions, `hoist`, `mentionable` (spec § 9). */
+export interface Role {
+  id: string;
+  name: string;
+  /** `#rrggbb`, or empty. */
+  color: string;
+  attrs: string[];
+}
+
+export const EVERYONE = 'everyone';
+
+/** What `update_community` changes; missing keeps it. */
+export interface CommunityEdit {
+  name?: string;
+  about?: string;
+  roles?: Role[];
+  owner?: string;
+}
+
+/**
+ * Role colors to pick from: data, sent in the role tag, so plain hex. Readable on the frame
+ * (4.5:1 and up), never the accent green (it means "me" and selection).
+ */
+export const ROLE_COLORS = [
+  '#e5a50a',
+  '#f6a86b',
+  '#f48fb1',
+  '#e879f9',
+  '#c4a7ff',
+  '#8ea2ff',
+  '#60b8fa',
+  '#3fd0e0',
+  '#c9c5e8',
+];
 
 export interface Member {
   pubkey: string;
@@ -33,6 +74,10 @@ export interface Member {
   owner: boolean;
   /** Below me in the hierarchy: I may act on them, given the permission. */
   manageable: boolean;
+  /** Their highest colored role's color. */
+  color: string | null;
+  /** Their highest `hoist` role: the section they're listed under. */
+  hoist: string | null;
 }
 
 /** Permission names (spec § 9); core computes who has which. */

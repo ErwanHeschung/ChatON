@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use chaton_core::Error;
 use chaton_core::block::{Blocks, Rules};
-use chaton_core::community::{ChannelMessage, Community, Member, Update};
+use chaton_core::community::{ChannelMessage, Community, CommunityEdit, Member, Update};
 use chaton_core::dm::Message;
 use chaton_core::link::{self, LinkOffer};
 use chaton_core::media::Attachment;
@@ -565,6 +565,23 @@ async fn set_roles(
 }
 
 #[tauri::command]
+async fn update_community(
+    state: State<'_, App>,
+    community: String,
+    edit: CommunityEdit,
+) -> Res<()> {
+    Ok(session(&state)
+        .await?
+        .update_community(&community, edit)
+        .await?)
+}
+
+#[tauri::command]
+async fn delete_community(state: State<'_, App>, community: String) -> Res<()> {
+    Ok(session(&state).await?.delete_community(&community).await?)
+}
+
+#[tauri::command]
 async fn remove_member(state: State<'_, App>, community: String, pubkey: PublicKey) -> Res<()> {
     Ok(session(&state)
         .await?
@@ -692,9 +709,10 @@ async fn set_community_picture(state: State<'_, App>, request: tauri::ipc::Reque
         file.get("community")?.to_string(),
         file.get("mime")?.to_string(),
     );
+    let banner = file.get("banner").is_ok();
     Ok(session(&state)
         .await?
-        .set_community_picture(&community, file.bytes, &mime)
+        .set_community_picture(&community, file.bytes, &mime, banner)
         .await?)
 }
 
@@ -834,6 +852,8 @@ pub fn run() {
             members,
             set_roles,
             remove_member,
+            update_community,
+            delete_community,
             channel_messages,
             send_channel,
             delete_message,
