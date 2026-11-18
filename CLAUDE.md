@@ -52,11 +52,10 @@ Une messagerie communautaire **façon Discord** (serveurs/communautés, salons t
 
 1. **Relais / boîte aux lettres** : stocke et transmet des événements signés et chiffrés, sans pouvoir les lire.
 2. **Amorçage** : point d'entrée pour découvrir le réseau.
-3. **Relais NAT** : sert de pont quand une connexion directe est impossible (phase P2P ultérieure).
-4. **Annuaire** : `pseudo@instance → clé publique + relais`, exposé via `/.well-known/`.
-5. **Liaison d'appareils** : transporte, sans les stocker, les messages éphémères qui lient un nouvel appareil (PAKE, `spec/protocol.md` § 8). Le serveur ne stocke **jamais** la clé privée, même chiffrée.
-6. **Hôte de communauté** : historique, application des permissions et des bans, fichiers et médias, intégration LiveKit.
-7. **Passerelle push** : envoie des notifications **vides ou chiffrées** via APNs, FCM et UnifiedPush. Le téléphone se réveille, récupère et déchiffre localement.
+3. **Annuaire** : `pseudo@instance → clé publique + relais`, exposé via `/.well-known/`.
+4. **Liaison d'appareils** : transporte, sans les stocker, les messages éphémères qui lient un nouvel appareil (PAKE, `spec/protocol.md` § 8). Le serveur ne stocke **jamais** la clé privée, même chiffrée.
+5. **Hôte de communauté** : historique, application des permissions et des bans, fichiers et médias, intégration LiveKit.
+6. **Passerelle push** : envoie des notifications **vides ou chiffrées** via APNs, FCM et UnifiedPush. Le téléphone se réveille, récupère et déchiffre localement.
 
 Le serveur ne fait **jamais** ceci : posséder un compte, lire un message privé, modifier un événement signé.
 
@@ -203,7 +202,6 @@ Le détail par étape est dans [`ROADMAP.md`](ROADMAP.md).
 8. Notifications push (plugin Tauri Swift/Kotlin + passerelle Go).
 9. Voix et vidéo (LiveKit).
 10. Fédération multi-instances, règles de blocage, migration de compte.
-11. (Plus tard) P2P direct quand c'est possible (iroh/libp2p), avec les relais en secours.
 
 ## Décisions ouvertes
 
