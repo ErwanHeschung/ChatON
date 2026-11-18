@@ -6,6 +6,9 @@
     [size]="size()"
     [ears]="ears()"
   ></app-avatar>
+  @if (status(); as status) {
+    <app-status-dot [status]="status"></app-status-dot>
+  }
 </span>
 <span class="name" [title]="user().username" [style.color]="color()">
   @if (nick(); as nick) {

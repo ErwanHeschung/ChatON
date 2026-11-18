@@ -29,7 +29,11 @@
     @for (pubkey of roomMembers(); track pubkey) {
       <li>
         <button type="button" class="list-row" [appProfile]="pubkey">
-          <app-user-card [user]="cardOf(pubkey)" [ears]="pubkey === me()"></app-user-card>
+          <app-user-card
+            [user]="cardOf(pubkey)"
+            [ears]="pubkey === me()"
+            [presence]="true"
+          ></app-user-card>
         </button>
       </li>
     }
@@ -57,6 +61,7 @@
             [user]="card(member)"
             [ears]="isMe(member)"
             [color]="member.color"
+            [presence]="true"
           ></app-user-card>
           @if (timedOut(member)) {
             <svg

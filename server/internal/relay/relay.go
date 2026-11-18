@@ -7,6 +7,7 @@ package relay
 
 import (
 	"context"
+	"iter"
 	"slices"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	"fiatjaf.com/nostr/khatru/policies"
 
 	"github.com/ErwanHeschung/ChatON/server/internal/community"
+	"github.com/ErwanHeschung/ChatON/server/internal/presence"
 	"github.com/ErwanHeschung/ChatON/server/internal/rules"
 )
 
@@ -43,6 +45,8 @@ var acceptedKinds = append([]nostr.Kind{
 	nostr.KindMuteList, // my blocks, private content (spec protocol § 5)
 	nostr.KindGiftWrap,
 	KindDeviceLink,
+	presence.Kind,
+	nostr.KindApplicationSpecificData, // my presence status, for my devices (spec protocol § 12)
 }, community.ClientKinds...)
 
 type Config struct {
@@ -78,19 +82,21 @@ func New(cfg Config, db eventstore.Store, dir Directory, groups *community.Group
 		cfg.Rules = rules.Fixed(&rules.Rules{Limits: rules.DefaultLimits})
 	}
 	limits := cfg.Rules.Get().Limits
+	here := presence.New()
 	rl.OnEvent = policies.SeqEvent(
 		policies.PreventTimestampsInTheFuture(MaxFuture),
 		rejectAmbiguousEscapes,
 		rejectRumor,
 		policies.RestrictToSpecifiedKinds(false, acceptedKinds...),
 		blocked(cfg.Rules),
-		writePolicy(dir, groups),
+		writePolicy(dir, groups, here),
 		// Last: only events that passed count. Per IP (localhost is exempt).
 		policies.EventIPRateLimiter(limits.EventsPerMinute, time.Minute, limits.EventsBurst),
 		wrapsPerRecipient(limits.WrapsPerRecipientPerMinute),
 	)
 	rl.OnRequest = policies.SeqRequest(giftWrapsOnlyForRecipient, oneLinkChannel, groups.CheckFilter)
 	groups.Bind(rl)
+	bindPresence(rl, here, groups)
 	rl.RejectConnection = policies.ConnectionRateLimiter(limits.ConnectionsPerMinute, time.Minute, limits.ConnectionsBurst)
 	return rl
 }
@@ -154,8 +160,11 @@ func wrapsPerRecipient(perMinute int) func(context.Context, nostr.Event) (bool, 
 	}
 }
 
-func writePolicy(dir Directory, groups *community.Groups) func(context.Context, nostr.Event) (bool, string) {
+func writePolicy(dir Directory, groups *community.Groups, here *presence.Store) func(context.Context, nostr.Event) (bool, string) {
 	return func(ctx context.Context, ev nostr.Event) (bool, string) {
+		if ev.Kind == presence.Kind {
+			return here.Check(ctx, ev, dir.IsLocal, groups.IsMember)
+		}
 		// From any key the community rules allow: members can come from any instance.
 		if community.IsGroupKind(ev.Kind) {
 			return groups.Check(ctx, ev)
@@ -180,6 +189,43 @@ func writePolicy(dir Directory, groups *community.Groups) func(context.Context, 
 			return true, "restricted: claim a handle on this instance first"
 		}
 		return false, ""
+	}
+}
+
+// bindPresence keeps presence signals in memory and serves them: community ones
+// only to members (spec protocol § 12).
+func bindPresence(rl *khatru.Relay, here *presence.Store, groups *community.Groups) {
+	readable := func(readers []nostr.PubKey, ev nostr.Event) bool {
+		h := ev.Tags.Find("h")
+		return h == nil || slices.ContainsFunc(readers, func(pk nostr.PubKey) bool { return groups.IsMember(h[1], pk) })
+	}
+	rl.OnEphemeralEvent = here.Put
+	rl.OnDisconnect = here.Drop
+	prevent := rl.PreventBroadcast
+	rl.PreventBroadcast = func(ws *khatru.WebSocket, f nostr.Filter, ev nostr.Event) bool {
+		if ev.Kind == presence.Kind {
+			return !readable(ws.AuthedPublicKeys, ev)
+		}
+		return prevent != nil && prevent(ws, f, ev)
+	}
+	stored := rl.QueryStored
+	rl.QueryStored = func(ctx context.Context, f nostr.Filter) iter.Seq[nostr.Event] {
+		if !slices.Contains(f.Kinds, presence.Kind) {
+			return stored(ctx, f)
+		}
+		readers := khatru.GetAllAuthed(ctx)
+		return func(yield func(nostr.Event) bool) {
+			for _, ev := range here.Query(f) {
+				if readable(readers, ev) && !yield(ev) {
+					return
+				}
+			}
+			for ev := range stored(ctx, f) {
+				if !yield(ev) {
+					return
+				}
+			}
+		}
 	}
 }
 

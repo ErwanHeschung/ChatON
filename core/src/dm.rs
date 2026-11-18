@@ -42,6 +42,9 @@ pub struct Message {
     /// hint for `Session::peer`, which checks it, never shown as is.
     #[serde(skip)]
     pub(crate) nip05: Option<String>,
+    /// The author's presence key and relay (`presence` tag, spec § 12).
+    #[serde(skip)]
+    pub(crate) presence: Option<(PublicKey, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -94,23 +97,23 @@ pub struct Wraps {
 }
 
 /// A text message to `to` (one person, or the other members of a group).
-pub fn wrap(sender: &Keys, handle: Option<&str>, to: &[PublicKey], text: &str) -> Result<Wraps> {
+pub fn wrap(sender: &Keys, author: &[Tag], to: &[PublicKey], text: &str) -> Result<Wraps> {
     if text.is_empty() {
         return Err(Error::Invalid("empty message".into()));
     }
-    wrap_rumor(sender, handle, to, Kind::PrivateDirectMessage, vec![], text)
+    wrap_rumor(sender, author, to, Kind::PrivateDirectMessage, vec![], text)
 }
 
 /// Same, for an encrypted file already uploaded (kind 15, spec § 10).
 pub fn wrap_file(
     sender: &Keys,
-    handle: Option<&str>,
+    author: &[Tag],
     to: &[PublicKey],
     file: &Attachment,
 ) -> Result<Wraps> {
     wrap_rumor(
         sender,
-        handle,
+        author,
         to,
         FILE_MESSAGE,
         file.to_dm_tags()?,
@@ -121,7 +124,7 @@ pub fn wrap_file(
 /// Names or renames a group: an empty message with a `subject` (spec § 5).
 pub fn wrap_subject(
     sender: &Keys,
-    handle: Option<&str>,
+    author: &[Tag],
     to: &[PublicKey],
     subject: &str,
 ) -> Result<Wraps> {
@@ -134,7 +137,7 @@ pub fn wrap_subject(
     let tag = Tag::parse(["subject", subject])?;
     wrap_rumor(
         sender,
-        handle,
+        author,
         to,
         Kind::PrivateDirectMessage,
         vec![tag],
@@ -145,7 +148,7 @@ pub fn wrap_subject(
 /// Invites `to` to call `id`, joined through `url` (my instance), audio encrypted with `key`.
 pub fn wrap_call(
     sender: &Keys,
-    handle: Option<&str>,
+    author: &[Tag],
     to: &[PublicKey],
     id: &str,
     url: &str,
@@ -154,7 +157,7 @@ pub fn wrap_call(
     let tag = Tag::parse(["call", id, url, &hex::encode(key)])?;
     wrap_rumor(
         sender,
-        handle,
+        author,
         to,
         Kind::PrivateDirectMessage,
         vec![tag],
@@ -162,16 +165,11 @@ pub fn wrap_call(
     )
 }
 
-pub fn wrap_call_end(
-    sender: &Keys,
-    handle: Option<&str>,
-    to: &[PublicKey],
-    id: &str,
-) -> Result<Wraps> {
+pub fn wrap_call_end(sender: &Keys, author: &[Tag], to: &[PublicKey], id: &str) -> Result<Wraps> {
     let tag = Tag::parse(["call-end", id])?;
     wrap_rumor(
         sender,
-        handle,
+        author,
         to,
         Kind::PrivateDirectMessage,
         vec![tag],
@@ -226,7 +224,7 @@ fn call(tags: &nostr::prelude::Tags) -> std::result::Result<Option<Call>, ()> {
 
 fn wrap_rumor(
     sender: &Keys,
-    handle: Option<&str>,
+    author: &[Tag],
     to: &[PublicKey],
     kind: Kind,
     tags: Vec<Tag>,
@@ -240,13 +238,12 @@ fn wrap_rumor(
         )));
     }
     let others: Vec<PublicKey> = room.into_iter().filter(|pk| *pk != me).collect();
-    // Who wrote it (spec § 5): the receiver checks it before believing it.
-    let nip05 = handle.map(|h| Tag::parse(["nip05", h])).transpose()?;
+    // Who wrote it (`nip05`, spec § 5) and my presence key (§ 12).
     let all = others
         .iter()
         .map(|pk| Tag::public_key(*pk))
         .chain(tags)
-        .chain(nip05);
+        .chain(author.iter().cloned());
     let rumor = event::builder(kind, all, content)?.finalize_unsigned(me);
     let members = others
         .into_iter()
@@ -279,6 +276,12 @@ pub fn unwrap(keys: &Keys, gift_wrap: &Event) -> Result<Message> {
     };
     let subject = tag("subject").map(|s| s.chars().take(MAX_SUBJECT).collect::<String>());
     let nip05 = tag("nip05");
+    let presence = rumor.tags.iter().find_map(|t| match t.as_slice() {
+        [k, pk, relay, ..] if k == "presence" && relay.starts_with("ws") => {
+            Some((PublicKey::from_hex(pk).ok()?, relay.clone()))
+        }
+        _ => None,
+    });
     let call = if rumor.kind == Kind::PrivateDirectMessage {
         call(&rumor.tags).map_err(|()| reject())?
     } else {
@@ -315,6 +318,7 @@ pub fn unwrap(keys: &Keys, gift_wrap: &Event) -> Result<Message> {
         attachment,
         call,
         nip05,
+        presence,
     })
 }
 
@@ -330,7 +334,7 @@ mod tests {
         let (id, key) = ("0f".repeat(16), [0xef; 32]);
         let wraps = wrap_call(
             &alice,
-            None,
+            &[],
             &[bob.public_key()],
             &id,
             "https://a.example/",
@@ -361,7 +365,7 @@ mod tests {
         assert!(!rings(&got, alice.public_key(), now));
         assert!(!rings(&got, bob.public_key(), now + RING_SECS));
 
-        let end = wrap_call_end(&bob, None, &[alice.public_key()], &id).unwrap();
+        let end = wrap_call_end(&bob, &[], &[alice.public_key()], &id).unwrap();
         let end = unwrap(&alice, &end.members[0].1).unwrap();
         assert_eq!(end.call.as_ref().map(|c| c.ended), Some(true));
         assert!(!rings(&end, alice.public_key(), end.created_at));
@@ -400,7 +404,7 @@ mod tests {
         let (alice, bob) = (Keys::generate(), Keys::generate());
         let (_, mut file) = crate::media::encrypt(b"%PDF", "application/pdf", "cv.pdf").unwrap();
         file.url = format!("https://chaton.example/{}", file.sha256);
-        let wraps = wrap_file(&alice, None, &[bob.public_key()], &file).unwrap();
+        let wraps = wrap_file(&alice, &[], &[bob.public_key()], &file).unwrap();
         let got = unwrap(&bob, &wraps.members[0].1).unwrap();
         assert_eq!(got.attachment.as_ref(), Some(&file));
         assert_eq!(got.text, "");
@@ -411,7 +415,7 @@ mod tests {
     #[test]
     fn round_trip_receiver_and_self_copy() {
         let (alice, bob, carol) = (Keys::generate(), Keys::generate(), Keys::generate());
-        let wraps = wrap(&alice, None, &[bob.public_key()], "Salut Bob 👋").unwrap();
+        let wraps = wrap(&alice, &[], &[bob.public_key()], "Salut Bob 👋").unwrap();
         let (to, to_bob) = &wraps.members[0];
         assert_eq!((*to, wraps.members.len()), (bob.public_key(), 1));
 
@@ -443,7 +447,7 @@ mod tests {
             alice.public_key(),
             bob.public_key(),
         ];
-        let wraps = wrap_subject(&alice, None, &to, "  Projet ").unwrap();
+        let wraps = wrap_subject(&alice, &[], &to, "  Projet ").unwrap();
         assert_eq!(wraps.members.len(), 2);
 
         let expected = room(alice.public_key(), &[bob.public_key(), carol.public_key()]);
@@ -462,11 +466,11 @@ mod tests {
         }
 
         // Bob's reply lands in the same room.
-        let reply = wrap(&bob, None, &mine.room, "ok").unwrap();
+        let reply = wrap(&bob, &[], &mine.room, "ok").unwrap();
         assert_eq!(unwrap(&bob, &reply.to_self).unwrap().room, expected);
-        assert!(wrap_subject(&alice, None, &to, " ").is_err());
-        assert!(wrap_subject(&alice, None, &to, &"x".repeat(MAX_SUBJECT + 1)).is_err());
-        assert!(wrap(&alice, None, &[alice.public_key()], "to myself").is_err());
+        assert!(wrap_subject(&alice, &[], &to, " ").is_err());
+        assert!(wrap_subject(&alice, &[], &to, &"x".repeat(MAX_SUBJECT + 1)).is_err());
+        assert!(wrap(&alice, &[], &[alice.public_key()], "to myself").is_err());
     }
 
     #[test]
@@ -475,8 +479,8 @@ mod tests {
         let others: Vec<PublicKey> = (0..MAX_ROOM)
             .map(|_| Keys::generate().public_key())
             .collect();
-        assert!(wrap(&alice, None, &others[..MAX_ROOM - 1], "ten of us").is_ok());
-        assert!(wrap(&alice, None, &others, "eleven").is_err());
+        assert!(wrap(&alice, &[], &others[..MAX_ROOM - 1], "ten of us").is_ok());
+        assert!(wrap(&alice, &[], &others, "eleven").is_err());
 
         // Built by hand: a rumor for 11 members is ignored on reception.
         let bob = Keys::generate();
@@ -497,7 +501,7 @@ mod tests {
     #[test]
     fn empty_text_needs_a_subject() {
         let (alice, bob) = (Keys::generate(), Keys::generate());
-        assert!(wrap(&alice, None, &[bob.public_key()], "").is_err());
+        assert!(wrap(&alice, &[], &[bob.public_key()], "").is_err());
         let rumor = event::builder(
             Kind::PrivateDirectMessage,
             [Tag::public_key(bob.public_key())],

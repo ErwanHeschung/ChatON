@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, output } f
 import { DmStore } from '@stores/dm.store';
 import { LucideCamera, LucideDynamicIcon } from '@lucide/angular';
 import { Avatar } from '@components/avatar/avatar';
+import { StatusDot } from '@components/users/status-dot/status-dot';
+import { PresenceStore } from '@stores/presence.store';
 import { splitHandle } from '@models/Dm.model';
 
 /**
@@ -10,7 +12,7 @@ import { splitHandle } from '@models/Dm.model';
  */
 @Component({
   selector: 'app-profile-card',
-  imports: [Avatar, LucideDynamicIcon],
+  imports: [Avatar, LucideDynamicIcon, StatusDot],
   templateUrl: './profile-card.html',
   styleUrl: './profile-card.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -31,4 +33,5 @@ export class ProfileCard {
   protected readonly parts = computed(() => splitHandle(this.handle()));
   protected readonly nick = computed(() => this.dm.peers()[this.pubkey()]?.display_name ?? null);
   private readonly dm = inject(DmStore);
+  protected readonly presence = inject(PresenceStore);
 }

@@ -30,15 +30,20 @@
         <span class="meta" i18n="@@header.people">{{ view.count }} people</span>
       }
       @case ('person') {
-        <app-avatar
-          [picture]="view.picture"
-          [name]="view.title"
-          [seed]="view.pubkey"
-          size="sm"
-        ></app-avatar>
+        @let status = presence.of(view.pubkey);
+        <span class="avatar">
+          <app-avatar
+            [picture]="view.picture"
+            [name]="view.title"
+            [seed]="view.pubkey"
+            size="sm"
+          ></app-avatar>
+          <app-status-dot [status]="status" aria-hidden="true"></app-status-dot>
+        </span>
         <h1>
           {{ view.handle[0] }}<span class="instance">{{ view.handle[1] }}</span>
         </h1>
+        <span class="meta">{{ statusLabels[status] }}</span>
       }
     }
     @if (view.kind !== 'channel') {

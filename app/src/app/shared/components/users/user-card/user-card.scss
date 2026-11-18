@@ -20,6 +20,7 @@
 
 // Around the avatar, not on it: the ears' mask would cut it. Detached by the frame, like the rail.
 .ring {
+  position: relative;
   display: inline-flex;
   flex: none;
   border-radius: var(--radius-full);

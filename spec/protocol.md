@@ -62,6 +62,8 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 | 22242 | Authentification au relais | 42 | oui | 3 |
 | 27235 | Authentification HTTP (annuaire, push, jetons de voix) | 98 | oui | 3 |
 | **24135** | **Liaison d'appareils** (éphémère, propre à ChatON, § 8) | — | oui (clé jetable) | 5 |
+| **24136** | **Présence** (éphémère, propre à ChatON, § 12) | — | oui (clé de présence, ou l'auteur dans une communauté) | 12 |
+| 30078 | Réglage de présence synchronisé entre mes appareils (`d` = `chaton/presence`, chiffré pour moi, § 12) | 78 | oui | 12 |
 | 9 | Message dans un salon (`h` = salon), réponse (`q`, NIP-C7), mentions (`p`, `mention`) | 29, C7 | oui | 6, 12 |
 | 7 | Réaction à un message de salon (§ 9, « Messages ») | 25 | oui | 12 |
 | 9000, 9001, 9002, 9005, 9007, 9008, 9009 | Modération : rôles, retrait, métadonnées, suppression, création, invitation (§ 9) | 29 | oui | 6 |
@@ -95,6 +97,7 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 | 92 | Pièce jointe dans un message (`imeta`, § 10) | 6b |
 | Blossom (BUD-01, 02) | Fichiers et médias (§ 10) | 6b |
 | 29 (salons « livekit ») | Salons vocaux et leurs participants (§ 11) | 9 |
+| 78 | Données d'application : mon statut de présence, pour mes appareils (§ 12) | 12 |
 
 Rejetées : **04** (ancien format de MP, qui fuit les métadonnées : remplacé par 17), **28** et **72** (remplacées par 29), **07** (les clés vivent dans `core`, pas dans une extension de navigateur).
 
@@ -497,4 +500,28 @@ Un MP ou un groupe (§ 5) peut lancer un appel. Le serveur LiveKit relaie l'audi
 - **Chiffrement** : les 32 octets de `clé` sont la clé partagée de LiveKit E2EE (AES-GCM, options par défaut). **La clé ne voyage que dans la rumeur NIP-17** : elle n'est jamais dans la demande de jeton, ni nulle part ailleurs côté serveur.
 - **Ce que l'instance apprend** : qui appelle qui (`members`), quand et depuis quelles adresses IP. Jamais le contenu. Les participants ne voient pas les adresses IP les uns des autres (tout passe par le SFU).
 - Un appelé sur une autre instance utilise l'instance de l'appelant (`url`) : la règle « au moins un membre local » le couvre (étape 10).
+
+## 12. Présence
+
+Statuts publiés : `online`, `idle` (absent), `dnd` (ne pas déranger). **Hors ligne**, c'est l'absence de signal. **Invisible** ne publie rien, sauf une fois `offline`, qui remplace le dernier signal de l'appareil au lieu de le laisser vivre 150 s.
+
+### Mon statut, sur tous mes appareils
+
+Le statut que je choisis (`online`, `idle`, `dnd` ou `invisible`) et un compteur `epoch` sont dans un `30078` (NIP-78) `["d", "chaton/presence"]` de ma clé, sur mon relais, contenu `{"status": …, "epoch": n}` chiffré pour moi-même (NIP-44, comme mes blocages). Chaque appareil le relit au démarrage puis régulièrement. Un appareil passe de lui-même à `idle` après 10 minutes sans activité, ou quand l'app est cachée (arrière-plan, fenêtre réduite), si le statut choisi est `online`. **Ne pas déranger** coupe les notifications de l'appareil (messages privés, salons, sonneries), c'est le client qui décide.
+
+### En message privé, sans dévoiler mes contacts
+
+- **Clé de présence** : secret = `sha256("chaton-presence-v0" || ma clé secrète (32 octets) || epoch (8 octets, gros-boutiste))`, la même sur tous mes appareils. Rien ne la relie publiquement à moi.
+- Chaque rumeur que **j'envoie** (kinds 14 et 15, § 5) porte `["presence", <clé publique de présence>, <url de mon relais>]`. Seuls les gens à qui j'ai écrit l'apprennent ; quelqu'un dont je n'ai jamais accepté la demande, jamais.
+- Chaque appareil publie toutes les 60 s, sur mon relais, un **`24136`** signé par la clé de présence : `["status", s]`, `["device", <id aléatoire de l'appareil>]`, `["v","0"]`, contenu vide (vecteur `presence`).
+- Le relais n'accepte un `24136` sans `h` que d'une connexion authentifiée (NIP-42) comme un utilisateur de l'instance. Il ne le stocke pas : il garde en **mémoire** le dernier par clé et par connexion, l'oublie à la fermeture de la connexion ou après **150 s**, et le sert (requête ou diffusion) à qui demande cet auteur.
+- **Bloquer** quelqu'un fait `epoch + 1`, donc une nouvelle clé, que les autres apprennent avec mon prochain message (en attendant, ils me voient hors ligne). L'ancienne clé publie aussitôt `offline`.
+
+### Dans une communauté
+
+Le même `24136`, mais signé par **mon identité** avec `["h", <communauté>]`, publié sur le relais de la communauté (vecteur `presence_community`). Le relais l'accepte d'un membre authentifié comme cette clé, et ne le sert qu'à ses membres. Mêmes règles de mémoire.
+
+### Lire
+
+Le client s'abonne (`REQ` sans `since`, gardé ouvert) aux `24136` de ses contacts (par clé de présence) et de ses communautés (`#h`) : le relais répond avec les signaux en mémoire, puis transmet chaque nouveau signal en direct. Il renouvelle l'abonnement quand un nouveau contact lui écrit ou que ses communautés changent. Il lit ceux d'un contact sur le relais de l'instance de son handle vérifié, jamais sur un relais choisi par l'expéditeur (le relais du tag sert aux clients qui le vérifient autrement). Par personne, il garde le dernier statut de chaque appareil (`device`) de moins de 150 s (`offline` l'efface), et affiche le plus présent : `dnd` avant `online`, avant `idle` ; sans rien, hors ligne.
 

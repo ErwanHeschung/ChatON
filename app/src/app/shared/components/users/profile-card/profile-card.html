@@ -21,6 +21,7 @@
       <span class="overlay" aria-hidden="true">
         <svg [lucideIcon]="cameraIcon" size="22"></svg>
       </span>
+      <app-status-dot [status]="presence.of(pubkey())"></app-status-dot>
     </button>
   } @else {
     <div class="avatar">
@@ -31,6 +32,7 @@
         size="2xl"
         [ears]="mine()"
       ></app-avatar>
+      <app-status-dot [status]="presence.of(pubkey())"></app-status-dot>
     </div>
   }
 

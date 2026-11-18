@@ -409,6 +409,14 @@ pub enum Update {
     Voice {
         state: Option<crate::voice::VoiceState>,
     },
+    /// Who I see online (spec § 12), everyone else being offline.
+    Presence {
+        online: HashMap<PublicKey, crate::presence::Status>,
+    },
+    /// Another device changed my status.
+    Status {
+        status: crate::presence::Status,
+    },
     /// A moderator moves me to voice `channel` (spec § 11, Modération
     /// vocale): join it (`join_voice_channel`), which leaves this one.
     VoiceMove {
@@ -1211,15 +1219,29 @@ impl Session {
         let relay = self.account().relay.clone();
         // My lists: communities (10009) and blocks (10000), kept in sync between devices.
         let me = Filter::new().author(self.account().pubkey);
-        let mine = [Kind::SimpleGroups, Kind::MuteList].map(|k| me.clone().kind(k));
+        // And my presence setting (spec § 12).
+        let presence = me
+            .clone()
+            .kind(Kind::ApplicationSpecificData)
+            .identifier("chaton/presence");
+        let mut mine = [Kind::SimpleGroups, Kind::MuteList]
+            .map(|k| me.clone().kind(k))
+            .to_vec();
+        mine.push(presence);
         self.client
-            .fetch_events(ReqTarget::single(&relay, mine.clone().map(|f| f.limit(1))))
+            .fetch_events(ReqTarget::single(
+                &relay,
+                mine.iter().cloned().map(|f| f.limit(1)),
+            ))
             .timeout(TIMEOUT)
             .await?;
+        drop(self.load_presence().await);
         self.resubscribe(
             SubscriptionId::new("communities"),
             &relay,
-            mine.map(|f| f.since(Timestamp::now())).to_vec(),
+            mine.into_iter()
+                .map(|f| f.since(Timestamp::now()))
+                .collect(),
         )
         .await?;
         for (id, relay) in self.group_list().await? {
@@ -1300,7 +1322,7 @@ impl Session {
 
     /// Replaces the subscription `id`: nostr-sdk refuses an id already in use
     /// (and only says so per relay), so the old one is closed first.
-    async fn resubscribe(
+    pub(crate) async fn resubscribe(
         &self,
         id: SubscriptionId,
         relay: &str,
@@ -1354,9 +1376,16 @@ impl Session {
         if ev.kind == Kind::MuteList && ev.pubkey == self.account().pubkey {
             return Some(Update::Blocks);
         }
+        if ev.kind == Kind::ApplicationSpecificData && ev.pubkey == self.account().pubkey {
+            self.load_presence().await.ok()?;
+            return Some(Update::Status {
+                status: self.my_status(),
+            });
+        }
         if ev.kind == Kind::SimpleGroups && ev.pubkey == self.account().pubkey {
             // Another device joined or left something.
             let _ = self.sync_communities().await;
+            let _ = self.follow_presence(false).await;
             return Some(Update::Communities);
         }
         if !STATE_KINDS.contains(&ev.kind) || !self.is_relay_key(ev.pubkey) {
@@ -1653,7 +1682,7 @@ impl Session {
         Ok(())
     }
 
-    async fn ensure_relay(&self, relay: &str) -> Result<()> {
+    pub(crate) async fn ensure_relay(&self, relay: &str) -> Result<()> {
         self.client.add_relay(relay).await?;
         self.client.connect_relay(relay).await?;
         Ok(())
@@ -1769,7 +1798,7 @@ impl Session {
     }
 
     /// My communities, `(id, relay)`, from my latest 10009.
-    async fn group_list(&self) -> Result<Vec<(String, String)>> {
+    pub(crate) async fn group_list(&self) -> Result<Vec<(String, String)>> {
         Ok(self
             .list_event()
             .await?
@@ -1806,7 +1835,11 @@ impl Session {
         let ev = event::builder(Kind::SimpleGroups, tags, "")?
             .custom_created_at(at)
             .finalize(&self.keys)?;
-        self.publish_to(&self.account().relay, &ev).await
+        self.publish_to(&self.account().relay, &ev).await?;
+        // My communities changed: follow and tell who is there now (spec § 12).
+        drop(self.follow_presence(false).await);
+        drop(self.beat(true).await);
+        Ok(())
     }
 }
 
@@ -1982,7 +2015,7 @@ fn visible<'a>(
     all
 }
 
-fn tag_values<'a>(ev: &'a Event, name: &'a str) -> impl Iterator<Item = &'a str> {
+pub(crate) fn tag_values<'a>(ev: &'a Event, name: &'a str) -> impl Iterator<Item = &'a str> {
     ev.tags.iter().filter_map(move |tag| match tag.as_slice() {
         [k, v, ..] if k == name => Some(v.as_str()),
         _ => None,

@@ -13,6 +13,9 @@ import {
   LucideUsers,
 } from '@lucide/angular';
 import { Avatar } from '@components/avatar/avatar';
+import { StatusDot } from '@components/users/status-dot/status-dot';
+import { STATUS_LABELS } from '@models/Presence.model';
+import { PresenceStore } from '@stores/presence.store';
 import { ShellService } from '@services/shell.service';
 import { CommunityStore } from '@stores/community.store';
 import { DmStore } from '@stores/dm.store';
@@ -21,13 +24,15 @@ import { VoiceStore } from '@stores/voice.store';
 /** Top of the sheet: what's open (channel, person, group), back on phones, call, members toggle. */
 @Component({
   selector: 'app-chat-header',
-  imports: [Avatar, DatePipe, LucideDynamicIcon, OverlayModule],
+  imports: [Avatar, DatePipe, LucideDynamicIcon, OverlayModule, StatusDot],
   templateUrl: './chat-header.html',
   styleUrl: './chat-header.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ChatHeader {
   protected readonly shell = inject(ShellService);
+  protected readonly presence = inject(PresenceStore);
+  protected readonly statusLabels = STATUS_LABELS;
   protected readonly voice = inject(VoiceStore);
   protected readonly dm = inject(DmStore);
   protected readonly icons = {

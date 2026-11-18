@@ -15,6 +15,11 @@ import org.unifiedpush.android.connector.UnifiedPush
 import org.unifiedpush.android.connector.data.PushEndpoint
 
 @InvokeArg
+class QuietArgs {
+  var on: Boolean = false
+}
+
+@InvokeArg
 class RegisterArgs {
   /** The instance's VAPID public key (base64url), from `GET /api/push`. */
   var vapid: String = ""
@@ -43,6 +48,23 @@ class PushPlugin(private val activity: Activity) : Plugin(activity) {
       }
     }
   }
+
+  /** Do not disturb (spec protocol § 12): pushes stay silent. */
+  @Command
+  fun quiet(invoke: Invoke) {
+    Quiet.set(activity, invoke.parseArgs(QuietArgs::class.java).on)
+    invoke.resolve()
+  }
+}
+
+/** Do not disturb, kept for the push service, which runs without the app. */
+object Quiet {
+  private const val PREFS = "chaton.quiet"
+
+  fun set(context: Context, on: Boolean) =
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("on", on).apply()
+
+  fun on(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("on", false)
 }
 
 /** The endpoint UnifiedPush gave us, kept across restarts; answers a pending `register`. */

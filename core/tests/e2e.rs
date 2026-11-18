@@ -1713,3 +1713,84 @@ async fn mentions_unreads_and_notify() {
     assert_eq!(heard(again.id).await, (true, None));
     assert_eq!(state().await, (true, 1, NotifyLevel::None));
 }
+
+/// Step 12k (spec § 12): those who wrote to me, and my communities' members,
+/// show online at their status, live (well within a tick); invisible and a
+/// block hide them.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn presence_in_dms_and_communities() {
+    use chaton_core::presence::Status;
+    use std::collections::HashMap;
+    let (server, _) = setup();
+    let new = |name: &'static str| {
+        let server = server.clone();
+        async move {
+            Arc::new(
+                Session::register(&temp_dir(name), &server, &unique(name))
+                    .await
+                    .unwrap(),
+            )
+        }
+    };
+    let (alice, bob, carol) = (new("alice").await, new("bob").await, new("carol").await);
+    let a = alice.account().pubkey;
+    let watch = |s: &Arc<Session>| {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let listener = s.clone();
+        tokio::spawn(async move {
+            listener
+                .listen(|u| {
+                    if let Update::Presence { online } = u {
+                        drop(tx.send(online));
+                    }
+                })
+                .await
+        });
+        rx
+    };
+    type Online = tokio::sync::mpsc::UnboundedReceiver<
+        HashMap<chaton_core::nostr::prelude::PublicKey, Status>,
+    >;
+    // The tick is 30 s: within 5 s, it came in live.
+    let sees = async |rx: &mut Online, status: Option<Status>| loop {
+        match tokio::time::timeout(Duration::from_secs(5), rx.recv()).await {
+            Ok(Some(online)) if online.get(&a).copied() == status => return,
+            Ok(Some(_)) => {}
+            other => panic!("never saw Alice {status:?}: {other:?}"),
+        }
+    };
+    let (mut at_bob, mut at_carol) = (watch(&bob), watch(&carol));
+    alice.set_status(Status::Online).await.unwrap();
+    // Bob doesn't know Alice's presence key until she writes to him.
+    assert_eq!(bob.presence_tick().await.unwrap().get(&a), None);
+    alice
+        .send_dm(&[bob.account().pubkey], "coucou")
+        .await
+        .unwrap();
+    sees(&mut at_bob, Some(Status::Online)).await;
+    alice.set_status(Status::Dnd).await.unwrap();
+    sees(&mut at_bob, Some(Status::Dnd)).await;
+    alice.set_away(true).await.unwrap(); // dnd stays dnd
+    alice.set_status(Status::Online).await.unwrap();
+    sees(&mut at_bob, Some(Status::Idle)).await;
+    alice.set_away(false).await.unwrap();
+    sees(&mut at_bob, Some(Status::Online)).await;
+
+    // Carol never wrote to Alice: she sees her through their community.
+    let community = alice.create_community("Les chats").await.unwrap();
+    carol
+        .join(&alice.invite(&community.id).await.unwrap())
+        .await
+        .unwrap();
+    alice.set_status(Status::Online).await.unwrap();
+    sees(&mut at_carol, Some(Status::Online)).await;
+
+    // A block changes Alice's key: Bob loses her, Carol doesn't.
+    alice.block_key(bob.account().pubkey).await.unwrap();
+    sees(&mut at_bob, None).await;
+    // Invisible: gone for everyone, right away.
+    alice.set_status(Status::Invisible).await.unwrap();
+    sees(&mut at_carol, None).await;
+    assert_eq!(alice.my_status(), Status::Invisible);
+}

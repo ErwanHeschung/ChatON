@@ -1,4 +1,13 @@
-<app-user-card [user]="me()" size="md" [ears]="true"></app-user-card>
+<button
+  type="button"
+  class="me"
+  [cdkMenuTriggerFor]="statusMenu"
+  [cdkMenuPosition]="above"
+  i18n-title="@@presence.change"
+  title="Change your status"
+>
+  <app-user-card [user]="me()" size="md" [ears]="true" [presence]="true"></app-user-card>
+</button>
 <button
   type="button"
   class="btn btn-ghost btn-icon btn-sm"
@@ -6,5 +15,33 @@
   i18n-title="@@settings.title"
   title="Settings"
 >
-  <svg [lucideIcon]="settingsIcon" size="18"></svg>
+  <svg [lucideIcon]="icons.settings" size="18"></svg>
 </button>
+
+<!-- For all my devices (spec § 12). -->
+<ng-template #statusMenu>
+  <!-- A menu is a radio group of its own. -->
+  <div class="menu status-menu" cdkMenu>
+    @for (s of statuses; track s.id) {
+      <button
+        class="menu-item"
+        cdkMenuItemRadio
+        [cdkMenuItemChecked]="presence.mine() === s.id"
+        (cdkMenuItemTriggered)="presence.set(s.id)"
+      >
+        <span class="swatch">
+          <app-status-dot [status]="s.id" aria-hidden="true"></app-status-dot>
+        </span>
+        <span class="text">
+          {{ labels[s.id] }}
+          @if (s.hint) {
+            <small>{{ s.hint }}</small>
+          }
+        </span>
+        @if (presence.mine() === s.id) {
+          <svg class="check" [lucideIcon]="icons.check" size="16"></svg>
+        }
+      </button>
+    }
+  </div>
+</ng-template>

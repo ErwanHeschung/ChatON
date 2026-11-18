@@ -104,22 +104,24 @@ impl Session {
         let Some(ev) = self.client.database().query(mine).await?.first().cloned() else {
             return Ok((None, Blocks::default()));
         };
-        let me = self.account().pubkey;
-        let plain = nip44::decrypt(self.keys.secret_key(), &me, &ev.content)
-            .map_err(|e| Error::Invalid(e.to_string()))?;
+        let plain = self.decrypt_for_me(&ev.content)?;
         Ok((
             Some(ev.created_at),
             Blocks::from_tags(serde_json::from_str(&plain)?),
         ))
     }
 
+    /// Also changes my presence key: they stop seeing me online (spec § 12).
     pub async fn block_key(&self, key: PublicKey) -> Result<Blocks> {
-        self.edit_blocks(|b| {
-            if !b.keys.contains(&key) {
-                b.keys.push(key);
-            }
-        })
-        .await
+        let blocks = self
+            .edit_blocks(|b| {
+                if !b.keys.contains(&key) {
+                    b.keys.push(key);
+                }
+            })
+            .await?;
+        self.change_presence_key().await?;
+        Ok(blocks)
     }
 
     pub async fn unblock_key(&self, key: PublicKey) -> Result<Blocks> {
@@ -154,19 +156,50 @@ impl Session {
 
     /// Republishes my whole list (replaceable), encrypted for myself only.
     async fn edit_blocks(&self, edit: impl FnOnce(&mut Blocks)) -> Result<Blocks> {
-        let (last, mut blocks) = self.blocks_event().await?;
+        let (_, mut blocks) = self.blocks_event().await?;
         edit(&mut blocks);
+        let plain = serde_json::to_string(&blocks.to_tags())?;
+        self.publish_for_me(Kind::MuteList, vec![], &plain).await?;
+        Ok(blocks)
+    }
+
+    pub(crate) fn decrypt_for_me(&self, content: &str) -> Result<String> {
+        nip44::decrypt(self.keys.secret_key(), &self.account().pubkey, content)
+            .map_err(|e| Error::Invalid(e.to_string()))
+    }
+
+    /// Publishes a replaceable `kind` (with `tags`, e.g. its `d`) on my relay,
+    /// its content `plain` encrypted for myself only (NIP-44).
+    pub(crate) async fn publish_for_me(
+        &self,
+        kind: Kind,
+        tags: Vec<Tag>,
+        plain: &str,
+    ) -> Result<()> {
+        let mut mine = Filter::new()
+            .author(self.account().pubkey)
+            .kind(kind)
+            .limit(1);
+        if let Some(d) = tags.iter().find_map(|t| {
+            (t.as_slice().first().map(String::as_str) == Some("d"))
+                .then(|| t.content())
+                .flatten()
+        }) {
+            mine = mine.identifier(d);
+        }
+        let last = self
+            .client
+            .database()
+            .query(mine)
+            .await?
+            .first()
+            .map(|e| e.created_at);
         // Replaceable: same second = lowest id wins, so always move forward.
         let at = last.map_or(Timestamp::now(), |t| Timestamp::now().max(t + 1));
         let me = self.account().pubkey;
-        let content = nip44::encrypt(
-            self.keys.secret_key(),
-            &me,
-            serde_json::to_string(&blocks.to_tags())?,
-            Version::V2,
-        )
-        .map_err(|e| Error::Invalid(e.to_string()))?;
-        let ev = event::builder(Kind::MuteList, Vec::<Tag>::new(), &content)?
+        let content = nip44::encrypt(self.keys.secret_key(), &me, plain, Version::V2)
+            .map_err(|e| Error::Invalid(e.to_string()))?;
+        let ev = event::builder(kind, tags, &content)?
             .custom_created_at(at)
             .finalize(&self.keys)?;
         let out = self
@@ -177,7 +210,7 @@ impl Session {
         if out.success.is_empty() {
             return Err(Error::NotDelivered(format!("{:?}", out.failed)));
         }
-        Ok(blocks)
+        Ok(())
     }
 
     /// Not shown, not kept, not notified: a sender I block, from an instance I

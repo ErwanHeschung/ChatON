@@ -36,6 +36,12 @@
   --danger-subtle: rgb(248 113 113 / 0.12);
   --danger-border: rgb(248 113 113 / 0.45);
 
+  /* --- PRESENCE (never green: green means me, selection, the main action) --- */
+  --presence-online: #5ec8f0; /* sky: on the frame 10:1 */
+  --presence-idle: #e5a50a; /* amber */
+  --presence-dnd: var(--danger);
+  --presence-offline: var(--content-tertiary);
+
   /* --- BORDERS --- */
   --border-subtle: #24224a; /* dividers between panels */
   --border-strong: #3a3770; /* controls, cards, whiskers */

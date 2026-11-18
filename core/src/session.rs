@@ -89,6 +89,8 @@ pub struct Session {
     pub(crate) updates: tokio::sync::broadcast::Sender<Update>,
     /// What I've read, how communities notify me (`reads.json`).
     pub(crate) reads: Mutex<crate::reads::Reads>,
+    /// My status and who I see online (spec § 12).
+    pub(crate) presence: Mutex<crate::presence::State>,
     /// The voice channel or call I'm in (one at a time).
     #[cfg(feature = "voice")]
     pub(crate) voice: crate::voice::Slot,
@@ -127,9 +129,11 @@ impl Session {
         self.client.add_relay(new.relay.as_str()).await?;
         self.client.connect_relay(new.relay.as_str()).await?;
         // My lists, as signed, to the new relay.
-        let mine = Filter::new()
-            .author(self.account.pubkey)
-            .kinds([Kind::SimpleGroups, Kind::MuteList]);
+        let mine = Filter::new().author(self.account.pubkey).kinds([
+            Kind::SimpleGroups,
+            Kind::MuteList,
+            Kind::ApplicationSpecificData,
+        ]);
         for ev in self.client.database().query(mine).await? {
             drop(self.client.send_event(&ev).to([new.relay.as_str()]).await);
         }
@@ -277,6 +281,7 @@ impl Session {
             resubscribing: tokio::sync::Mutex::new(()),
             updates: tokio::sync::broadcast::channel(64).0,
             reads: Mutex::new(crate::reads::Reads::load(dir)),
+            presence: Mutex::new(crate::presence::State::new()?),
             #[cfg(feature = "voice")]
             voice: Default::default(),
         };
@@ -529,7 +534,7 @@ impl Session {
     /// Sends `text` to `to`, one person or a group's members (NIP-17), and
     /// returns the message as stored.
     pub async fn send_dm(&self, to: &[PublicKey], text: &str) -> Result<Message> {
-        self.deliver(dm::wrap(&self.keys, Some(&self.account.handle), to, text)?)
+        self.deliver(dm::wrap(&self.keys, &self.author_tags()?, to, text)?)
             .await
     }
 
@@ -537,7 +542,7 @@ impl Session {
     pub async fn name_group(&self, to: &[PublicKey], subject: &str) -> Result<Message> {
         self.deliver(dm::wrap_subject(
             &self.keys,
-            Some(&self.account.handle),
+            &self.author_tags()?,
             to,
             subject,
         )?)
@@ -553,13 +558,8 @@ impl Session {
         name: &str,
     ) -> Result<Message> {
         let file = self.upload_attachment(bytes, mime, name).await?;
-        self.deliver(dm::wrap_file(
-            &self.keys,
-            Some(&self.account.handle),
-            to,
-            &file,
-        )?)
-        .await
+        self.deliver(dm::wrap_file(&self.keys, &self.author_tags()?, to, &file)?)
+            .await
     }
 
     /// Sets my profile picture (public, uploaded to my instance).
@@ -749,7 +749,7 @@ impl Session {
     // ponytail: decrypts the whole history on every call. Cache the plaintext
     // (encrypted at rest) when it gets slow. Order is per second (NIP-01
     // `created_at`): same-second messages fall back to id order.
-    async fn messages_all(&self) -> Result<Vec<Message>> {
+    pub(crate) async fn messages_all(&self) -> Result<Vec<Message>> {
         let filter = Filter::new()
             .kind(Kind::GiftWrap)
             .pubkey(self.keys.public_key());
@@ -776,6 +776,7 @@ impl Session {
     pub async fn listen(&self, on_update: impl Fn(Update)) {
         let mut notifications = self.client.notifications();
         let mut local = self.updates.subscribe();
+        let mut presence = tokio::time::interval(Duration::from_secs(crate::presence::TICK_SECS));
         loop {
             let notification = tokio::select! {
                 n = notifications.next() => match n {
@@ -784,6 +785,14 @@ impl Session {
                 },
                 Ok(update) = local.recv() => {
                     on_update(update);
+                    continue;
+                }
+                // ponytail: blocks the loop up to TIMEOUT when a relay is slow;
+                // spawn it if messages lag behind.
+                _ = presence.tick() => {
+                    if let Ok(online) = self.presence_tick().await {
+                        on_update(Update::Presence { online });
+                    }
                     continue;
                 }
             };
@@ -796,6 +805,14 @@ impl Session {
                     let blocks = self.blocks().await.unwrap_or_default();
                     if self.hidden(message.sender, &blocks).await {
                         continue;
+                    }
+                    // Someone new wrote to me, or their presence key changed.
+                    if message
+                        .presence
+                        .as_ref()
+                        .is_some_and(|(key, _)| self.new_presence_key(key))
+                    {
+                        drop(self.follow_presence(true).await);
                     }
                     // A request (I never wrote there) doesn't ring nor notify.
                     let request = message.sender != self.account.pubkey
@@ -820,6 +837,10 @@ impl Session {
                         let until = message.created_at + dm::RING_SECS;
                         on_update(Update::Ring { message, until });
                     }
+                }
+            } else if event.kind == crate::presence::PRESENCE {
+                if let Some(online) = self.presence_event(&event) {
+                    on_update(Update::Presence { online });
                 }
             } else if let Some(update) = self.community_update(&event).await {
                 on_update(update);
@@ -1081,11 +1102,11 @@ mod tests {
             dm::unwrap(&me, &gift).unwrap()
         };
         let mut msgs = vec![
-            from_bob(dm::wrap(&bob, None, &[pk_me], "1 from bob").unwrap()),
-            mine(dm::wrap_subject(&me, None, &[pk_bob, pk_carol], "Projet").unwrap()),
-            mine(dm::wrap(&me, None, &[pk_carol], "3 to carol").unwrap()),
-            from_bob(dm::wrap(&bob, None, &[pk_me, pk_carol], "4 in the group").unwrap()),
-            mine(dm::wrap(&me, None, &[pk_bob], "5 to bob").unwrap()),
+            from_bob(dm::wrap(&bob, &[], &[pk_me], "1 from bob").unwrap()),
+            mine(dm::wrap_subject(&me, &[], &[pk_bob, pk_carol], "Projet").unwrap()),
+            mine(dm::wrap(&me, &[], &[pk_carol], "3 to carol").unwrap()),
+            from_bob(dm::wrap(&bob, &[], &[pk_me, pk_carol], "4 in the group").unwrap()),
+            mine(dm::wrap(&me, &[], &[pk_bob], "5 to bob").unwrap()),
         ];
         for (i, m) in msgs.iter_mut().enumerate() {
             m.created_at = Timestamp::from_secs(100 + i as u64);
@@ -1106,9 +1127,9 @@ mod tests {
         assert_eq!(convs[0].subject, None);
         assert!(!convs[0].request && !convs[1].request);
         // Bob alone in a room: a request until I answer.
-        let alone = from_bob(dm::wrap(&bob, None, &[pk_me], "hello?").unwrap());
+        let alone = from_bob(dm::wrap(&bob, &[], &[pk_me], "hello?").unwrap());
         assert!(group(vec![alone.clone()], pk_me)[0].request);
-        let answer = mine(dm::wrap(&me, None, &[pk_bob], "hi").unwrap());
+        let answer = mine(dm::wrap(&me, &[], &[pk_bob], "hi").unwrap());
         assert!(!group(vec![alone, answer], pk_me)[0].request);
     }
 

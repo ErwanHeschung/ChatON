@@ -254,7 +254,7 @@ mod live {
             let invite = self
                 .deliver(dm::wrap_call(
                     &self.keys,
-                    Some(&self.account().handle),
+                    &self.author_tags()?,
                     &room,
                     &id,
                     &base,
@@ -341,7 +341,7 @@ mod live {
                 let end = self
                     .deliver(dm::wrap_call_end(
                         &self.keys,
-                        Some(&self.account().handle),
+                        &self.author_tags()?,
                         &room,
                         &id,
                     )?)

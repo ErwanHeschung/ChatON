@@ -150,3 +150,10 @@ h1 {
     white-space: pre-wrap;
   }
 }
+
+// A person's avatar carries their status dot.
+.avatar {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}

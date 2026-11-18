@@ -14,7 +14,7 @@ class ChatonPushService : PushService() {
   override fun onNewEndpoint(endpoint: PushEndpoint, instance: String) = Endpoints.save(this, endpoint)
 
   override fun onMessage(message: PushMessage, instance: String) {
-    if (!MainActivity.visible) Notifier.show(this)
+    if (!MainActivity.visible && !Quiet.on(this)) Notifier.show(this)
   }
 
   override fun onRegistrationFailed(reason: FailedReason, instance: String) = Endpoints.fail(reason.name)

@@ -169,6 +169,8 @@ func generate() []byte {
 		valid("gift_wrap", ephem, 1059, nostr.Tags{{"p", bob.pk}}, opaque),
 		valid("relay_auth", alice, 22242, nostr.Tags{v0, {"relay", "wss://relay.chaton.example"}, {"challenge", "c0ffee"}}, ""),
 		// device linking (spec § 8): ephemeral, signed by a throwaway key, channel = sha256 hex
+		valid("presence", ephem, 24136, nostr.Tags{v0, {"status", "online"}, {"device", "0123abcd"}}, ""),
+		valid("presence_community", bob, 24136, nostr.Tags{v0, {"h", community}, {"status", "dnd"}, {"device", "0123abcd"}}, ""),
 		valid("device_link", ephem, 24135, nostr.Tags{v0, {"c", hex.EncodeToString(channel[:])}}, `{"type":"pake","msg":"AAAA"}`),
 		valid("http_auth", alice, 27235, nostr.Tags{v0, {"u", "https://chaton.example/api/handle"}, {"method", "POST"}, {"payload", hex.EncodeToString(payload[:])}}, ""),
 		// communities (spec § 9): C = community, S = channel

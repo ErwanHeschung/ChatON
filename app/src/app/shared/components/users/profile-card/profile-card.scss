@@ -22,6 +22,10 @@
 
 // Half over the banner.
 .avatar {
+  --dot-size: 24%;
+  --dot-inset: 4%;
+  --dot-cut: var(--surface-panel);
+
   position: relative;
   display: grid;
   margin-top: calc(var(--avatar-2xl) / -2);

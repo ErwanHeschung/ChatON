@@ -177,6 +177,7 @@ Nuit bleu-violet en six paliers, un vert franc, un rouge doux pour le danger. Le
 
 ### Status
 - **Corail** (#f87171) `--danger` : erreurs, actions destructrices (6,4:1), avec `--danger-subtle` (fond) et `--danger-border`.
+- **Présence** : `--presence-online` (ciel, #5ec8f0), `--presence-idle` (ambre, #e5a50a), `--presence-dnd` (le corail), `--presence-offline` (`--content-tertiary`). Jamais de vert : la règle du vert vaut aussi pour « en ligne ».
 
 ### Named Rules
 **La règle du vert.** Le vert ne décore jamais. S'il n'indique ni l'action principale, ni la sélection, ni le focus, ni « c'est moi », il n'a rien à faire là. Seule exception : les lucioles, qui sont la marque.
@@ -327,6 +328,11 @@ Sous un salon vocal, chaque personne que je peux modérer (`mute_members` ou `mo
 - **Dans le message** : chaque mention est une puce `--accent-subtle` en `--accent-text` (le vert, c'est moi et les miens). Un message qui me mentionne a la ligne teintée `--accent-subtle` avec une barre `--accent` de 2 px à gauche.
 - **Non-lus** : un salon non lu passe en `--content-primary` gras, avec une petite pilule blanche au bord de la barre latérale ; ses mentions, un `.badge` corail (`--danger`, chiffre `--surface-frame`) au bout de la ligne. Dans le rail, la même pilule au bord, et la somme des mentions en pastille ronde corail au coin de la tuile, cernée du fond du rail. Le nombre seul se voit ; « 2 mentions » se lit (`.sr-only`).
 - **Notifications** : dans le menu de la communauté, un groupe « Notifications » entre deux filets : Tous les messages, Mentions seulement (par défaut), Rien, une coche devant le choix. Réglé pour cet appareil. L'alerte bureau dit qui, puis `#salon · communauté` et le texte.
+
+### Présence (`app-status-dot`, `app-user-panel`)
+- **Pastille** : au coin bas-droit de l'avatar, découpée dans le fond de son parent (`--dot-cut` : `--surface-frame` dans la barre latérale et l'en-tête, `--surface-panel` dans les membres et la carte de profil, `--surface-sunken` dans mon panneau). Une forme par statut, pas seulement une couleur : en ligne un disque, absent un croissant, ne pas déranger un disque barré, hors ligne et invisible un anneau. Elle porte son libellé (`aria-label`, infobulle). 40 % de l'avatar (au moins 10 px), 24 % sur la carte de profil.
+- **Où** : conversations à deux dans la liste des MP, en-tête d'une conversation à deux (avec le statut en toutes lettres en `--content-secondary`), liste des membres, carte de profil, mon panneau. Pas sur les groupes, ni dans les salons vocaux (on y voit déjà qui parle).
+- **Mon statut** : ma carte, en bas de la barre latérale, est un bouton qui ouvre un `.menu` au-dessus : En ligne, Absent, Ne pas déranger (« Aucune notification, sur aucun de vos appareils »), Invisible (« Vous apparaissez hors ligne »), la pastille devant, une coche verte au bout du choix. Partagé par tous mes appareils. Absent de lui-même après 10 minutes sans activité ou l'app cachée, de retour au premier geste.
 
 ### Demandes et blocages (`app-request-banner`)
 - **Demandes de message** : sous les MP, une `.section-label` repliable (`<details>`, chevron qui tourne, fermée par défaut) avec le nombre en `.badge`. Une demande ne notifie pas et ne sonne pas : elle attend.

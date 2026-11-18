@@ -18,6 +18,7 @@ use chaton_core::link::{self, LinkOffer};
 use chaton_core::media::Attachment;
 use chaton_core::network::Instance;
 use chaton_core::nostr::prelude::{EventId, PublicKey};
+use chaton_core::presence::Status;
 use chaton_core::reads::NotifyLevel;
 use chaton_core::session::{Account, Conversation, Peer, Session};
 use chaton_core::voice::{ScreenSource, VoiceState};
@@ -132,6 +133,11 @@ async fn start(app: &AppHandle, state: &App, session: Session) -> Account {
                         handle.emit("voice", voice)
                     }
                     moved @ Update::VoiceMove { .. } => handle.emit("voice", moved),
+                    online @ Update::Presence { .. } => handle.emit("presence", online),
+                    Update::Status { status } => {
+                        quiet(&handle, status);
+                        handle.emit("presence", Update::Status { status })
+                    }
                     Update::ChannelMessage {
                         ref message,
                         notify: Some(ref place),
@@ -154,8 +160,26 @@ async fn start(app: &AppHandle, state: &App, session: Session) -> Account {
             })
             .await;
     });
+    quiet(app, session.my_status());
     *state.session.lock().await = Some(session);
     account
+}
+
+/// Android: pushes stay silent in do not disturb (spec § 12). The push
+/// service shows its notification without the app, so it keeps a flag.
+fn quiet(_app: &AppHandle, _status: Status) {
+    #[cfg(target_os = "android")]
+    {
+        let plugin = _app.state::<push::Handle<tauri::Wry>>().0.clone();
+        let on = _status == Status::Dnd;
+        tauri::async_runtime::spawn(async move {
+            drop(
+                plugin
+                    .run_mobile_plugin_async::<()>("quiet", serde_json::json!({ "on": on }))
+                    .await,
+            );
+        });
+    }
 }
 
 /// Desktop: an OS notification for a message from someone else while the
@@ -176,7 +200,8 @@ fn alert(app: &AppHandle, session: &Arc<Session>, sender: PublicKey, body: Strin
         .get_webview_window("main")
         .and_then(|w| w.is_focused().ok())
         .unwrap_or(true);
-    if cfg!(mobile) || focused || sender == session.account().pubkey {
+    let dnd = session.my_status() == Status::Dnd;
+    if cfg!(mobile) || focused || dnd || sender == session.account().pubkey {
         return;
     }
     let (app, session) = (app.clone(), session.clone());
@@ -757,6 +782,25 @@ async fn set_notify_level(state: State<'_, App>, community: String, level: Notif
     Ok(session(&state).await?.set_notify_level(&community, level)?)
 }
 
+/// The status I chose, on all my devices (spec § 12).
+#[tauri::command]
+async fn my_status(state: State<'_, App>) -> Res<Status> {
+    Ok(session(&state).await?.my_status())
+}
+
+#[tauri::command]
+async fn set_status(app: AppHandle, state: State<'_, App>, status: Status) -> Res<()> {
+    session(&state).await?.set_status(status).await?;
+    quiet(&app, status);
+    Ok(())
+}
+
+/// No activity for a while, or in the background: online shows idle.
+#[tauri::command]
+async fn set_away(state: State<'_, App>, away: bool) -> Res<()> {
+    Ok(session(&state).await?.set_away(away).await?)
+}
+
 #[tauri::command]
 async fn delete_message(
     state: State<'_, App>,
@@ -1041,6 +1085,9 @@ pub fn run() {
             react,
             mark_read,
             set_notify_level,
+            my_status,
+            set_status,
+            set_away,
             set_pinned,
             moderate_voice,
             revoke_invite,

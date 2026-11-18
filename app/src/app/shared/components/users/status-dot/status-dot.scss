@@ -1,0 +1,32 @@
+// Shapes, not only colors (WCAG 1.4.1). The cut-out (`--dot-cut`) draws the crescent, the bar
+// and the ring's hole as well as the border.
+:host {
+  --dot: var(--presence-online);
+  --cut: var(--dot-cut, var(--surface-frame));
+
+  position: absolute;
+  right: var(--dot-inset, -2px);
+  bottom: var(--dot-inset, -2px);
+  width: var(--dot-size, 40%);
+  min-width: 10px;
+  aspect-ratio: 1;
+  border-radius: var(--radius-full);
+  background: var(--dot);
+  box-shadow: 0 0 0 3px var(--cut);
+  pointer-events: auto;
+}
+
+:host(.idle) {
+  background: radial-gradient(circle at 22% 22%, var(--cut) 0 36%, var(--presence-idle) 38%);
+}
+
+:host(.dnd) {
+  background:
+    linear-gradient(var(--cut), var(--cut)) center / 56% 24% no-repeat,
+    var(--presence-dnd);
+}
+
+:host(.offline),
+:host(.invisible) {
+  background: radial-gradient(circle, var(--cut) 0 32%, var(--presence-offline) 35%);
+}

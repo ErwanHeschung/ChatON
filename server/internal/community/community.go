@@ -1179,6 +1179,18 @@ func (g *Groups) Voice(id string, pk nostr.PubKey) (VoiceChannel, bool) {
 	return VoiceChannel{Community: c.Address.ID, Perms: g.perms(c, pk, group), UserLimit: g.layout(id).UserLimit}, true
 }
 
+// IsMember: pk is a member of community id (not a channel).
+func (g *Groups) IsMember(id string, pk nostr.PubKey) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	c := g.groups[id]
+	if c == nil || c.Parent != "" {
+		return false
+	}
+	_, ok := c.Members[pk]
+	return ok
+}
+
 // VoiceChannel is what voice needs of a voice channel (spec § 11).
 type VoiceChannel struct {
 	Community string

@@ -64,6 +64,9 @@
     [attr.aria-current]="key(conversation) === dm.selected() ? 'true' : null"
     (click)="open(conversation)"
   >
-    <app-user-card [user]="card(conversation)"></app-user-card>
+    <app-user-card
+      [user]="card(conversation)"
+      [presence]="dm.others(key(conversation)).length === 1"
+    ></app-user-card>
   </button>
 </ng-template>

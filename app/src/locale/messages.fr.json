@@ -466,6 +466,14 @@
     "notify.all": "Tous les messages",
     "notify.mentions": "Mentions seulement",
     "notify.none": "Rien",
-    "channels.unread": "non lu"
+    "channels.unread": "non lu",
+    "presence.online": "En ligne",
+    "presence.idle": "Absent",
+    "presence.dnd": "Ne pas déranger",
+    "presence.invisible": "Invisible",
+    "presence.offline": "Hors ligne",
+    "presence.change": "Changer de statut",
+    "presence.dnd-hint": "Aucune notification, sur aucun de vos appareils",
+    "presence.invisible-hint": "Vous apparaissez hors ligne"
   }
 }
