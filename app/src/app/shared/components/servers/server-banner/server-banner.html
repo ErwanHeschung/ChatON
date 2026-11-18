@@ -12,6 +12,12 @@
           <ng-container i18n="@@community.invite">Invite</ng-container>
         </button>
       }
+      @if (store.can('manage_channels')) {
+        <button class="menu-item" cdkMenuItem (cdkMenuItemTriggered)="createCategory()">
+          <svg [lucideIcon]="icons.category" size="16"></svg>
+          <ng-container i18n="@@category.create-title">Create a category</ng-container>
+        </button>
+      }
       @if (canSettings()) {
         <button
           class="menu-item"

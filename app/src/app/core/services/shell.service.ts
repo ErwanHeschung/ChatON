@@ -5,7 +5,7 @@ import { DmStore } from '@stores/dm.store';
 
 /** What the open conversation is, for its header, intro and composer. */
 export type OpenConversation =
-  | { kind: 'channel'; title: string }
+  | { kind: 'channel'; title: string; topic: string | null }
   | { kind: 'group'; title: string; count: number }
   | {
       kind: 'person';
@@ -27,6 +27,8 @@ export class ShellService {
   public readonly settings = signal(false);
   /** The open community's settings, full screen too. */
   public readonly serverSettings = signal(false);
+  /** The channel or category whose dialog is open ('' : a new category). */
+  public readonly editing = signal<{ channel: string } | { category: string } | null>(null);
   /** The network map in the sheet, until a conversation or channel is opened. */
   public readonly network = signal(false);
   /** Members panel: shown by default wherever it sits beside the conversation (not over it). */
@@ -36,7 +38,7 @@ export class ShellService {
     const id = this.community.channel();
     const channel = this.community.current()?.channels.find((c) => c.id === id);
     if (channel) {
-      return { kind: 'channel', title: channel.name };
+      return { kind: 'channel', title: channel.name, topic: channel.topic };
     }
     const key = this.dm.selected();
     if (!key) {

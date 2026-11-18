@@ -359,6 +359,23 @@
     "server-settings.overview": "Vue d’ensemble",
     "server-settings.roles": "Rôles",
     "server-settings.members": "Membres",
-    "server-settings.ownership": "Propriété"
+    "server-settings.ownership": "Propriété",
+    "chat.slow-mode": "Mode lent : attends un peu avant ton prochain message.",
+    "channel.settings-title": "Paramètres du salon",
+    "channel.name": "Nom",
+    "channel.topic": "Sujet",
+    "channel.topic-placeholder": "De quoi on parle ici",
+    "channel.slowmode": "Mode lent",
+    "channel.slowmode-hint": "Délai entre deux messages d’un membre. Les modérateurs n’attendent pas.",
+    "channel.limit": "Nombre de places",
+    "channel.limit-hint": "0 : pas de limite.",
+    "category.edit-title": "Catégorie",
+    "category.create-title": "Créer une catégorie",
+    "category.name": "Nom",
+    "channel.delete-confirm": "Ses messages disparaissent pour tout le monde, définitivement.",
+    "category.delete-confirm": "Ses salons restent, au-dessus des catégories.",
+    "channel.delete": "Supprimer le salon",
+    "category.delete": "Supprimer la catégorie",
+    "channel.slowmode-off": "Désactivé"
   }
 }

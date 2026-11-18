@@ -11,10 +11,12 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { CmdError } from '@models/Auth.model';
 import {
+  Channel,
   ChannelMessage,
   Community,
   CommunityUpdate,
   CommunityEdit,
+  ChannelEdit,
   Member,
   Permission,
 } from '@models/Community.model';
@@ -117,6 +119,8 @@ export const CommunityStore = signalStore(
 
     return {
       can,
+      /** I have `perm` in this channel of the open community. */
+      canIn: (channel: Channel, perm: Permission) => channel.perms.includes(perm),
       load,
       select,
       selectChannel,
@@ -153,15 +157,49 @@ export const CommunityStore = signalStore(
         }
       },
 
-      async createChannel(name: string, voice = false) {
+      /** manage_channels: at the end of the community, or of `category`. */
+      async createChannel(name: string, voice = false, category: string | null = null) {
         const community = store.selected();
-        if (
-          community &&
-          name.trim() &&
-          (await run('create_channel', { community, name, voice })).ok
-        ) {
-          await load();
-        }
+        const ok =
+          !!community &&
+          !!name.trim() &&
+          (await run('create_channel', { community, name: name.trim(), voice, category })).ok;
+        if (ok) await load();
+        return ok;
+      },
+
+      /** manage_channels: channels in this order and these categories, shown at once. */
+      async arrange(channels: { id: string; category: string | null }[]) {
+        const id = store.selected();
+        patchState(store, (s) => ({
+          communities: s.communities.map((c) =>
+            c.id !== id
+              ? c
+              : {
+                  ...c,
+                  channels: channels.flatMap((p) => {
+                    const ch = c.channels.find((x) => x.id === p.id);
+                    return ch ? [{ ...ch, category: p.category }] : [];
+                  }),
+                },
+          ),
+        }));
+        const ok = (await run('update_community', { community: id, edit: { channels } })).ok;
+        await load(); // the relay's order, or back to it if refused
+        return ok;
+      },
+
+      /** manage_channels in it: name, topic, slow mode, user limit. */
+      async editChannel(channel: string, edit: ChannelEdit) {
+        const ok = (await run('edit_channel', { community: store.selected(), channel, edit })).ok;
+        if (ok) await load();
+        return ok;
+      },
+
+      async deleteChannel(channel: string) {
+        const ok = (await run('delete_channel', { community: store.selected(), channel })).ok;
+        if (ok) await load();
+        return ok;
       },
 
       async invite() {

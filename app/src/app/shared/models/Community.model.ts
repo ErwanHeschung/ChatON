@@ -11,6 +11,27 @@ export interface Channel {
   participants: string[];
   /** My permissions in this channel (spec § 9). */
   perms: Permission[];
+  /** Its category's id; null: above the categories. */
+  category: string | null;
+  topic: string | null;
+  /** Seconds between two messages of a member, 0: off. */
+  slowmode: number;
+  /** Most people in a voice channel, 0: no limit. */
+  user_limit: number;
+}
+
+/** Groups channels; its id is stable, its name free (spec § 9, Salons et catégories). */
+export interface Category {
+  id: string;
+  name: string;
+}
+
+/** What `edit_channel` changes; missing keeps it. */
+export interface ChannelEdit {
+  name?: string;
+  topic?: string;
+  slowmode?: number;
+  user_limit?: number;
 }
 
 export interface Community {
@@ -19,6 +40,8 @@ export interface Community {
   name: string;
   picture: string | null;
   channels: Channel[];
+  /** In display order. */
+  categories: Category[];
   /** My role ids, none for a plain member. */
   roles: string[];
   /** The owner's key, if the relay names one. */
@@ -50,6 +73,9 @@ export interface CommunityEdit {
   about?: string;
   roles?: Role[];
   owner?: string;
+  categories?: Category[];
+  /** Every channel, in order, each in its category. */
+  channels?: { id: string; category: string | null }[];
 }
 
 /**

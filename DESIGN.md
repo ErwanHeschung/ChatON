@@ -266,8 +266,11 @@ Salons, conversations, membres. En `<button>` elle devient interactive : survol 
 ### Section label (`.section-label`)
 Nomme un groupe de lignes (« SALONS », « ADMINS — 1 »), avec au besoin un `.btn-ghost.btn-icon.btn-sm` à droite (+ salon, + groupe, + personnes). Ce n'est pas un titre de page.
 
+### Salons (`app-server-channels`)
+D'abord les salons sans catégorie sous « SALONS », puis chaque catégorie : son nom en petites capitales avec un chevron, repliable (sur l'appareil seulement ; replié, on voit encore le salon ouvert et le salon vocal où je suis). Avec `manage_channels`, des actions en `.btn-ghost.btn-icon.btn-sm` qui n'apparaissent qu'au survol ou au focus de leur ligne (toujours sur écran tactile) : « + » et engrenage sur une catégorie, engrenage au bout d'un salon. On réordonne en glissant un salon, d'une catégorie à l'autre aussi (CDK drag-drop ; au toucher, après un appui de 300 ms) : l'ordre s'affiche tout de suite et part au relais. Un salon vocal limité affiche « présents/places » en `--content-secondary`, chiffres tabulaires. L'engrenage ouvre `ChannelDialog` (nom, sujet, mode lent ou places, suppression confirmée en place), qui sert aussi aux catégories.
+
 ### Menu (`.menu`, `.menu-item`)
-Avec `CdkMenu` : actions de la communauté (Inviter, Changer l'image, Quitter). Nuit levée, ombre popover ; `.menu-item.danger` pour le destructif. Un élément de menu ferme toujours le menu : une confirmation passe par un dialogue (`LeaveDialog`).
+Avec `CdkMenu` : actions de la communauté (Inviter, Créer une catégorie, Paramètres de la communauté, Quitter), chacune selon sa permission. Nuit levée, ombre popover ; `.menu-item.danger` pour le destructif. Un élément de menu ferme toujours le menu : une confirmation passe par un dialogue (`LeaveDialog`).
 
 ### Rail (`app-community-rail`)
 Le chat (`/chatON-logo.svg`) mène aux messages privés, puis les communautés en tuiles carrées lg, puis « + ». Sélection = un anneau vert de 2 px autour de la tuile, détaché par 2 px de cadre, sans lueur. L'image n'est jamais recouverte. Quelques lucioles fixes en bas du rail. Infobulle à droite.
@@ -276,7 +279,7 @@ Le chat (`/chatON-logo.svg`) mène aux messages privés, puis les communautés e
 Desktop seulement : les décorations natives sont désactivées (`decorations: false`), l'app dessine ses propres contrôles. Transparente, elle flotte au-dessus de la page (au-dessus des dialogues aussi) ; les layouts réservent `--titlebar-height` en `padding-top` (0 sans barre, ce qui laisse téléphone et navigateur intacts), leur fond passe donc dessous ; tout le vide sert à déplacer la fenêtre (double-clic : agrandir). À droite, Réduire, Agrandir, Fermer en `.btn-ghost.btn-icon.btn-sm` (Lucide `Minus`, `Square`, `X`) ; Fermer survole en corail.
 
 ### En-tête de conversation (`app-chat-header`)
-`#` + nom pour un salon ; avatar + handle + pastille « Chiffré de bout en bout » (cadenas vert) pour un MP ; nom + nombre de personnes pour un groupe. À droite, bascule des membres (`aria-pressed`). ← sur téléphone.
+`#` + nom pour un salon, puis son sujet après un filet, coupé en premier (masqué sur téléphone) ; avatar + handle + pastille « Chiffré de bout en bout » (cadenas vert) pour un MP ; nom + nombre de personnes pour un groupe. À droite, bascule des membres (`aria-pressed`). ← sur téléphone.
 
 ### Nom affiché
 Jamais seul : `Léa 🐈` en poids normal du contexte, puis le handle entier en `--content-secondary` (`Léa 🐈 @lea@miaou.fr`). Sans nom affiché, le handle comme avant (`@lea` puis `@miaou.fr` atténué). Sur la carte de profil, le nom en grand et le handle en dessous, plus petit. Réglé dans Paramètres → Profil.
@@ -289,6 +292,9 @@ Pas de bulle. Survol = `--state-hover` sur toute la ligne, barre d'actions flott
 
 ### Paramètres (`app-settings`)
 Plein écran, pas une modale : la grammaire de la coquille. Les sections (Profil, Compte et clé, Appareils, Notifications sur Android, Préférences, À propos) en `.list-row` à la place du rail et de la colonne, la section ouverte dans une feuille. Fermeture par ✕ (avec `Esc` en `kbd`) ou Échap ; les contrôles de fenêtre restent au-dessus. Chaque réglage est une ligne dans un groupe (`--surface-panel`, bordure subtile, rayon lg) : ce que c'est et pourquoi à gauche, l'action à droite ; `.stack` quand l'action prend la largeur (clé secrète, code de liaison). La déconnexion vit dans un groupe à bordure corail, confirmation en place. Téléphone : la liste, puis une section avec ←. Entrée en fondu et léger zoom ; chaque section monte en place quand on la choisit. `ShellService.settings` l'ouvre.
+
+### Paramètres de la communauté (`app-server-settings`)
+La même grammaire que les paramètres du compte (feuille plein écran, `settings.scss`), sections selon les permissions : Vue d'ensemble, Rôles, Membres, Propriété. Rôles : la liste à gauche (pastille de couleur, ↑↓ au survol), l'éditeur à droite (nom, pastilles de couleur, interrupteurs `.switch` pour « Afficher à part », « Mentionnable » et chaque permission) ; une barre collante « Modifications non enregistrées » tant que le brouillon diffère. Les couleurs de rôle sont une palette fixe (`ROLE_COLORS`), lisibles sur le cadre, jamais le vert d'accent. Un rôle à mon niveau ou au-dessus se lit sans se modifier. `ShellService.serverSettings` l'ouvre.
 
 ### Carte de profil (`app-profile-card`)
 L'objet que l'on personnalisera : bannière, avatar `2xl` (`--avatar-2xl`) à moitié dessus, handle en titre (le `@` en Inter, celui de Bricolage est cerclé ; l'instance en `--content-secondary`). Sans bannière personnalisée, la couleur de fond de l'app (`--surface-frame`). `mine` : oreilles ; `editable` (paramètres) : l'avatar devient le bouton pour changer de photo (appareil photo au survol).

@@ -2,11 +2,13 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import {
   LucideChevronDown,
+  LucideFolderPlus,
   LucideDynamicIcon,
   LucideSettings,
   LucideLogOut,
   LucideUserPlus,
 } from '@lucide/angular';
+import { ChannelDialog } from '@components/servers/channel-dialog/channel-dialog';
 import { InviteDialog } from '@components/servers/invite-dialog/invite-dialog';
 import { LeaveDialog } from '@components/servers/leave-dialog/leave-dialog';
 import { ModalService } from '@services/modal.service';
@@ -29,6 +31,7 @@ export class ServerBanner {
     chevron: LucideChevronDown,
     invite: LucideUserPlus,
     settings: LucideSettings,
+    category: LucideFolderPlus,
     leave: LucideLogOut,
   };
 
@@ -43,6 +46,11 @@ export class ServerBanner {
 
   public invite(): void {
     this.modal.open(InviteDialog);
+  }
+
+  public createCategory(): void {
+    this.shell.editing.set({ category: '' });
+    this.modal.open(ChannelDialog);
   }
 
   public leave(): void {

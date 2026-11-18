@@ -43,6 +43,8 @@ pub struct Community {
     pub about: Option<String>,
     pub banner: Option<String>,
     pub channels: Vec<Channel>,
+    /// In display order; a channel names its own (spec § 9, Salons et catégories).
+    pub categories: Vec<Category>,
     /// My role ids here, empty for a plain member.
     pub roles: Vec<String>,
     /// The owner (spec § 9), if the relay names one.
@@ -64,6 +66,32 @@ pub struct CommunityEdit {
     pub roles: Option<Vec<Role>>,
     /// Gives the community away (owner only).
     pub owner: Option<PublicKey>,
+    /// Every category, in order (`manage_channels`).
+    pub categories: Option<Vec<Category>>,
+    /// Every channel, in order, each in its category (`manage_channels`).
+    pub channels: Option<Vec<Placement>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Category {
+    pub id: String,
+    pub name: String,
+}
+
+/// Where a channel sits: its place in the list, and its category.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Placement {
+    pub id: String,
+    pub category: Option<String>,
+}
+
+/// What `edit_channel` changes; `None` keeps it. 0 turns slow mode or the limit off.
+#[derive(Debug, Default, Deserialize)]
+pub struct ChannelEdit {
+    pub name: Option<String>,
+    pub topic: Option<String>,
+    pub slowmode: Option<u32>,
+    pub user_limit: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -76,6 +104,13 @@ pub struct Channel {
     pub participants: Vec<PublicKey>,
     /// My permissions in this channel (spec § 9).
     pub perms: Vec<String>,
+    /// Its category's id; none: above the categories.
+    pub category: Option<String>,
+    pub topic: Option<String>,
+    /// Seconds between two messages of a member, 0: off.
+    pub slowmode: u32,
+    /// Most people in a voice channel, 0: no limit.
+    pub user_limit: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -191,50 +226,94 @@ impl Session {
         self.add_to_list(&id, &relay).await?;
         self.edit_community(&id, |meta, _| meta.name = name.into())
             .await?;
-        self.create_channel(&id, "general", false).await?;
+        self.create_channel(&id, "general", false, None).await?;
         self.community(&id)
             .await?
             .ok_or_else(|| Error::Server("community not published".into()))
     }
 
-    /// Adds a channel at the end of the community (admins only). A voice
-    /// channel stays one: its type is set here, once (spec § 11).
+    /// `manage_channels`: one 9007, the relay adds it at the end of the
+    /// community (spec § 9, Salons et catégories). A voice channel stays one.
     pub async fn create_channel(
         &self,
         community: &str,
         name: &str,
         voice: bool,
+        category: Option<&str>,
     ) -> Result<Channel> {
         let relay = self.relay_of(community).await?;
         let id = random_id()?;
-        self.group_event(&relay, Kind::GroupCreateGroup, &id, [], "")
-            .await?;
         let mut tags = vec![
-            Tag::parse(["name", name])?,
             Tag::parse(["parent", community])?,
+            Tag::parse(["name", name])?,
         ];
         if voice {
             tags.push(Tag::parse(["livekit"])?);
         }
-        self.group_event(&relay, Kind::GroupEditMetadata, &id, tags, "")
+        if let Some(category) = category {
+            tags.push(Tag::parse(["category", category])?);
+        }
+        self.group_event(&relay, Kind::GroupCreateGroup, &id, tags, "")
             .await?;
-        self.edit_community(community, |meta, _| meta.children.push(id.clone()))
-            .await?;
-        let perms = self
-            .communities()
+        self.sync_community(community, &relay).await?;
+        self.communities()
             .await?
             .into_iter()
             .find(|c| c.id == community)
             .and_then(|c| c.channels.into_iter().find(|ch| ch.id == id))
-            .map(|ch| ch.perms)
-            .unwrap_or_default();
-        Ok(Channel {
-            id,
-            name: name.into(),
-            voice,
-            participants: Vec::new(),
-            perms,
-        })
+            .ok_or_else(|| Error::Server("channel not published".into()))
+    }
+
+    /// `manage_channels` in it: name, topic, slow mode, user limit. Sends all
+    /// of its settings, read just before (spec § 9).
+    pub async fn edit_channel(
+        &self,
+        community: &str,
+        channel: &str,
+        edit: ChannelEdit,
+    ) -> Result<()> {
+        let relay = self.relay_of(community).await?;
+        self.fetch_state(&relay, &[channel.to_string()]).await?;
+        let key = self.relay_key(&relay).await?;
+        let mut meta = self
+            .metadata(key, channel)
+            .await?
+            .ok_or_else(|| Error::Server("channel state not found".into()))?;
+        if let Some(name) = edit.name {
+            meta.name = name;
+        }
+        if let Some(topic) = edit.topic {
+            meta.about = Some(topic).filter(|t| !t.is_empty());
+        }
+        let slowmode = edit.slowmode.unwrap_or(meta.slowmode);
+        let limit = edit.user_limit.unwrap_or(meta.user_limit);
+        let mut tags = vec![
+            Tag::parse(["name", &meta.name])?,
+            Tag::parse(["parent", community])?,
+        ];
+        if let Some(about) = &meta.about {
+            tags.push(Tag::parse(["about", about])?);
+        }
+        if meta.voice {
+            tags.push(Tag::parse(["livekit"])?);
+        }
+        if slowmode > 0 {
+            tags.push(Tag::parse(["slowmode", &slowmode.to_string()])?);
+        }
+        if limit > 0 {
+            tags.push(Tag::parse(["user_limit", &limit.to_string()])?);
+        }
+        self.group_event(&relay, Kind::GroupEditMetadata, channel, tags, "")
+            .await?;
+        self.sync_community(community, &relay).await
+    }
+
+    /// `manage_channels` in it: the relay takes it off the community.
+    pub async fn delete_channel(&self, community: &str, channel: &str) -> Result<()> {
+        let relay = self.relay_of(community).await?;
+        self.group_event(&relay, Kind::GroupDeleteGroup, channel, [], "")
+            .await?;
+        self.sync_community(community, &relay).await
     }
 
     /// A reusable invite (admins and moderators), to share as text.
@@ -463,6 +542,16 @@ impl Session {
             if let Some(owner) = edit.owner {
                 policy.owner = owner.to_hex();
             }
+            if let Some(categories) = edit.categories {
+                meta.categories = categories;
+            }
+            if let Some(channels) = edit.channels {
+                meta.children = channels.iter().map(|c| c.id.clone()).collect();
+                meta.placement = channels
+                    .into_iter()
+                    .filter_map(|c| Some((c.id, c.category?)))
+                    .collect();
+            }
         })
         .await
     }
@@ -664,6 +753,11 @@ impl Session {
                         .unwrap_or_default(),
                     false => Vec::new(),
                 };
+                let category = meta
+                    .placement
+                    .get(&child)
+                    .filter(|c| meta.categories.iter().any(|k| k.id == **c))
+                    .cloned();
                 channels.push(Channel {
                     id: child,
                     name: m.name,
@@ -671,6 +765,10 @@ impl Session {
                     participants,
                     // ponytail: no channel overrides until private channels (step 12e).
                     perms: policy.effective(&mine, Some(&[]), now).names(),
+                    category,
+                    topic: m.about,
+                    slowmode: m.slowmode,
+                    user_limit: m.user_limit,
                 });
             }
         }
@@ -689,6 +787,7 @@ impl Session {
             about: meta.about,
             banner,
             channels,
+            categories: meta.categories,
             manageable_roles: policy.roles_below(&mine),
             all_roles: policy.roles.clone(),
             perms: policy.effective(&mine, None, now).names(),
@@ -743,7 +842,13 @@ impl Session {
             }
         }
         for child in &meta.children {
-            tags.push(Tag::parse(["child", child])?);
+            match meta.placement.get(child) {
+                Some(category) => tags.push(Tag::parse(["child", child, category])?),
+                None => tags.push(Tag::parse(["child", child])?),
+            }
+        }
+        for c in &meta.categories {
+            tags.push(Tag::parse(["category", &c.id, &c.name])?);
         }
         tags.push(Tag::parse(["owner", &policy.owner])?);
         for r in &policy.roles {
@@ -928,8 +1033,13 @@ struct Metadata {
     about: Option<String>,
     banner: Option<String>,
     children: Vec<String>,
+    /// Channel → category id (communities).
+    placement: HashMap<String, String>,
+    categories: Vec<Category>,
     voice: bool,
     owner: Option<String>,
+    slowmode: u32,
+    user_limit: u32,
 }
 
 fn metadata(ev: &Event) -> Metadata {
@@ -940,7 +1050,18 @@ fn metadata(ev: &Event) -> Metadata {
             [k, v, ..] if k == "picture" => meta.picture = Some(v.clone()),
             [k, v, ..] if k == "about" => meta.about = Some(v.clone()),
             [k, v, ..] if k == "banner" => meta.banner = Some(v.clone()),
-            [k, v, ..] if k == "child" => meta.children.push(v.clone()),
+            [k, v, rest @ ..] if k == "child" => {
+                meta.children.push(v.clone());
+                if let Some(category) = rest.first().filter(|c| !c.is_empty()) {
+                    meta.placement.insert(v.clone(), category.clone());
+                }
+            }
+            [k, id, name, ..] if k == "category" => meta.categories.push(Category {
+                id: id.clone(),
+                name: name.clone(),
+            }),
+            [k, v, ..] if k == "slowmode" => meta.slowmode = v.parse().unwrap_or(0),
+            [k, v, ..] if k == "user_limit" => meta.user_limit = v.parse().unwrap_or(0),
             [k, ..] if k == "livekit" => meta.voice = true,
             [k, v, ..] if k == "owner" => meta.owner = Some(v.clone()),
             _ => {}
@@ -1106,6 +1227,28 @@ mod tests {
             1,
         );
         assert!(metadata(&voice).voice);
+        let laid_out = ev(
+            &relay,
+            Kind::GroupMetadata,
+            &[
+                &["d", "k3j9x2m8q0aa"],
+                &["child", "g7w2p5n1c4bb", "texte"],
+                &["child", "a1b2c3d4e5f6"],
+                &["category", "texte", "Salons textuels"],
+                &["slowmode", "10"],
+                &["user_limit", "5"],
+            ],
+            1,
+        );
+        let m = metadata(&laid_out);
+        assert_eq!(m.children, ["g7w2p5n1c4bb", "a1b2c3d4e5f6"]);
+        assert_eq!(
+            m.placement.get("g7w2p5n1c4bb").map(String::as_str),
+            Some("texte")
+        );
+        assert!(!m.placement.contains_key("a1b2c3d4e5f6"));
+        assert_eq!(m.categories[0].name, "Salons textuels");
+        assert_eq!((m.slowmode, m.user_limit), (10, 5));
         let present = ev(
             &relay,
             Kind::GroupLivekitParticipants,

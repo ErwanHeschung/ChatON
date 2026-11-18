@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -85,6 +86,11 @@ type Groups struct {
 	stale []string
 	// Relay events to broadcast once mu is released: PreventBroadcast takes it.
 	outbox []nostr.Event
+	// Categories and placement (communities), slow mode and limit (channels), by group id.
+	layouts map[string]*layout
+	// When each member last wrote in each slow-mode channel, by channel id + key.
+	// ponytail: in memory, lost on restart (spec § 9 says so); grows with slow-mode writers only.
+	spoke map[string]nostr.Timestamp
 }
 
 // unlock releases mu, then broadcasts what was published under it.
@@ -120,6 +126,8 @@ func New(key nostr.SecretKey, relayURL string, store eventstore.Store, dir Direc
 		dir:      dir,
 		origins:  map[nostr.PubKey]string{},
 		policies: map[string]*Policy{},
+		layouts:  map[string]*layout{},
+		spoke:    map[string]nostr.Timestamp{},
 	}
 	owners, roles := map[string]nostr.PubKey{}, map[string][]Role{}
 	// Metadata first: it creates the group the other state events merge into.
@@ -138,6 +146,7 @@ func New(key nostr.SecretKey, relayURL string, store eventstore.Store, dir Direc
 			switch kind {
 			case nostr.KindSimpleGroupMetadata:
 				err = group.MergeInMetadataEvent(&ev)
+				g.layouts[id] = parseLayout(ev.Tags)
 				if t := ev.Tags.Find("owner"); t != nil {
 					owners[id], _ = nostr.PubKeyFromHex(t[1])
 				}
@@ -256,6 +265,16 @@ func (g *Groups) creator(id string) nostr.PubKey {
 	return pk
 }
 
+// layout of group id; an empty one for a group that has none yet.
+func (g *Groups) layout(id string) *layout {
+	l := g.layouts[id]
+	if l == nil {
+		l = &layout{In: map[string]string{}}
+		g.layouts[id] = l
+	}
+	return l
+}
+
 // policy of community c; the defaults for one that has none yet.
 func (g *Groups) policy(c *nip29.Group) *Policy {
 	p := g.policies[c.Address.ID]
@@ -356,13 +375,32 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 	id := groupID(ev)
 	group := g.groups[id]
 	if ev.Kind == nostr.KindSimpleGroupCreateGroup {
+		parent := tagValue(ev, "parent")
 		switch {
 		case !idRe.MatchString(id):
 			return reject("invalid: group id must be 12 characters a-z 0-9")
 		case group != nil:
 			return reject("duplicate: this group already exists")
-		case !g.dir.IsLocal(ev.PubKey):
+		case parent == "" && !g.dir.IsLocal(ev.PubKey):
 			return reject("restricted: claim a handle on this instance first")
+		case parent == "":
+			return false, ""
+		}
+		// A channel: from anyone with manage_channels, attached by the relay (spec § 9).
+		c := g.groups[parent]
+		cat := tagValue(ev, "category")
+		switch {
+		case c == nil || c.Parent != "" || c.Hidden:
+			return reject("invalid: unknown community %q", parent)
+		case !g.perms(c, ev.PubKey, nil).Has("manage_channels"):
+			return reject("restricted: creating channels needs manage_channels")
+		case len(c.Children) >= maxChannels:
+			return reject("invalid: %d channels at most", maxChannels)
+		case cat != "" && !g.layout(parent).has(cat):
+			return reject("invalid: unknown category %q", cat)
+		}
+		if err := checkChannel(ev, nil); err != nil {
+			return reject("%s", err)
 		}
 		return false, ""
 	}
@@ -379,8 +417,18 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 
 	switch ev.Kind {
 	case nostr.KindSimpleGroupChatMessage:
-		if !can.Has("send_messages") {
+		switch {
+		case group == c || group.LiveKit:
+			return reject("invalid: write in a text channel")
+		case !can.Has("send_messages"):
 			return reject("restricted: you can't write here")
+		}
+		if s := g.layout(id).Slowmode; s > 0 && !can.Has("manage_messages") && !can.Has("manage_channels") {
+			now, key := nostr.Now(), id+author.Hex()
+			if wait := int64(g.spoke[key]) + int64(s) - int64(now); wait > 0 {
+				return reject("slow-mode: wait %ds", wait)
+			}
+			g.spoke[key] = now
 		}
 	case nostr.KindSimpleGroupEditMetadata:
 		return g.checkEdit(ev, group)
@@ -434,6 +482,9 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 		if group != c && !can.Has("manage_channels") {
 			return reject("restricted: deleting a channel needs manage_channels")
 		}
+		if group.Hidden {
+			return reject("invalid: already deleted")
+		}
 	case nostr.KindSimpleGroupCreateInvite:
 		if group != c || !can.Has("create_invite") {
 			return reject("restricted: inviting needs create_invite, on the community")
@@ -459,37 +510,35 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 	return false, ""
 }
 
-// checkEdit: a channel is edited with manage_channels in its community, which it
-// gets once (spec § 9, channel creation). A community's 9002 carries all its
-// settings; each one changed needs its permission (spec § 9, Réglages).
+// checkEdit: a channel is edited with manage_channels in it; it keeps its
+// community and type (spec § 9, Salons et catégories). A community's 9002
+// carries all its settings; each one changed needs its permission (Réglages).
 func (g *Groups) checkEdit(ev nostr.Event, group *nip29.Group) (bool, string) {
-	parent := ""
-	if t := ev.Tags.Find("parent"); t != nil {
-		parent = t[1]
-	}
+	parent := tagValue(ev, "parent")
 	switch {
+	case group.Hidden:
+		return reject("invalid: deleted")
 	case group.Parent != "" && parent != group.Parent:
 		return reject("invalid: a channel can't change community")
-	case parent != "" && len(group.Children) > 0:
+	case group.Parent == "" && parent != "":
 		return reject("invalid: a community can't become a channel")
-	case parent != "":
-		p := g.groups[parent]
-		if p == nil || p.Parent != "" {
-			return reject("invalid: unknown community %q", parent)
+	case group.Parent != "":
+		if err := checkChannel(ev, group); err != nil {
+			return reject("%s", err)
 		}
-		if !g.perms(p, ev.PubKey, nil).Has("manage_channels") {
+		if !g.perms(g.groups[group.Parent], ev.PubKey, group).Has("manage_channels") {
 			return reject("restricted: editing channels needs manage_channels")
 		}
 	default:
 		can := g.perms(group, ev.PubKey, nil)
-		var children []string
-		for t := range ev.Tags.FindAll("child") {
-			if child := g.groups[t[1]]; child == nil || child.Parent != group.Address.ID {
-				return reject("invalid: %q is not a channel of this community", t[1])
-			}
-			children = append(children, t[1])
+		if err := checkCategories(ev.Tags); err != nil {
+			return reject("%s", err)
 		}
-		if !slices.Equal(children, group.Children) && !can.Has("manage_channels") {
+		next, cur := parseLayout(ev.Tags), g.layout(group.Address.ID)
+		children := arrange(group.Children, childIDs(ev.Tags))
+		moved := !slices.Equal(children, group.Children) || !slices.Equal(next.Categories, cur.Categories) ||
+			!maps.Equal(next.placed(children), cur.placed(children))
+		if moved && !can.Has("manage_channels") {
 			return reject("restricted: arranging channels needs manage_channels")
 		}
 		if tagValue(ev, "name") != group.Name || tagValue(ev, "picture") != group.Picture ||
@@ -622,6 +671,10 @@ func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
 	switch ev.Kind {
 	case nostr.KindSimpleGroupCreateGroup:
 		g.groups[id] = g.newGroup(id)
+		if parent := tagValue(ev, "parent"); parent != "" {
+			g.createChannel(ctx, ev, parent)
+			return
+		}
 		g.policies[id] = &Policy{Owner: ev.PubKey, Roles: DefaultRoles()}
 		g.put(ctx, id, ev.PubKey, RoleAdmin)
 		g.publish(ctx, id)
@@ -655,14 +708,25 @@ func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
 		g.relay.Log.Printf("community: %s on %s: %v", ev.Kind, id, err)
 		return
 	}
+	before := group.Children
 	action.Apply(group)
 	switch {
 	case ev.Kind == nostr.KindSimpleGroupEditMetadata && group.Parent != "":
-		// ponytail: a channel only keeps name and parent; topics, pictures later.
 		group.Children = nil
-		delete(g.policies, id) // created as a group of its own, it's a channel now
+		l := parseLayout(ev.Tags)
+		g.layouts[id] = &layout{In: map[string]string{}, Slowmode: l.Slowmode, UserLimit: l.UserLimit}
 	case ev.Kind == nostr.KindSimpleGroupEditMetadata:
+		group.Children = arrange(before, group.Children)
+		l := parseLayout(ev.Tags)
+		g.layouts[id] = &layout{Categories: l.Categories, In: l.placed(group.Children)}
 		g.applySettings(group, ev)
+	case ev.Kind == nostr.KindSimpleGroupDeleteGroup && group.Parent != "":
+		// Its community lists it no more (spec § 9).
+		if c := g.groups[group.Parent]; c != nil {
+			c.Children = slices.DeleteFunc(slices.Clone(c.Children), func(ch string) bool { return ch == id })
+			delete(g.layout(c.Address.ID).In, id)
+			g.publish(ctx, c.Address.ID)
+		}
 	case ev.Kind == nostr.KindSimpleGroupDeleteGroup && group.Parent == "":
 		// A deleted community takes its channels and invites with it.
 		group.InviteCodes = nil
@@ -676,6 +740,23 @@ func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
 	if ev.Kind != nostr.KindSimpleGroupCreateInvite { // codes stay secret
 		g.publish(ctx, id)
 	}
+}
+
+// createChannel sets up channel id from its 9007 and adds it at the end of
+// its community (spec § 9, Salons et catégories).
+func (g *Groups) createChannel(ctx context.Context, ev nostr.Event, parent string) {
+	id := groupID(ev)
+	ch, c := g.groups[id], g.groups[parent]
+	ch.Parent, ch.Name, ch.About = parent, tagValue(ev, "name"), tagValue(ev, "about")
+	ch.LiveKit = ev.Tags.Has("livekit")
+	l := parseLayout(ev.Tags)
+	g.layouts[id] = &layout{In: map[string]string{}, Slowmode: l.Slowmode, UserLimit: l.UserLimit}
+	c.Children = append(slices.Clone(c.Children), id)
+	if cat := tagValue(ev, "category"); cat != "" {
+		g.layout(parent).In[id] = cat
+	}
+	g.publish(ctx, id)
+	g.publish(ctx, parent)
 }
 
 // applySettings keeps the owner and roles of an accepted community 9002 (the
@@ -724,6 +805,7 @@ func (g *Groups) publish(ctx context.Context, id string) {
 	group := g.groups[id]
 	group.Private, group.Closed, group.Restricted = true, true, true
 	meta := group.ToMetadataEvent()
+	g.layout(id).apply(&meta)
 	if group.Parent != "" {
 		g.emit(ctx, id, meta)
 		return

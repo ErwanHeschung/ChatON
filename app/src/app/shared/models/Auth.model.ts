@@ -33,6 +33,7 @@ export interface CmdError {
     | 'invalid_invite'
     | 'refused'
     | 'too_large'
+    | 'slow_mode'
     | 'not_allowed'
     | 'voice_disabled'
     | 'voice'

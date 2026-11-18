@@ -283,7 +283,7 @@ async fn a_community_with_channels_invites_and_moderation() {
     };
     assert_eq!(names(&community), ["general"]);
     let random = alice
-        .create_channel(&community.id, "random", false)
+        .create_channel(&community.id, "random", false, None)
         .await
         .unwrap();
     let general = community.channels[0].clone();
@@ -757,7 +757,7 @@ async fn voice_channel_presence_and_an_encrypted_call() {
     let community = alice.create_community("Vocal").await.unwrap();
     assert!(alice.voice_available(&community.id).await.unwrap());
     let channel = alice
-        .create_channel(&community.id, "Salon", true)
+        .create_channel(&community.id, "Salon", true, None)
         .await
         .unwrap();
     bob.join(&alice.invite(&community.id).await.unwrap())
@@ -1017,4 +1017,123 @@ async fn two_instances_requests_blocks_and_a_move() {
     bob.send_dm(&[alice_pk], "bienvenue sur B").await.unwrap();
     let (got, _) = next(&mut alice_rx).await;
     assert_eq!(got.text, "bienvenue sur B");
+}
+
+/// Step 12d (spec § 9, Salons et catégories), against two instances (see two_instances above).
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs two running servers, see the module docs"]
+async fn channels_categories_and_a_foreign_admin() {
+    use chaton_core::community::{Category, ChannelEdit, CommunityEdit, Placement};
+    let (server_a, _) = setup();
+    let server_b = std::env::var("CHATON_TEST_SERVER_B").expect("CHATON_TEST_SERVER_B");
+    let alice = Arc::new(
+        Session::register(&temp_dir("alice"), &server_a, &unique("alice"))
+            .await
+            .unwrap(),
+    );
+    // Alice listens, like the app: her store follows what the others change.
+    let listener = alice.clone();
+    tokio::spawn(async move { listener.listen(|_| {}).await });
+    let carol = Session::register(&temp_dir("carol"), &server_a, &unique("carol"))
+        .await
+        .unwrap();
+    let bob = Session::register(&temp_dir("bob"), &server_b, &unique("bob"))
+        .await
+        .unwrap();
+
+    // Bob, from instance B, joins Alice's community on A and becomes an admin.
+    let community = alice.create_community("Les chats").await.unwrap();
+    let invite = alice.invite(&community.id).await.unwrap();
+    bob.join(&invite).await.unwrap();
+    carol.join(&invite).await.unwrap();
+    alice
+        .set_roles(&community.id, bob.account().pubkey, &["admin"])
+        .await
+        .unwrap();
+
+    // Bob and Alice each add a channel at the same time: the relay lists both.
+    let (from_b, from_a) = tokio::join!(
+        bob.create_channel(&community.id, "de-b", false, None),
+        alice.create_channel(&community.id, "de-a", true, None),
+    );
+    let (from_b, from_a) = (from_b.unwrap(), from_a.unwrap());
+    let channels = eventually("both channels listed", || async {
+        let c = alice.communities().await.ok()?.pop()?;
+        let ids: Vec<String> = c.channels.iter().map(|ch| ch.id.clone()).collect();
+        (ids.contains(&from_b.id) && ids.contains(&from_a.id)).then_some(c.channels)
+    })
+    .await;
+    assert_eq!(channels.len(), 3, "{channels:?}");
+    let general = channels[0].clone();
+
+    // Alice puts the voice channel in its category, first.
+    let edit = CommunityEdit {
+        categories: Some(vec![Category {
+            id: "vocal".into(),
+            name: "Salons vocaux".into(),
+        }]),
+        channels: Some(vec![
+            Placement {
+                id: from_a.id.clone(),
+                category: Some("vocal".into()),
+            },
+            Placement {
+                id: general.id.clone(),
+                category: None,
+            },
+        ]),
+        ..Default::default()
+    };
+    alice.update_community(&community.id, edit).await.unwrap();
+    let arranged = alice.communities().await.unwrap().pop().unwrap();
+    assert_eq!(arranged.categories[0].name, "Salons vocaux");
+    let order: Vec<(&str, Option<&str>)> = arranged
+        .channels
+        .iter()
+        .map(|ch| (ch.id.as_str(), ch.category.as_deref()))
+        .collect();
+    // de-b, left out of the edit, is kept at the end.
+    assert_eq!(
+        order,
+        [
+            (from_a.id.as_str(), Some("vocal")),
+            (general.id.as_str(), None),
+            (from_b.id.as_str(), None)
+        ]
+    );
+
+    // Topic and slow mode on #general: Carol waits, Bob (admin) doesn't.
+    let edit = ChannelEdit {
+        topic: Some("On parle de chats".into()),
+        slowmode: Some(60),
+        ..Default::default()
+    };
+    alice
+        .edit_channel(&community.id, &general.id, edit)
+        .await
+        .unwrap();
+    let general = alice.communities().await.unwrap().pop().unwrap().channels[1].clone();
+    assert_eq!(
+        (general.topic.as_deref(), general.slowmode),
+        (Some("On parle de chats"), 60)
+    );
+    carol.send(&community.id, &general.id, "un").await.unwrap();
+    let res = carol.send(&community.id, &general.id, "deux").await;
+    assert!(
+        matches!(&res, Err(Error::NotDelivered(r)) if r.contains("slow-mode")),
+        "{res:?}"
+    );
+    bob.send(&community.id, &general.id, "un").await.unwrap();
+    bob.send(&community.id, &general.id, "deux").await.unwrap();
+    // Nobody writes in a voice channel.
+    let res = bob.send(&community.id, &from_a.id, "allô").await;
+    assert!(matches!(res, Err(Error::NotDelivered(_))), "{res:?}");
+
+    // Bob deletes his channel: it's gone from the community.
+    bob.delete_channel(&community.id, &from_b.id).await.unwrap();
+    eventually("channel deleted", || async {
+        let c = alice.communities().await.ok()?.pop()?;
+        c.channels.iter().all(|ch| ch.id != from_b.id).then_some(())
+    })
+    .await;
 }

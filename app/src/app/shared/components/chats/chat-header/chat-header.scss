@@ -45,6 +45,24 @@ h1 {
   font-size: var(--text-sm);
 }
 
+// A channel's topic: after a rule, cut before anything else gives way.
+.topic {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: var(--space-1);
+  padding-left: var(--space-3);
+  overflow: hidden;
+  border-left: 1px solid var(--border-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: #{vars.$breakpoint-md - 1px}) {
+  .topic {
+    display: none;
+  }
+}
+
 // A fact about the conversation, not a feature ad: quiet, green only on the icon.
 .e2e {
   display: inline-flex;

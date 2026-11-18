@@ -1,15 +1,15 @@
 <app-server-banner></app-server-banner>
 
 @if (store.current(); as community) {
-  <nav class="channels">
+  <nav class="channels" cdkDropListGroup>
     <h3 class="section-label">
       <span i18n="@@channels.section">Channels</span>
-      @if (store.can('manage_channels')) {
+      @if (manage()) {
         <button
           type="button"
           class="btn btn-ghost btn-icon btn-sm"
-          (click)="adding.set(!adding())"
-          [attr.aria-expanded]="adding()"
+          (click)="toggleAdding('')"
+          [attr.aria-expanded]="adding() === ''"
           i18n-title="@@community.add-channel"
           title="Add a channel"
         >
@@ -18,105 +18,178 @@
       }
     </h3>
 
-    @if (adding()) {
-      <form class="add-channel" (submit)="$event.preventDefault(); addChannel(channelName)">
-        @if (voice.available()[community.id]) {
-          <div
-            class="kind"
-            role="group"
-            aria-label="Channel type"
-            i18n-aria-label="@@channels.kind"
+    @for (section of sections(); track section.id) {
+      @let shut = collapsed().has(section.id);
+      @if (section.category; as cat) {
+        <div class="category">
+          <button
+            type="button"
+            class="category-toggle"
+            [attr.aria-expanded]="!shut"
+            (click)="toggleCategory(cat.id)"
           >
+            <svg [lucideIcon]="icons.chevron" size="14"></svg>
+            <span>{{ cat.name }}</span>
+          </button>
+          @if (manage()) {
             <button
               type="button"
-              class="btn btn-ghost btn-sm"
-              [attr.aria-pressed]="!addingVoice()"
-              (click)="addingVoice.set(false)"
+              class="btn btn-ghost btn-icon btn-sm hover-action"
+              (click)="toggleAdding(cat.id)"
+              i18n-title="@@community.add-channel"
+              title="Add a channel"
             >
-              <svg [lucideIcon]="icons.hash" size="16"></svg>
-              <ng-container i18n="@@channels.text">Text</ng-container>
+              <svg [lucideIcon]="icons.plus" size="14"></svg>
             </button>
             <button
               type="button"
-              class="btn btn-ghost btn-sm"
-              [attr.aria-pressed]="addingVoice()"
-              (click)="addingVoice.set(true)"
+              class="btn btn-ghost btn-icon btn-sm hover-action"
+              (click)="editCategory(cat.id)"
+              i18n-title="@@category.edit-title"
+              title="Category"
             >
-              <svg [lucideIcon]="icons.voice" size="16"></svg>
-              <ng-container i18n="@@channels.voice">Voice</ng-container>
+              <svg [lucideIcon]="icons.settings" size="14"></svg>
             </button>
-          </div>
-        }
-        <input
-          #channelName
-          maxlength="100"
-          placeholder="new-channel"
-          i18n-placeholder="@@community.channel-placeholder"
-          aria-label="New channel name"
-          i18n-aria-label="@@community.channel-label"
-          (keydown.escape)="adding.set(false)"
-        />
-      </form>
-    }
-
-    @for (channel of community.channels; track channel.id) {
-      @if (channel.voice) {
-        @let here = channel.id === voice.channel();
-        <button
-          type="button"
-          class="list-row voice"
-          [attr.aria-current]="here ? 'true' : null"
-          [disabled]="voice.busy()"
-          (click)="open(channel)"
-          [title]="here ? insideTitle : joinTitle"
-        >
-          <svg [lucideIcon]="icons.voice" size="18"></svg>
-          <span>{{ channel.name }}</span>
-        </button>
-        @let inside = participants(channel);
-        @if (inside.length) {
-          <ul
-            class="participants"
-            aria-label="In {{ channel.name }}"
-            i18n-aria-label="@@channels.inside"
-          >
-            @for (person of inside; track person.id) {
-              <li>
-                <button type="button" class="list-row" [appProfile]="person.id">
-                  <app-user-card
-                    [user]="person"
-                    [ears]="isMe(person.id)"
-                    [speaking]="speaking(person.id)"
-                  ></app-user-card>
-                </button>
-                @if (here && live(person.id)) {
-                  <button
-                    type="button"
-                    class="badge badge-accent"
-                    [attr.aria-pressed]="voice.state()?.watching === person.id"
-                    (click)="voice.watch(person.id)"
-                    i18n-title="@@screen.watch-title"
-                    title="Watch the screen"
-                    i18n="@@screen.live"
-                  >
-                    Live
-                  </button>
-                }
-              </li>
-            }
-          </ul>
-        }
-      } @else {
-        <button
-          type="button"
-          class="list-row"
-          [attr.aria-current]="channel.id === store.channel() ? 'true' : null"
-          (click)="open(channel)"
-        >
-          <svg [lucideIcon]="icons.hash" size="18"></svg>
-          <span>{{ channel.name }}</span>
-        </button>
+          }
+        </div>
       }
+
+      @if (adding() === section.id) {
+        <form class="add-channel" (submit)="$event.preventDefault(); addChannel(channelName)">
+          @if (voice.available()[community.id]) {
+            <div
+              class="kind"
+              role="group"
+              aria-label="Channel type"
+              i18n-aria-label="@@channels.kind"
+            >
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                [attr.aria-pressed]="!addingVoice()"
+                (click)="addingVoice.set(false)"
+              >
+                <svg [lucideIcon]="icons.hash" size="16"></svg>
+                <ng-container i18n="@@channels.text">Text</ng-container>
+              </button>
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                [attr.aria-pressed]="addingVoice()"
+                (click)="addingVoice.set(true)"
+              >
+                <svg [lucideIcon]="icons.voice" size="16"></svg>
+                <ng-container i18n="@@channels.voice">Voice</ng-container>
+              </button>
+            </div>
+          }
+          <input
+            #channelName
+            maxlength="100"
+            placeholder="new-channel"
+            i18n-placeholder="@@community.channel-placeholder"
+            aria-label="New channel name"
+            i18n-aria-label="@@community.channel-label"
+            (keydown.escape)="adding.set(null)"
+          />
+        </form>
+      }
+
+      <div
+        class="section"
+        cdkDropList
+        [cdkDropListData]="section.id"
+        [cdkDropListDisabled]="!manage() || shut"
+        (cdkDropListDropped)="drop($event)"
+      >
+        @for (channel of section.channels; track channel.id) {
+          @if (!shut || active(channel)) {
+            <div
+              class="channel"
+              cdkDrag
+              [cdkDragData]="channel.id"
+              [cdkDragStartDelay]="{ touch: 300, mouse: 0 }"
+            >
+              @if (channel.voice) {
+                @let here = channel.id === voice.channel();
+                <button
+                  type="button"
+                  class="list-row voice"
+                  [attr.aria-current]="here ? 'true' : null"
+                  [disabled]="voice.busy()"
+                  (click)="open(channel)"
+                  [title]="here ? insideTitle : joinTitle"
+                >
+                  <svg [lucideIcon]="icons.voice" size="18"></svg>
+                  <span>{{ channel.name }}</span>
+                  @if (channel.user_limit) {
+                    <span class="limit"
+                      >{{ participants(channel).length }}/{{ channel.user_limit }}</span
+                    >
+                  }
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  class="list-row"
+                  [attr.aria-current]="channel.id === store.channel() ? 'true' : null"
+                  (click)="open(channel)"
+                >
+                  <svg [lucideIcon]="icons.hash" size="18"></svg>
+                  <span>{{ channel.name }}</span>
+                </button>
+              }
+              @if (store.canIn(channel, 'manage_channels')) {
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-icon btn-sm hover-action gear"
+                  (click)="editChannel(channel.id)"
+                  i18n-title="@@channel.settings-title"
+                  title="Channel settings"
+                >
+                  <svg [lucideIcon]="icons.settings" size="14"></svg>
+                </button>
+              }
+              @if (channel.voice) {
+                @let here = channel.id === voice.channel();
+                @let inside = participants(channel);
+                @if (inside.length) {
+                  <ul
+                    class="participants"
+                    aria-label="In {{ channel.name }}"
+                    i18n-aria-label="@@channels.inside"
+                  >
+                    @for (person of inside; track person.id) {
+                      <li>
+                        <button type="button" class="list-row" [appProfile]="person.id">
+                          <app-user-card
+                            [user]="person"
+                            [ears]="isMe(person.id)"
+                            [speaking]="speaking(person.id)"
+                          ></app-user-card>
+                        </button>
+                        @if (here && live(person.id)) {
+                          <button
+                            type="button"
+                            class="badge badge-accent"
+                            [attr.aria-pressed]="voice.state()?.watching === person.id"
+                            (click)="voice.watch(person.id)"
+                            i18n-title="@@screen.watch-title"
+                            title="Watch the screen"
+                            i18n="@@screen.live"
+                          >
+                            Live
+                          </button>
+                        }
+                      </li>
+                    }
+                  </ul>
+                }
+              }
+            </div>
+          }
+        }
+      </div>
     }
 
     @if (store.error(); as error) {

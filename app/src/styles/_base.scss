@@ -6,6 +6,11 @@
   box-sizing: border-box;
 }
 
+// `hidden` wins over a class's display (`.field`, `.list-row`…).
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   height: 100%;

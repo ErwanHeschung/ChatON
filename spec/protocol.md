@@ -207,7 +207,7 @@ Une **communauté** (un « serveur » façon Discord) est un groupe NIP-29 hébe
 - Identifiant d'un groupe : 12 caractères `[a-z0-9]`, tirés au hasard par le client qui le crée. Adresse NIP-29 : `<hôte>'<id>`.
 - Une communauté ChatON est toujours `private` (seuls les membres lisent), `closed` (on entre avec un code d'invitation) et `restricted` (seuls les membres écrivent). Le relais impose ces trois drapeaux, quoi que dise un `9002`.
 - Les membres et les rôles sont ceux de la **communauté** ; ses salons en héritent.
-- L'état publié par le relais : `39000` (`d`, `name`, `picture`, `about`, `banner`, drapeaux, `owner`, `parent` ou `child`), `39001` (`p` + identifiants de rôles), `39002` (`p` des membres), `39003` (les rôles, ci-dessous). Un client n'accepte ces événements que signés par la clé `self` du relais qui héberge le groupe.
+- L'état publié par le relais : `39000` (`d`, `name`, `picture`, `about`, `banner`, drapeaux ; pour une communauté `owner`, `category` et `child` ; pour un salon `parent`, `slowmode`, `user_limit`), `39001` (`p` + identifiants de rôles), `39002` (`p` des membres), `39003` (les rôles, ci-dessous). Un client n'accepte ces événements que signés par la clé `self` du relais qui héberge le groupe.
 
 ### Rôles et permissions
 
@@ -274,17 +274,18 @@ Seuls les noms de la table ci-dessus sortent du calcul : `hoist`, `mentionable` 
 
 | Action | Permission |
 |---|---|
-| Écrire un message (`9`) | `send_messages` dans le salon |
+| Écrire un message (`9`) | `send_messages` dans un salon texte, au rythme du mode lent |
 | Supprimer un message (`9005`) | le sien, ou `manage_messages` dans le salon |
 | Créer une invitation (`9009`) | `create_invite` |
 | Retirer un membre (`9001`) | `kick_members`, et la cible plus bas que soi |
 | Donner des rôles (`9000`) | `manage_roles`, rôles et cible plus bas que soi |
 | Modifier nom, image, description, bannière (`9002`) | `manage_community` |
-| Réordonner les salons (`9002`) | `manage_channels` |
+| Réordonner les salons, gérer les catégories (`9002`) | `manage_channels` |
 | Modifier les rôles (`9002`) | `manage_roles`, voir « Réglages » |
 | Transférer la communauté (`9002`) | le propriétaire, à un membre |
-| Créer, modifier un salon (`9007`, `9002`) | `manage_channels` |
-| Supprimer un salon (`9008`) | `manage_channels` |
+| Créer un salon (`9007`) | `manage_channels` dans la communauté, membre de n'importe quelle instance |
+| Modifier un salon (`9002`) | `manage_channels` dans ce salon |
+| Supprimer un salon (`9008`) | `manage_channels` dans ce salon |
 | Supprimer la communauté (`9008`) | le propriétaire |
 | Quitter (`9022`) | tout membre sauf le propriétaire |
 
@@ -304,9 +305,34 @@ On lit toujours ses propres événements. L'état signé par le relais (`39000`�
 
 1. `9007` `["h", C]` : seule une clé qui a un handle sur l'instance peut créer une communauté. Le relais en fait le propriétaire (`owner`) et l'`admin`, en publiant lui-même un `9000` `["h", C], ["p", créateur, "admin"]`, et la dote des rôles par défaut.
 2. `9002` `["h", C], ["name", …]`, avec le propriétaire et les rôles que le relais vient de publier (« Réglages »).
-3. Pour chaque salon S : `9007` `["h", S]`, puis `9002` `["h", S], ["name", …], ["parent", C]` (l'auteur doit avoir `manage_channels` dans C), puis `9002` sur C avec **toute** la liste `child`.
+3. Pour chaque salon : un `9007` (« Salons et catégories »).
 
-Un `9002` remplace **toutes** les métadonnées du groupe (NIP-29) : le client renvoie toujours chaque tag (`name`, `picture`, `parent`, tous les `child`).
+Un `9002` remplace **toutes** les métadonnées du groupe (NIP-29) : le client renvoie toujours chaque tag.
+
+### Salons et catégories
+
+**Créer un salon** : un seul événement, `9007` `["h", S], ["parent", C], ["name", <nom>]`, plus `["livekit"]` pour un salon vocal et `["category", <id>]` pour le ranger (vecteur `channel_create`). S est un nouvel identifiant (§ 9, identifiants). L'auteur doit avoir `manage_channels` dans C, quelle que soit son instance. Le relais crée le salon et l'ajoute **lui-même** à la fin de C (ou de sa catégorie), puis publie le `39000` de S et celui de C. Deux salons créés en même temps restent donc listés tous les deux. Un `9007` sans `parent` crée une communauté (étape 1). Une communauté a 500 salons au plus.
+
+**Supprimer un salon** : `9008` `["h", S]`. Le relais le retire de C.
+
+**Ranger** : dans le `9002` et le `39000` de la communauté, les catégories et l'ordre des salons :
+
+```
+["category", <id>, <nom>]          ← une par catégorie, dans l'ordre d'affichage
+["child", <salon>, <id de catégorie>?]   ← dans l'ordre, sans catégorie : au-dessus des catégories
+```
+
+- `<id>` de catégorie : `[a-z0-9_-]{1,32}`, unique, stable ; nom de 1 à 100 octets ; 50 catégories au plus. Un `child` ne peut nommer qu'une catégorie déclarée dans le même événement.
+- Les salons d'une communauté ne s'ajoutent et ne se retirent que par `9007` et `9008`. Dans un `9002`, le relais **ignore** un `child` qu'il ne connaît pas et **ajoute à la fin** les salons qui manquent, sans catégorie : un client qui n'a pas encore vu un salon tout juste créé ne l'efface pas.
+- Changer l'ordre, les catégories ou le rangement exige `manage_channels` (« Qui fait quoi »).
+- Un client NIP-29 tiers lit `child` comme avant et ignore `category`.
+
+**Réglages d'un salon** : son `9002` porte `name` (1 à 100 octets), `about` (le sujet, 1024 octets au plus), `parent` et `livekit` inchangés depuis la création, et :
+
+- `["slowmode", <s>]` : un membre attend `s` secondes (0 à 21600) entre deux messages dans ce salon, sauf s'il a `manage_messages` ou `manage_channels`. Le relais compte depuis le moment où il a **accepté** le message précédent, en mémoire (perdu à son redémarrage). Un message trop tôt est refusé avec `slow-mode: wait <n>s`.
+- `["user_limit", <n>]` : un salon vocal accueille au plus `n` personnes (1 à 99 ; absent : pas de limite).
+
+Un salon vocal ne reçoit pas de messages (`9`), une communauté non plus : on écrit dans ses salons texte.
 
 ### Réglages
 
@@ -375,7 +401,7 @@ L'audio et les écrans partagés ne passent ni par le relais ni par Nostr. Chaqu
 
 ### Salons vocaux
 
-- Un **salon vocal** est un salon (§ 9) dont le `9002` porte aussi `["livekit"]` (drapeau NIP-29), donc son `39000` aussi. Il se crée comme un salon texte (§ 9, étape 3). Son type est fixé à la création : le client renvoie `livekit` dans chaque `9002`, comme les autres tags (vecteur `voice_channel_edit_metadata`).
+- Un **salon vocal** est un salon (§ 9) dont le `9002` porte aussi `["livekit"]` (drapeau NIP-29), donc son `39000` aussi. Il se crée comme un salon texte, avec `livekit` dans son `9007` (§ 9, « Salons et catégories »). Son type est fixé à la création : le client renvoie `livekit` dans chaque `9002`, comme les autres tags (vecteur `voice_channel_edit_metadata`), et le relais refuse un `9002` qui l'ajoute ou le retire.
 - Pas de messages texte dans un salon vocal en v0 (l'interface n'en propose pas ; le relais ne l'interdit pas).
 - **Instance compatible** : `GET https://<instance>/.well-known/nip29/livekit` répond `204` si la voix est activée, `404` sinon.
 - **Jeton** : `POST https://<instance>/.well-known/nip29/livekit/<salon>`, signé en NIP-98 (`u` = cette URL exacte, `method` = `POST`, `payload` = sha256 du corps), corps `{}`. Réponse `201` `{"server_url": "wss://…", "participant_token": "<JWT>"}`. `401` si l'authentification échoue, `403` si la clé n'est pas membre de la communauté, `404` si le groupe est inconnu, n'est pas un salon vocal, ou si la voix est coupée.

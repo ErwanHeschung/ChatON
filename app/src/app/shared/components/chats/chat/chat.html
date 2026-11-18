@@ -86,6 +86,11 @@
   @case ('too_large') {
     <small class="error" i18n="@@chat.too-large">File too large (25 MB max)</small>
   }
+  @case ('slow_mode') {
+    <small class="error" i18n="@@chat.slow-mode"
+      >Slow mode: wait a little before your next message.</small
+    >
+  }
   @default {
     <small class="error" i18n="@@chat.send-failed">Message not sent: {{ error() }}</small>
   }

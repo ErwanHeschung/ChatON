@@ -20,6 +20,11 @@ const (
 
 func h(id string) nostr.Tag { return nostr.Tag{"h", id} }
 
+// channel: u's 9007 creating channel id in the test community (spec § 9).
+func channel(u user, id, name string, at time.Time, extra ...nostr.Tag) nostr.Event {
+	return event(u, nostr.KindSimpleGroupCreateGroup, append(nostr.Tags{h(id), {"parent", communityID}, {"name", name}}, extra...), at)
+}
+
 // settings: what a community 9002 carries besides name and channels, its owner and the default roles.
 func settings(owner user, tags ...nostr.Tag) nostr.Tags {
 	return append(append(tags, nostr.Tag{"owner", owner.pk.Hex()}), community.RoleTags(community.DefaultRoles())...)
@@ -79,16 +84,13 @@ func TestCommunity(t *testing.T) {
 	mustReject(t, a, event(alice, nostr.KindSimpleGroupCreateGroup, nostr.Tags{h(communityID)}, at(0)), "same id twice")
 	mustReject(t, a, event(alice, nostr.KindSimpleGroupMetadata, nostr.Tags{{"d", communityID}}, at(0)), "group state from a client")
 
-	// A channel: create, attach to the community, list it.
-	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateGroup, nostr.Tags{h(channelID)}, at(1)))
-	mustPublish(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, nostr.Tags{h(channelID), {"name", "general"}, {"parent", communityID}}, at(1)))
-	mustPublish(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, settings(alice, h(communityID), nostr.Tag{"name", "Les chatons"}, nostr.Tag{"child", channelID}), at(1)))
+	// A channel: one 9007, the relay lists it in the community.
+	mustPublish(t, a, channel(alice, channelID, "general", at(1)))
 	if meta := state(t, url, nostr.KindSimpleGroupMetadata, communityID); meta.Tags.Find("child")[1] != channelID {
 		t.Fatalf("children: %v", meta.Tags)
 	}
-	// Bob (local, not admin) can't take a channel into Alice's community.
-	mustPublish(t, b, event(bob, nostr.KindSimpleGroupCreateGroup, nostr.Tags{h("bbbbbbbbbbbb")}, at(1)))
-	mustReject(t, b, event(bob, nostr.KindSimpleGroupEditMetadata, nostr.Tags{h("bbbbbbbbbbbb"), {"parent", communityID}}, at(1)), "channel by a non-admin")
+	// Bob (local, not admin) can't add a channel to Alice's community.
+	mustReject(t, b, channel(bob, "bbbbbbbbbbbb", "mine", at(1)), "channel by a non-admin")
 
 	// Outsiders neither read nor write.
 	inChannel := nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupChatMessage}, Tags: nostr.TagMap{"h": {channelID}}}
@@ -239,6 +241,7 @@ func TestCommunityReads(t *testing.T) {
 	mustPublish(t, b, event(bob, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
 	mustPublish(t, c, event(carol, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
 	mustPublish(t, a, event(alice, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", carol.pk.Hex(), "moderator"}}, at(1)))
+	mustPublish(t, a, channel(alice, channelID, "general", at(1)))
 
 	all := nostr.Filter{Kinds: community.ClientKinds, Tags: nostr.TagMap{"h": {communityID}}}
 	seen := func(r *nostr.Relay) (kinds map[nostr.Kind]int, others int) {
@@ -268,10 +271,10 @@ func TestCommunityReads(t *testing.T) {
 	// Live: a new invite reaches Carol, not Bob; the message after it reaches both.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	live := nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupCreateInvite, nostr.KindSimpleGroupChatMessage}, Tags: nostr.TagMap{"h": {communityID}}}
+	live := nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupCreateInvite, nostr.KindSimpleGroupChatMessage}, Tags: nostr.TagMap{"h": {communityID, channelID}}}
 	bs, cs := subscribe(ctx, t, b, live), subscribe(ctx, t, c, live)
 	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateInvite, nostr.Tags{h(communityID), {"code", "LIVE0001"}}, at(2)))
-	mustPublish(t, a, event(alice, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(communityID)}, at(2)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(channelID)}, at(2)))
 	for name, s := range map[string]*nostr.Subscription{"bob": bs, "carol": cs} {
 		select {
 		case ev := <-s.Events:
@@ -362,4 +365,98 @@ func TestCommunitySettings(t *testing.T) {
 		t.Fatalf("members left: %v", members.Tags)
 	}
 	mustReject(t, c, event(carol, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(7)), "joining a deleted community")
+}
+
+// Step 12d: channels and categories (spec § 9, Salons et catégories).
+func TestChannels(t *testing.T) {
+	alice, bob, carol := newUser(), newUser(), newUser() // carol: another instance
+	path, key := filepath.Join(t.TempDir(), "r.bolt"), nostr.Generate()
+	url, stop := serve(t, path, key, alice, bob)
+	a, b, c := connect(t, url, &alice), connect(t, url, &bob), connect(t, url, &carol)
+	at := func(s int) time.Time { return time.Now().Add(time.Duration(s) * time.Second) }
+	children := func() (out []string) {
+		for tag := range state(t, url, nostr.KindSimpleGroupMetadata, communityID).Tags.FindAll("child") {
+			out = append(out, strings.Join(tag[1:], "/"))
+		}
+		return out
+	}
+	const mine, theirs, voiceID = "a0000000000a", "c0000000000c", "v0000000000v"
+
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateGroup, nostr.Tags{h(communityID)}, at(0)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateInvite, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	mustPublish(t, c, event(carol, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", carol.pk.Hex(), "admin"}}, at(0)))
+
+	// Carol, admin from another instance, and Alice each add one: both listed, by the relay.
+	mustPublish(t, c, channel(carol, theirs, "carol", at(1)))
+	mustPublish(t, a, channel(alice, mine, "alice", at(1)))
+	if got := children(); !slices.Equal(got, []string{theirs, mine}) {
+		t.Fatalf("children: %v", got)
+	}
+	mustReject(t, b, channel(bob, "b0000000000b", "bob", at(1)), "channel without manage_channels")
+	mustReject(t, a, channel(alice, "x0000000000x", "x", at(1), nostr.Tag{"category", "nope"}), "channel in an unknown category")
+
+	// A 9002 that missed a channel keeps it; arranging needs manage_channels.
+	arranged := settings(alice, h(communityID), nostr.Tag{"name", "C"}, nostr.Tag{"child", mine, "texte"}, nostr.Tag{"child", "zzzzzzzzzzzz"},
+		nostr.Tag{"category", "texte", "Salons textuels"})
+	mustReject(t, b, event(bob, nostr.KindSimpleGroupEditMetadata, arranged, at(2)), "member arranges channels")
+	mustReject(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, settings(alice, h(communityID), nostr.Tag{"name", "C"},
+		nostr.Tag{"child", mine, "nope"}), at(2)), "child in an undeclared category")
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, arranged, at(2)))
+	if got := children(); !slices.Equal(got, []string{mine + "/texte", theirs}) {
+		t.Fatalf("arranged: %v", got)
+	}
+	mustPublish(t, a, channel(alice, voiceID, "Vocal", at(2), nostr.Tag{"livekit"}, nostr.Tag{"category", "texte"}))
+
+	// Channel settings: topic and slow mode; its community and type stay.
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, nostr.Tags{h(mine), {"name", "alice"}, {"about", "Sujet"},
+		{"parent", communityID}, {"slowmode", "60"}}, at(3)))
+	mustReject(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, nostr.Tags{h(mine), {"name", "alice"}, {"parent", communityID}, {"livekit"}}, at(3)), "text becomes voice")
+	mustReject(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, nostr.Tags{h(mine), {"name", "alice"}}, at(3)), "channel leaves its community")
+	mustReject(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, nostr.Tags{h(mine), {"name", "alice"}, {"parent", communityID}, {"slowmode", "-1"}}, at(3)), "negative slow mode")
+	mustReject(t, b, event(bob, nostr.KindSimpleGroupEditMetadata, nostr.Tags{h(mine), {"name", "bob"}, {"parent", communityID}}, at(3)), "member renames a channel")
+	if meta := state(t, url, nostr.KindSimpleGroupMetadata, mine); tagOf(meta, "about") != "Sujet" || tagOf(meta, "slowmode") != "60" {
+		t.Fatalf("channel: %v", meta.Tags)
+	}
+
+	// Slow mode: Bob waits; Alice (manage_messages) doesn't.
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(mine)}, at(4)))
+	if err := publish(t, b, event(bob, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(mine)}, at(4))); err == nil || !strings.Contains(err.Error(), "slow-mode: wait") {
+		t.Errorf("second message in slow mode: %v", err)
+	}
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(mine)}, at(4)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(mine)}, at(4)))
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(theirs)}, at(4))) // other channel: no wait
+	mustReject(t, b, event(bob, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(voiceID)}, at(4)), "message in a voice channel")
+	mustReject(t, a, event(alice, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(communityID)}, at(4)), "message in the community itself")
+
+	// Deleting a channel takes it off the community.
+	mustPublish(t, c, event(carol, nostr.KindSimpleGroupDeleteGroup, nostr.Tags{h(theirs)}, at(5)))
+	mustReject(t, c, event(carol, nostr.KindSimpleGroupEditMetadata, nostr.Tags{h(theirs), {"name", "back"}, {"parent", communityID}}, at(5)), "editing a deleted channel")
+	want := []string{mine + "/texte", voiceID + "/texte"}
+	if got := children(); !slices.Equal(got, want) {
+		t.Fatalf("after delete: %v", got)
+	}
+
+	// All of it survives a restart.
+	stop()
+	url, _ = serve(t, path, key, alice, bob)
+	if got := children(); !slices.Equal(got, want) {
+		t.Fatalf("after restart: %v", got)
+	}
+	meta := state(t, url, nostr.KindSimpleGroupMetadata, communityID)
+	if cat := meta.Tags.Find("category"); cat == nil || cat[2] != "Salons textuels" {
+		t.Fatalf("categories after restart: %v", meta.Tags)
+	}
+	if tagOf(state(t, url, nostr.KindSimpleGroupMetadata, mine), "slowmode") != "60" {
+		t.Fatal("slow mode lost on restart")
+	}
+}
+
+func tagOf(ev nostr.Event, name string) string {
+	if t := ev.Tags.Find(name); t != nil {
+		return t[1]
+	}
+	return ""
 }

@@ -1,0 +1,141 @@
+@if (channel(); as ch) {
+  <section>
+    <h2 i18n="@@channel.settings-title">Channel settings</h2>
+    <form
+      class="column"
+      (submit)="
+        $event.preventDefault(); saveChannel(name.value, topic.value, slowmode.value, limit.value)
+      "
+    >
+      <div class="field">
+        <label for="channel-name" i18n="@@channel.name">Name</label>
+        <input #name id="channel-name" [value]="ch.name" maxlength="100" required />
+      </div>
+      <div class="field">
+        <label for="channel-topic" i18n="@@channel.topic">Topic</label>
+        <textarea
+          #topic
+          id="channel-topic"
+          rows="2"
+          maxlength="1024"
+          [value]="ch.topic ?? ''"
+          placeholder="What it's about"
+          i18n-placeholder="@@channel.topic-placeholder"
+        ></textarea>
+      </div>
+      <div class="field" [hidden]="ch.voice">
+        <label for="channel-slowmode" i18n="@@channel.slowmode">Slow mode</label>
+        <select #slowmode id="channel-slowmode" [value]="'' + ch.slowmode">
+          @for (s of slowmodes; track s) {
+            <option [value]="'' + s" [selected]="s === ch.slowmode">{{ duration(s) }}</option>
+          }
+        </select>
+        <small class="hint" i18n="@@channel.slowmode-hint"
+          >Time between two messages of a member. Moderators aren't slowed down.</small
+        >
+      </div>
+      <div class="field" [hidden]="!ch.voice">
+        <label for="channel-limit" i18n="@@channel.limit">User limit</label>
+        <input #limit id="channel-limit" type="number" min="0" max="99" [value]="ch.user_limit" />
+        <small class="hint" i18n="@@channel.limit-hint">0: no limit.</small>
+      </div>
+      <div class="actions">
+        <button
+          type="submit"
+          class="btn btn-primary"
+          [disabled]="state() === 'saving'"
+          [attr.aria-busy]="state() === 'saving'"
+          i18n="@@nick.save"
+        >
+          Save
+        </button>
+        <button type="button" class="btn btn-ghost" (click)="modal.close()" i18n="@@leave.cancel">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </section>
+} @else if (category(); as cat) {
+  <section>
+    @if (cat.id) {
+      <h2 i18n="@@category.edit-title">Category</h2>
+    } @else {
+      <h2 i18n="@@category.create-title">Create a category</h2>
+    }
+    <form (submit)="$event.preventDefault(); saveCategory(name.value)">
+      <input
+        #name
+        [value]="cat.name"
+        maxlength="100"
+        placeholder="Name"
+        i18n-placeholder="@@category.name"
+        aria-label="Name"
+        i18n-aria-label="@@category.name"
+        required
+      />
+      <button
+        type="submit"
+        class="btn btn-primary"
+        [disabled]="state() === 'saving'"
+        i18n="@@nick.save"
+      >
+        Save
+      </button>
+    </form>
+  </section>
+}
+
+@if (channel() || category()?.id) {
+  <section class="danger">
+    @if (confirmDelete()) {
+      <p class="error">
+        @if (channel()) {
+          <ng-container i18n="@@channel.delete-confirm"
+            >Its messages go for everyone, for good.</ng-container
+          >
+        } @else {
+          <ng-container i18n="@@category.delete-confirm"
+            >Its channels stay, above the categories.</ng-container
+          >
+        }
+      </p>
+      <div class="actions">
+        <button
+          type="button"
+          class="btn btn-danger"
+          [disabled]="state() === 'saving'"
+          (click)="delete()"
+          i18n="@@owner.delete-button"
+        >
+          Delete
+        </button>
+        <button
+          type="button"
+          class="btn btn-ghost"
+          (click)="confirmDelete.set(false)"
+          i18n="@@leave.cancel"
+        >
+          Cancel
+        </button>
+      </div>
+    } @else {
+      <button type="button" class="btn btn-danger" (click)="confirmDelete.set(true)">
+        @if (channel()) {
+          <ng-container i18n="@@channel.delete">Delete the channel</ng-container>
+        } @else {
+          <ng-container i18n="@@category.delete">Delete the category</ng-container>
+        }
+      </button>
+    }
+  </section>
+}
+
+@switch (state()) {
+  @case ('idle') {}
+  @case ('saving') {}
+  @default {
+    <p class="error" i18n="@@form.unknown-error">
+      Something went wrong. Try again, it works on my machine.
+    </p>
+  }
+}

@@ -10,7 +10,9 @@ use std::sync::Arc;
 
 use chaton_core::Error;
 use chaton_core::block::{Blocks, Rules};
-use chaton_core::community::{ChannelMessage, Community, CommunityEdit, Member, Update};
+use chaton_core::community::{
+    ChannelEdit, ChannelMessage, Community, CommunityEdit, Member, Update,
+};
 use chaton_core::dm::Message;
 use chaton_core::link::{self, LinkOffer};
 use chaton_core::media::Attachment;
@@ -55,6 +57,7 @@ impl From<Error> for CmdError {
             Error::Voice(_) => "voice",
             Error::ScreenCapture => "screen_capture",
             Error::Invalid(_) | Error::Nostr(_) => "invalid",
+            Error::NotDelivered(ref reason) if reason.contains("slow-mode:") => "slow_mode",
             // The relay answered no (permissions, unknown account): not a network problem.
             Error::NotDelivered(ref reason)
                 if ["restricted:", "invalid:", "duplicate:", "blocked:"]
@@ -427,12 +430,34 @@ async fn create_channel(
     community: String,
     name: String,
     voice: bool,
+    category: Option<String>,
 ) -> Res<()> {
     session(&state)
         .await?
-        .create_channel(&community, &name, voice)
+        .create_channel(&community, &name, voice, category.as_deref())
         .await?;
     Ok(())
+}
+
+#[tauri::command]
+async fn edit_channel(
+    state: State<'_, App>,
+    community: String,
+    channel: String,
+    edit: ChannelEdit,
+) -> Res<()> {
+    Ok(session(&state)
+        .await?
+        .edit_channel(&community, &channel, edit)
+        .await?)
+}
+
+#[tauri::command]
+async fn delete_channel(state: State<'_, App>, community: String, channel: String) -> Res<()> {
+    Ok(session(&state)
+        .await?
+        .delete_channel(&community, &channel)
+        .await?)
 }
 
 #[tauri::command]
@@ -834,6 +859,8 @@ pub fn run() {
             join_community,
             leave_community,
             create_channel,
+            edit_channel,
+            delete_channel,
             voice_available,
             join_voice_channel,
             start_call,

@@ -170,11 +170,8 @@ func setupCommunity(t *testing.T, in instance, alice, bob user) {
 		id    string
 		extra []nostr.Tag
 	}{{textID, nil}, {room, []nostr.Tag{{"livekit"}}}} {
-		publish(t, a, alice, nostr.KindSimpleGroupCreateGroup, h(ch.id))
-		publish(t, a, alice, nostr.KindSimpleGroupEditMetadata, append([]nostr.Tag{h(ch.id), {"name", ch.id}, {"parent", communityID}}, ch.extra...)...)
+		publish(t, a, alice, nostr.KindSimpleGroupCreateGroup, append([]nostr.Tag{h(ch.id), {"name", ch.id}, {"parent", communityID}}, ch.extra...)...)
 	}
-	publish(t, a, alice, nostr.KindSimpleGroupEditMetadata, append(nostr.Tags{h(communityID), {"name", "C"}, {"child", textID}, {"child", room}, {"owner", alice.pk.Hex()}},
-		community.RoleTags(community.DefaultRoles())...)...)
 	publish(t, a, alice, nostr.KindSimpleGroupCreateInvite, h(communityID), nostr.Tag{"code", "AB12CD34"})
 	publish(t, b, bob, nostr.KindSimpleGroupJoinRequest, h(communityID), nostr.Tag{"code", "AB12CD34"})
 }
