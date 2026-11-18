@@ -1525,3 +1525,107 @@ async fn voice_moderation_mute_move_disconnect() {
     .await;
     assert!(bob.voice_state().await.is_none());
 }
+
+/// Step 12i (spec § 9, Messages): a reply points to its parent, a reaction is
+/// counted then taken back, a member can't pin, a moderator can.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a running server, see the module docs"]
+async fn replies_reactions_and_pins() {
+    let (server, _) = setup();
+    let register = |name: &'static str| {
+        let server = server.clone();
+        async move {
+            let s = Arc::new(
+                Session::register(&temp_dir(name), &server, &unique(name))
+                    .await
+                    .unwrap(),
+            );
+            let listener = s.clone();
+            tokio::spawn(async move { listener.listen(|_| {}).await });
+            s
+        }
+    };
+    let (alice, bob) = (register("alice").await, register("bob").await);
+    let community = alice.create_community("Les chats").await.unwrap();
+    let general = alice.communities().await.unwrap()[0].channels[0].id.clone();
+    bob.join(&alice.invite(&community.id).await.unwrap())
+        .await
+        .unwrap();
+    let hi = alice
+        .send(&community.id, &general, "Qui a faim ?")
+        .await
+        .unwrap();
+    // What `who` sees of message `id`, once it's there.
+    let seen = |who: Arc<Session>, id| {
+        let general = general.clone();
+        async move {
+            who.channel_messages(&general)
+                .await
+                .ok()?
+                .into_iter()
+                .find(|m| m.id == id)
+        }
+    };
+    eventually("bob has alice's message", || seen(bob.clone(), hi.id)).await;
+
+    // A reply: it points to its parent, for everyone.
+    let reply = bob
+        .reply(&community.id, &general, "Moi !", hi.id)
+        .await
+        .unwrap();
+    let got = eventually("alice has the reply", || seen(alice.clone(), reply.id)).await;
+    let parent = got.reply_to.unwrap();
+    assert_eq!((parent.id, parent.author), (hi.id, alice.account().pubkey));
+
+    // A reaction: counted, mine for Bob only, then taken back.
+    bob.react(&community.id, &general, hi.id, "🐱")
+        .await
+        .unwrap();
+    let got = eventually("alice sees the reaction", || {
+        let seen = seen(alice.clone(), hi.id);
+        async move { seen.await.filter(|m| !m.reactions.is_empty()) }
+    })
+    .await;
+    assert_eq!(got.reactions.len(), 1);
+    let r = &got.reactions[0];
+    assert_eq!((r.emoji.as_str(), r.count, r.mine), ("🐱", 1, false));
+    assert!(seen(bob.clone(), hi.id).await.unwrap().reactions[0].mine);
+    assert!(
+        bob.react(&community.id, &general, hi.id, "🐱")
+            .await
+            .is_err()
+    );
+    bob.unreact(&community.id, &general, hi.id, "🐱")
+        .await
+        .unwrap();
+    eventually("the reaction is gone", || {
+        let seen = seen(alice.clone(), hi.id);
+        async move { seen.await.filter(|m| m.reactions.is_empty()) }
+    })
+    .await;
+
+    // Pins: not for members; Alice's shows for Bob.
+    assert!(
+        bob.set_pinned(&community.id, &general, hi.id, true)
+            .await
+            .is_err()
+    );
+    alice
+        .set_pinned(&community.id, &general, hi.id, true)
+        .await
+        .unwrap();
+    eventually("bob sees the pin", || {
+        let seen = seen(bob.clone(), hi.id);
+        async move { seen.await.filter(|m| m.pinned) }
+    })
+    .await;
+    alice
+        .set_pinned(&community.id, &general, hi.id, false)
+        .await
+        .unwrap();
+    eventually("bob sees it unpinned", || {
+        let seen = seen(bob.clone(), hi.id);
+        async move { seen.await.filter(|m| !m.pinned) }
+    })
+    .await;
+}

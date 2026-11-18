@@ -208,12 +208,26 @@ export interface ChannelMessage {
   text: string;
   created_at: number;
   attachment: Attachment | null;
+  /** The message this one answers (spec § 9, Messages). */
+  reply_to: { id: string; author: string } | null;
+  /** By emoji, in the order they first came. */
+  reactions: Reaction[];
+  pinned: boolean;
+}
+
+export interface Reaction {
+  emoji: string;
+  count: number;
+  /** One of them is mine. */
+  mine: boolean;
 }
 
 /** `community` events from core's listener. */
 export type CommunityUpdate =
   | { type: 'channel_message'; message: ChannelMessage }
   | { type: 'deleted'; channel: string; ids: string[] }
+  /** Reactions or pins changed: read the channel again. */
+  | { type: 'channel_changed'; channel: string }
   | { type: 'communities' }
   | { type: 'blocks' };
 

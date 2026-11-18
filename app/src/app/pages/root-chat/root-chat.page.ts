@@ -24,6 +24,7 @@ import { VoiceBar } from '@components/voice/voice-bar/voice-bar';
 import { ShellService } from '@services/shell.service';
 import { ChatLayout } from '@layouts/chat/chat.layout';
 import { Attachment } from '@models/Media.model';
+import { Permission } from '@models/Community.model';
 import { Message, MessageStatus } from '@models/Message.model';
 import { CommunityStore } from '@stores/community.store';
 import { ConnectedUserStore } from '@stores/connected-user.store';
@@ -100,10 +101,39 @@ export class RootChat {
     }
     const me = this.user.user()?.pubkey;
     const moderator = this.community.can('manage_messages');
-    return [...this.community.messages()].reverse().map((m) => ({
-      ...this.message(m.id, m.author, m.text, m.created_at, m.attachment),
-      deletable: moderator || m.author === me,
-    }));
+    const all = this.community.messages();
+    const byId = new Map(all.map((m) => [m.id, m]));
+    const channel = this.community
+      .current()
+      ?.channels.find((c) => c.id === this.community.channel());
+    const has = (p: Permission) =>
+      !!channel && this.community.canIn(channel, p) && !this.timedOut();
+    const can = {
+      reply: has('send_messages'),
+      react: has('add_reactions'),
+      pin: has('manage_messages'),
+    };
+    return [...all].reverse().map((m) => {
+      const parent = m.reply_to && byId.get(m.reply_to.id);
+      return {
+        ...this.message(m.id, m.author, m.text, m.created_at, m.attachment),
+        deletable: moderator || m.author === me,
+        reply: m.reply_to && {
+          name: this.dm.label(m.reply_to.author),
+          text: parent ? parent.text || parent.attachment?.name || '' : null,
+        },
+        reactions: m.reactions,
+        pinned: m.pinned,
+        can,
+      };
+    });
+  });
+
+  /** Whom my next message answers. */
+  protected readonly replying = computed(() => {
+    const id = this.community.replyTo();
+    const parent = id && this.community.messages().find((m) => m.id === id);
+    return parent ? this.dm.label(parent.author) : null;
   });
 
   public send(text: string): void {

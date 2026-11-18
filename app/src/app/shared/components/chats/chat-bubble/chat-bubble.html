@@ -24,6 +24,17 @@
     {{ message().senderName }} named the group « {{ message().subject }} »
   </p>
 } @else {
+  @if (message().reply; as reply) {
+    <p class="reply">
+      <svg [lucideIcon]="icons.reply" size="14"></svg>
+      <span class="who">{{ reply.name }}</span>
+      @if (reply.text !== null) {
+        <span class="excerpt">{{ reply.text }}</span>
+      } @else {
+        <span class="excerpt gone" i18n="@@chat.reply-gone">Deleted message</span>
+      }
+    </p>
+  }
   <div class="gutter">
     @if (continued()) {
       <time class="hover-time" [attr.datetime]="message().timestamp.toISOString()">{{
@@ -58,6 +69,17 @@
         <time [attr.datetime]="message().timestamp.toISOString()">{{
           message().timestamp | date: 'shortTime'
         }}</time>
+        @if (message().pinned) {
+          <svg
+            class="pinned"
+            [lucideIcon]="icons.pin"
+            size="12"
+            role="img"
+            [attr.aria-label]="pinnedLabel"
+          >
+            <title>{{ pinnedLabel }}</title>
+          </svg>
+        }
       </p>
     }
     @if (message().text) {
@@ -96,10 +118,78 @@
         <span class="error" i18n="@@chat.save-failed">Couldn't save the file</span>
       }
     }
+    @if (message().reactions?.length) {
+      <div class="reactions">
+        @for (r of message().reactions; track r.emoji) {
+          <button
+            type="button"
+            class="reaction"
+            [attr.aria-pressed]="r.mine"
+            [disabled]="!message().can?.react"
+            (click)="react.emit({ emoji: r.emoji, on: !r.mine })"
+          >
+            @for (part of r.emoji | emojiText; track $index) {
+              @if (part.src) {
+                <img class="emoji" [src]="part.src" [alt]="part.text" draggable="false" />
+              } @else {
+                {{ part.text }}
+              }
+            }
+            <span class="count">{{ r.count }}</span>
+          </button>
+        }
+      </div>
+    }
   </div>
 
-  @if (message().deletable || message().attachment) {
-    <div class="toolbar">
+  @if (message().deletable || message().attachment || message().can) {
+    <div class="toolbar" [class.open]="picking()">
+      @if (message().can; as can) {
+        @if (can.react) {
+          <button
+            class="btn btn-ghost btn-icon btn-sm"
+            cdkOverlayOrigin
+            #origin="cdkOverlayOrigin"
+            (click)="picking.set(!picking())"
+            [attr.aria-expanded]="picking()"
+            i18n-title="@@chat.react"
+            title="React"
+          >
+            <svg [lucideIcon]="icons.react" size="16"></svg>
+          </button>
+          <ng-template
+            cdkConnectedOverlay
+            [cdkConnectedOverlayOrigin]="origin"
+            [cdkConnectedOverlayOpen]="picking()"
+            [cdkConnectedOverlayPush]="true"
+            [cdkConnectedOverlayPositions]="pickerAt"
+            (overlayOutsideClick)="picking.set(false)"
+            (detach)="picking.set(false)"
+            (overlayKeydown)="$event.key === 'Escape' && picking.set(false)"
+          >
+            <app-emoji-select (pick)="pickReaction($event)" />
+          </ng-template>
+        }
+        @if (can.reply) {
+          <button
+            class="btn btn-ghost btn-icon btn-sm"
+            (click)="reply.emit()"
+            i18n-title="@@chat.reply"
+            title="Reply"
+          >
+            <svg [lucideIcon]="icons.reply" size="16"></svg>
+          </button>
+        }
+        @if (can.pin) {
+          <button
+            class="btn btn-ghost btn-icon btn-sm"
+            (click)="pin.emit(!message().pinned)"
+            [attr.title]="message().pinned ? unpinTitle : pinTitle"
+          >
+            <svg [lucideIcon]="message().pinned ? icons.unpin : icons.pin" size="16"></svg>
+          </button>
+        }
+      }
       @if (message().attachment; as file) {
         <button
           class="btn btn-ghost btn-icon btn-sm"

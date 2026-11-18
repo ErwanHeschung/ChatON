@@ -1,4 +1,5 @@
 import { Attachment } from '@models/Media.model';
+import { Reaction } from '@models/Community.model';
 
 export interface Message {
   id: string;
@@ -18,6 +19,12 @@ export interface Message {
   mine?: boolean;
   /** Shows a delete button: my own message, or I moderate the community. */
   deletable?: boolean;
+  /** Answers a message: its author and text (null: it's gone). */
+  reply?: { name: string; text: string | null } | null;
+  reactions?: Reaction[];
+  pinned?: boolean;
+  /** What I may do with it (channels): reply, react, pin. */
+  can?: { reply: boolean; react: boolean; pin: boolean };
 }
 
 export enum MessageStatus {

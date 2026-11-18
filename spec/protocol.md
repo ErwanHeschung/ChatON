@@ -62,16 +62,19 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 | 22242 | Authentification au relais | 42 | oui | 3 |
 | 27235 | Authentification HTTP (annuaire, push, jetons de voix) | 98 | oui | 3 |
 | **24135** | **Liaison d'appareils** (éphémère, propre à ChatON, § 8) | — | oui (clé jetable) | 5 |
-| 9 | Message dans un salon (`h` = salon) | 29 | oui | 6 |
+| 9 | Message dans un salon (`h` = salon), réponse (`q`, NIP-C7) | 29, C7 | oui | 6, 12 |
+| 7 | Réaction à un message de salon (§ 9, « Messages ») | 25 | oui | 12 |
 | 9000, 9001, 9002, 9005, 9007, 9008, 9009 | Modération : rôles, retrait, métadonnées, suppression, création, invitation (§ 9) | 29 | oui | 6 |
 | 9021, 9022 | Demande pour rejoindre, quitter | 29 | oui | 6 |
 | 39000–39003 | État d'un groupe : métadonnées (dont `owner`), rôles des membres, membres, définition des rôles (§ 9). **Signés par le relais** | 29 | oui (relais) | 6, 12 |
 | 39004 | Participants d'un salon vocal (`participant`, § 11). **Signé par le relais** | 29 | oui (relais) | 9 |
+| **9010** | **Épingles d'un salon** : la liste entière (propre à ChatON, § 9, « Messages ») | — | oui | 12 |
+| **39005** | **Messages épinglés d'un salon** (propre à ChatON). **Signé par le relais** | — | oui (relais) | 12 |
 | 10009 | Mes communautés (`group`) | 51 | oui | 6 |
 | 10000 | Mes blocages (sourdine) : clés et instances, **contenu privé** chiffré pour moi (§ 5) | 51 | oui | 10 |
 | 24242 | Autorisation Blossom (envoi d'un fichier, § 10) | Blossom BUD-01 | oui | 6b |
 
-**Kinds propres à ChatON** : autorisés seulement quand aucune NIP ne convient (aujourd'hui, seule la liaison d'appareils). Ils sont **documentés ici avant tout code**, avec un vecteur. Les autres clients Nostr les ignorent.
+**Kinds propres à ChatON** : autorisés seulement quand aucune NIP ne convient (aujourd'hui, la liaison d'appareils et les épingles de salon : NIP-29 n'en a pas, et la liste NIP-51 `10001` est personnelle). Ils sont **documentés ici avant tout code**, avec un vecteur. Les autres clients Nostr les ignorent.
 
 ## 4. NIP prises en charge
 
@@ -276,6 +279,9 @@ Seuls les noms de la table ci-dessus sortent du calcul : `hoist`, `mentionable` 
 |---|---|
 | Écrire un message (`9`) | `send_messages` dans un salon texte, au rythme du mode lent |
 | Supprimer un message (`9005`) | le sien, ou `manage_messages` dans le salon |
+| Réagir (`7`) | `add_reactions` dans le salon |
+| Retirer une réaction (`9005`) | la sienne, ou `manage_messages` dans le salon |
+| Épingler, désépingler (`9010`) | `manage_messages` dans le salon |
 | Créer une invitation (`9009`) | `create_invite` |
 | Retirer un membre (`9001`) | `kick_members`, et la cible plus bas que soi |
 | Bannir (`9001` + `ban`), débannir (`9005` du ban) | `ban_members`, et la cible plus bas que soi (pour bannir) |
@@ -297,12 +303,12 @@ Pour lire les événements d'une communauté, il faut s'être authentifié (NIP-
 
 | Événements | Lisibles avec |
 |---|---|
-| messages (`9`), leurs suppressions (`9005`) | `view_channel` dans leur salon |
+| messages (`9`), réactions (`7`), leurs suppressions (`9005`) | `view_channel` dans leur salon |
 | débannissements (`9005` `["k", "9001"]`) | `view_audit_log` |
 | invitations (`9009`), entrées (`9021`), révocations (`9005` `["k", "9009"]`) | `view_audit_log` ou `manage_invites` |
 | autres demandes (`9000`, `9001`, `9002`, `9007`, `9008`, `9022`) | `view_audit_log` |
 
-On lit toujours ses propres événements. L'état signé par le relais (`39000`–`39004`) reste lisible par tous, sauf celui d'un salon privé (« Salons privés »).
+On lit toujours ses propres événements. L'état signé par le relais (`39000`–`39005`) reste lisible par tous, sauf celui d'un salon privé (« Salons privés »).
 
 ### Créer une communauté et ses salons
 
@@ -375,6 +381,7 @@ Un rôle supprimé est retiré de ses membres (`39001`). Changer `owner` est ré
 | Cible | Qui peut |
 |---|---|
 | un message (`9`) | son auteur, ou `manage_messages` dans le salon |
+| une réaction (`7`) | son auteur, ou `manage_messages` dans le salon |
 | un ban (`9001` + `ban`) | `ban_members` ; le `9005` porte `["p", clé du banni]`, et le ban reste stocké |
 | une invitation (`9009`) | son auteur, ou `manage_invites` (« Invitations ») |
 | autre chose | personne : le journal ne s'efface pas |
@@ -398,6 +405,9 @@ Un rôle supprimé est retiré de ses membres (`39001`). Changer `owner` est ré
 
 - `9` `["h", S]` + `["v","0"]`, contenu en clair, signé par l'auteur. Les communautés ne sont **pas** chiffrées de bout en bout (étape 7 pour les groupes privés).
 - Suppression : `9005` `["h", S], ["e", id], ["k", "9"]`. Le relais efface l'événement visé et diffuse le `9005` ; un client masque tout message visé par un `9005` accepté.
+- **Réponse** : un `9` qui porte aussi `["q", <id du parent>, <url du relais>, <clé de son auteur>]` (NIP-C7) et `["p", <clé de son auteur>]` (vecteur `group_reply`). Le parent est un message du même salon ; s'il a disparu, le client l'affiche comme « message supprimé ».
+- **Réaction** : `7` `["h", S], ["e", <id du message>], ["p", <clé de son auteur>], ["k", "9"]`, l'emoji dans `content` (NIP-25), 64 octets au plus (vecteur `group_reaction`). Le message visé est un `9` de ce salon ; une même clé ne met pas deux fois le même emoji sur un message. Il faut `add_reactions` (une exclusion temporaire le retire). La retirer : `9005` `["h", S], ["e", <id de la réaction>], ["k", "7"]` (vecteur `group_unreact`). Un client compte, pour chaque message, les réactions par emoji, moins celles visées par un `9005`.
+- **Épingles** : `9010` `["h", S]` puis un `["e", id]` par message épinglé, la liste **entière**, du plus récent épinglé au plus ancien, 50 au plus (vecteur `group_pins`). Chaque `e` est un `9` de ce salon. Il faut `manage_messages`. Le relais publie alors `39005` `["d", S]` avec les mêmes `e` (vecteur `group_pins_state`), qu'il garde comme le reste de l'état. Pour épingler ou désépingler, le client relit le `39005` et renvoie la liste modifiée ; deux modérateurs en même temps : le dernier gagne. Un message supprimé reste dans la liste jusqu'au prochain `9010` ; le client l'ignore.
 
 ## 10. Fichiers et médias (Blossom)
 

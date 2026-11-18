@@ -100,3 +100,53 @@ h1 {
     font-size: 0;
   }
 }
+
+// The pinned messages: a popover under the pin button.
+.pins {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(24rem, 100vw - 2rem);
+  max-height: min(28rem, 70vh);
+  overflow-y: auto;
+  padding: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-popover);
+
+  h2 {
+    font-size: var(--text-body);
+  }
+}
+
+.pin {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+
+  .meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--content-secondary);
+    font-size: var(--text-sm);
+
+    button {
+      margin-left: auto;
+    }
+  }
+
+  .who {
+    color: var(--content-primary);
+    font-weight: 600;
+  }
+
+  .text {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+}

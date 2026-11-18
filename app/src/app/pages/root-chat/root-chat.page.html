@@ -21,6 +21,10 @@
       (file)="sendFile($event)"
       (remove)="remove($event)"
       (join)="joinCall($event)"
+      [replying]="replying()"
+      (reply)="community.replyingTo($event)"
+      (react)="community.react($event.id, $event.emoji, $event.on)"
+      (pin)="community.setPinned($event.id, $event.pinned)"
     >
       @if (!inChannel() && dm.request()) {
         <app-request-banner banner />

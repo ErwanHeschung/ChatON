@@ -32,9 +32,19 @@ const (
 
 var idRe = regexp.MustCompile(`^[a-z0-9]{12}$`)
 
-// Kinds a client may publish; 39000-39003 only come from the relay.
+// ChatON's own kinds for pins (spec § 9, Messages): no NIP has them.
+const (
+	KindSetPins nostr.Kind = 9010  // a channel's whole pin list, from a moderator
+	KindPins    nostr.Kind = 39005 // the same, signed by the relay
+	maxPins                = 50
+	maxReaction            = 64 // bytes of an emoji
+)
+
+// Kinds a client may publish; 39000-39005 only come from the relay.
 var ClientKinds = []nostr.Kind{
 	nostr.KindSimpleGroupChatMessage,
+	nostr.KindReaction,
+	KindSetPins,
 	nostr.KindSimpleGroupPutUser,
 	nostr.KindSimpleGroupRemoveUser,
 	nostr.KindSimpleGroupEditMetadata,
@@ -540,6 +550,41 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 			}
 			g.spoke[key] = now
 		}
+	case nostr.KindReaction:
+		target, _ := nostr.IDFromHex(tagValue(ev, "e"))
+		switch {
+		case group == c || group.LiveKit:
+			return reject("invalid: react in a text channel")
+		case !can.Has("add_reactions"):
+			return reject("restricted: you can't react here")
+		case ev.Content == "" || len(ev.Content) > maxReaction:
+			return reject("invalid: a reaction is 1 to %d bytes", maxReaction)
+		case !g.messageIn(id, target):
+			return reject("invalid: react to a message of this channel")
+		}
+		for prev := range g.query(nostr.Filter{Kinds: []nostr.Kind{nostr.KindReaction}, Authors: []nostr.PubKey{author}, Tags: nostr.TagMap{"e": {target.Hex()}}}, 100) {
+			if prev.Content == ev.Content {
+				return reject("duplicate: already reacted with this")
+			}
+		}
+	case KindSetPins:
+		switch {
+		case group == c || group.LiveKit:
+			return reject("invalid: pin in a text channel")
+		case !can.Has("manage_messages"):
+			return reject("restricted: pinning needs manage_messages")
+		}
+		n := 0
+		for t := range ev.Tags.FindAll("e") {
+			n++
+			target, err := nostr.IDFromHex(t[1])
+			if err != nil || !g.messageIn(id, target) {
+				return reject("invalid: pin messages of this channel")
+			}
+		}
+		if n > maxPins {
+			return reject("invalid: %d pins at most", maxPins)
+		}
 	case nostr.KindSimpleGroupEditMetadata:
 		return g.checkEdit(ev, group)
 	case nostr.KindSimpleGroupPutUser:
@@ -729,9 +774,9 @@ func (g *Groups) checkDelete(ev nostr.Event, c *nip29.Group) (bool, string) {
 			switch {
 			case g.community(groupID(target)) != c:
 				return reject("restricted: not in this community")
-			case target.Kind == nostr.KindSimpleGroupChatMessage:
+			case target.Kind == nostr.KindSimpleGroupChatMessage || target.Kind == nostr.KindReaction:
 				if target.PubKey != ev.PubKey && !g.perms(c, ev.PubKey, g.groups[groupID(target)]).Has("manage_messages") {
-					return reject("restricted: you can only delete your own messages")
+					return reject("restricted: you can only delete your own")
 				}
 			case target.Kind == nostr.KindSimpleGroupRemoveUser && target.Tags.Has("ban"):
 				if !g.perms(c, ev.PubKey, nil).Has("ban_members") {
@@ -834,7 +879,7 @@ func (g *Groups) PreventBroadcast(ws *khatru.WebSocket, _ nostr.Filter, ev nostr
 // Readable: one of readers may read ev (spec § 9, Lecture). Anything but
 // requests from clients is left to the other policies.
 func (g *Groups) Readable(readers []nostr.PubKey, ev nostr.Event) bool {
-	if ev.Kind == nostr.KindSimpleGroupMetadata || ev.Kind == nostr.KindSimpleGroupLiveKitParticipants {
+	if ev.Kind == nostr.KindSimpleGroupMetadata || ev.Kind == nostr.KindSimpleGroupLiveKitParticipants || ev.Kind == KindPins {
 		g.mu.Lock()
 		defer g.mu.Unlock()
 		return g.seesChannel(readers, ev.Tags.GetD())
@@ -853,7 +898,7 @@ func (g *Groups) Readable(readers []nostr.PubKey, ev nostr.Event) bool {
 			return true
 		}
 		switch ev.Kind {
-		case nostr.KindSimpleGroupChatMessage, nostr.KindSimpleGroupDeleteEvent:
+		case nostr.KindSimpleGroupChatMessage, nostr.KindReaction, nostr.KindSimpleGroupDeleteEvent:
 			if k := tagValue(ev, "k"); ev.Kind == nostr.KindSimpleGroupDeleteEvent && (k == "9001" || k == "9009") {
 				if can := g.perms(c, pk, nil); can.Has("view_audit_log") || (k == "9009" && can.Has("manage_invites")) {
 					return true
@@ -874,6 +919,14 @@ func (g *Groups) Readable(readers []nostr.PubKey, ev nostr.Event) bool {
 	return false
 }
 
+// messageIn: id is a message (9) of channel. g.mu held.
+func (g *Groups) messageIn(channel string, id nostr.ID) bool {
+	for ev := range g.query(nostr.Filter{IDs: []nostr.ID{id}}, 1) {
+		return ev.Kind == nostr.KindSimpleGroupChatMessage && groupID(ev) == channel
+	}
+	return false
+}
+
 // seesChannel: group id isn't a private channel, or one of readers has
 // view_channel in it (spec § 9, Salons privés). g.mu held.
 func (g *Groups) seesChannel(readers []nostr.PubKey, id string) bool {
@@ -890,7 +943,17 @@ func (g *Groups) seesChannel(readers []nostr.PubKey, id string) bool {
 
 // saved applies an accepted group event and publishes the new state.
 func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
-	if !slices.Contains(ClientKinds, ev.Kind) || ev.Kind == nostr.KindSimpleGroupChatMessage {
+	if !slices.Contains(ClientKinds, ev.Kind) || ev.Kind == nostr.KindSimpleGroupChatMessage || ev.Kind == nostr.KindReaction {
+		return
+	}
+	if ev.Kind == KindSetPins {
+		g.mu.Lock()
+		defer g.unlock()
+		pins := nostr.Event{Kind: KindPins, Tags: nostr.Tags{{"d", groupID(ev)}}}
+		for t := range ev.Tags.FindAll("e") {
+			pins.Tags = append(pins.Tags, nostr.Tag{"e", t[1]})
+		}
+		g.emit(ctx, groupID(ev), pins)
 		return
 	}
 	g.mu.Lock()

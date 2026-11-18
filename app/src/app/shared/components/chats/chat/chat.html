@@ -5,6 +5,9 @@
       [continued]="row.continued"
       (remove)="remove.emit(row.message.id)"
       (join)="join.emit(row.message)"
+      (reply)="reply.emit(row.message.id)"
+      (react)="react.emit({ id: row.message.id, emoji: $event.emoji, on: $event.on })"
+      (pin)="pin.emit({ id: row.message.id, pinned: $event })"
     ></app-chat-bubble>
     @if (row.day; as day) {
       <div class="day" role="separator">
@@ -94,6 +97,23 @@
   @default {
     <small class="error" i18n="@@chat.send-failed">Message not sent: {{ error() }}</small>
   }
+}
+
+@if (replying(); as name) {
+  <p class="replying">
+    <span i18n="@@chat.replying"
+      >Replying to <strong>{{ name }}</strong></span
+    >
+    <button
+      type="button"
+      class="btn btn-ghost btn-icon btn-sm"
+      (click)="reply.emit(null)"
+      i18n-title="@@chat.reply-cancel"
+      title="Cancel the reply"
+    >
+      <svg [lucideIcon]="icons.close" size="14"></svg>
+    </button>
+  </p>
 }
 
 @if (!disabled()) {

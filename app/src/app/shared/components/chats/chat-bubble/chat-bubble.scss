@@ -149,8 +149,82 @@ img.attachment {
 }
 
 :host(:hover) .toolbar,
-:host(:focus-within) .toolbar {
+:host(:focus-within) .toolbar,
+.toolbar.open {
   display: flex;
+}
+
+// What this message answers: a quiet line above it, spanning the row.
+.reply {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  margin: 0 0 2px calc(var(--avatar-md) / 2);
+  color: var(--content-secondary);
+  font-size: var(--text-sm);
+
+  .who {
+    flex: none;
+    color: var(--content-primary);
+    font-weight: 600;
+  }
+
+  .excerpt {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gone {
+    font-style: italic;
+  }
+}
+
+.pinned {
+  align-self: center;
+  color: var(--content-secondary);
+}
+
+// Reactions: one pill per emoji; mine stand out in green.
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 1.75rem;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--content-secondary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+
+  .emoji {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  &[aria-pressed='true'] {
+    border-color: var(--accent);
+    color: var(--content-primary);
+  }
+
+  &:hover:not(:disabled) {
+    border-color: var(--border-strong);
+  }
+
+  &:disabled {
+    cursor: default;
+  }
 }
 
 .note {

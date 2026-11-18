@@ -65,6 +65,60 @@
       <svg [lucideIcon]="icons.call" size="20"></svg>
     </button>
   }
+  @if (view.kind === 'channel') {
+    <button
+      type="button"
+      class="btn btn-ghost btn-icon btn-sm"
+      cdkOverlayOrigin
+      #pinsOrigin="cdkOverlayOrigin"
+      (click)="showPins.set(!showPins())"
+      [attr.aria-expanded]="showPins()"
+      i18n-title="@@header.pins"
+      title="Pinned messages"
+    >
+      <svg [lucideIcon]="icons.pin" size="20"></svg>
+    </button>
+    <ng-template
+      cdkConnectedOverlay
+      [cdkConnectedOverlayOrigin]="pinsOrigin"
+      [cdkConnectedOverlayOpen]="showPins()"
+      [cdkConnectedOverlayPush]="true"
+      [cdkConnectedOverlayPositions]="pinsAt"
+      (overlayOutsideClick)="showPins.set(false)"
+      (detach)="showPins.set(false)"
+      (overlayKeydown)="$event.key === 'Escape' && showPins.set(false)"
+    >
+      <section class="pins" aria-labelledby="pins-title">
+        <h2 id="pins-title" i18n="@@header.pins">Pinned messages</h2>
+        @for (m of pinned(); track m.id) {
+          <article class="pin">
+            <p class="meta">
+              <span class="who">{{ dm.label(m.author) }}</span>
+              <time [attr.datetime]="iso(m.created_at)">{{
+                m.created_at * 1000 | date: 'short'
+              }}</time>
+              @if (canPin()) {
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-icon btn-sm"
+                  (click)="community.setPinned(m.id, false)"
+                  i18n-title="@@chat.unpin"
+                  title="Unpin"
+                >
+                  <svg [lucideIcon]="icons.unpin" size="14"></svg>
+                </button>
+              }
+            </p>
+            <p class="text">{{ m.text || m.attachment?.name }}</p>
+          </article>
+        } @empty {
+          <p class="hint" i18n="@@header.pins-none">
+            Nothing pinned yet. Moderators pin a message from its toolbar.
+          </p>
+        }
+      </section>
+    </ng-template>
+  }
   <button
     type="button"
     class="btn btn-ghost btn-icon btn-sm"

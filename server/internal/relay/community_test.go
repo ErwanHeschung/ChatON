@@ -734,3 +734,82 @@ func TestInvites(t *testing.T) {
 		t.Fatalf("unlimited invite after restart: %v", err)
 	}
 }
+
+// Step 12i: replies, reactions, pins (spec § 9, Messages).
+func TestMessages(t *testing.T) {
+	alice, bob, carol := newUser(), newUser(), newUser()
+	path, key := filepath.Join(t.TempDir(), "r.bolt"), nostr.Generate()
+	url, stop := serve(t, path, key, alice, bob, carol)
+	a, b := connect(t, url, &alice), connect(t, url, &bob)
+	at := func(s int) time.Time { return time.Now().Add(time.Duration(s) * time.Second) }
+	const other = "o0000000000o"
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateGroup, nostr.Tags{h(communityID)}, at(0)))
+	mustPublish(t, a, channel(alice, channelID, "general", at(0)))
+	mustPublish(t, a, channel(alice, other, "other", at(0)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateInvite, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+
+	hi := event(alice, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(channelID)}, at(1))
+	elsewhere := event(alice, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(other)}, at(1))
+	mustPublish(t, a, hi)
+	mustPublish(t, a, elsewhere)
+	// A reply is a message: the relay takes it as one.
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(channelID), {"q", hi.ID.Hex(), url, alice.pk.Hex()}, {"p", alice.pk.Hex()}}, at(2)))
+
+	// Reactions: to a message of the channel, once per emoji, with add_reactions.
+	react := func(u user, target nostr.ID, emoji string, s int) nostr.Event {
+		ev := nostr.Event{Kind: nostr.KindReaction, Tags: nostr.Tags{h(channelID), {"e", target.Hex()}, {"p", alice.pk.Hex()}, {"k", "9"}}, CreatedAt: nostr.Timestamp(at(s).Unix()), Content: emoji}
+		_ = ev.Sign(u.sk)
+		return ev
+	}
+	cat := react(bob, hi.ID, "🐱", 2)
+	mustPublish(t, b, cat)
+	mustReject(t, b, react(bob, hi.ID, "🐱", 3), "the same emoji twice")
+	mustPublish(t, b, react(bob, hi.ID, "👍", 3))
+	mustReject(t, b, react(bob, elsewhere.ID, "🐱", 3), "a message of another channel")
+	mustReject(t, b, react(bob, hi.ID, "", 3), "an empty reaction")
+	mustReject(t, b, react(bob, hi.ID, strings.Repeat("x", 65), 3), "a 65-byte reaction")
+
+	// Bob takes his back; carol (a member) can't take another's.
+	thumb := react(bob, hi.ID, "🙂", 3)
+	mustPublish(t, b, thumb)
+	mustPublish(t, connect(t, url, &carol), event(carol, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(3)))
+	mustReject(t, connect(t, url, &carol), event(carol, nostr.KindSimpleGroupDeleteEvent, nostr.Tags{h(channelID), {"e", thumb.ID.Hex()}, {"k", "7"}}, at(4)), "removing another's reaction")
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupDeleteEvent, nostr.Tags{h(channelID), {"e", thumb.ID.Hex()}, {"k", "7"}}, at(4)))
+	mustPublish(t, b, event(bob, nostr.KindSimpleGroupDeleteEvent, nostr.Tags{h(channelID), {"e", cat.ID.Hex()}, {"k", "7"}}, at(4)))
+	reactions := nostr.Filter{Kinds: []nostr.Kind{nostr.KindReaction}, Tags: nostr.TagMap{"h": {channelID}}}
+	if evs, _ := query(t, b, reactions); len(evs) != 1 || evs[0].Content != "👍" {
+		t.Errorf("reactions after removing one: %v", evs)
+	}
+	// Timed out: no reactions.
+	until := strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10)
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", bob.pk.Hex()}, {"timeout", until}}, at(4)))
+	mustReject(t, b, react(bob, hi.ID, "🎉", 5), "a reaction while timed out")
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", bob.pk.Hex()}, {"timeout", "0"}}, at(5)))
+
+	// Pins: manage_messages, messages of the channel, 50 at most.
+	pins := func(u user, s int, ids ...nostr.ID) nostr.Event {
+		tags := nostr.Tags{h(channelID)}
+		for _, id := range ids {
+			tags = append(tags, nostr.Tag{"e", id.Hex()})
+		}
+		return event(u, community.KindSetPins, tags, at(s))
+	}
+	mustReject(t, b, pins(bob, 6, hi.ID), "a member pinning")
+	mustReject(t, a, pins(alice, 6, elsewhere.ID), "pinning a message of another channel")
+	many := make([]nostr.ID, 51)
+	for i := range many {
+		many[i] = hi.ID
+	}
+	mustReject(t, a, pins(alice, 6, many...), "51 pins")
+	mustPublish(t, a, pins(alice, 6, hi.ID))
+	if got := state(t, url, community.KindPins, channelID); got.PubKey != key.Public() || got.Tags.Find("e")[1] != hi.ID.Hex() {
+		t.Errorf("39005: %v", got)
+	}
+
+	stop()
+	url, _ = serve(t, path, key, alice, bob, carol)
+	if got := state(t, url, community.KindPins, channelID); got.Tags.Find("e") == nil || got.Tags.Find("e")[1] != hi.ID.Hex() {
+		t.Errorf("39005 after restart: %v", got)
+	}
+}

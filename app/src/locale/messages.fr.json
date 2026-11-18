@@ -448,6 +448,16 @@
     "voice-mod.disconnect": "Déconnecter",
     "voice-mod.muted": "Rendu muet par la modération",
     "voice-mod.deafened": "Rendu sourd par la modération",
-    "voice.error-full": "Ce salon vocal est plein."
+    "voice.error-full": "Ce salon vocal est plein.",
+    "chat.reply-gone": "Message supprimé",
+    "chat.react": "Réagir",
+    "chat.reply": "Répondre",
+    "chat.pinned": "Épinglé",
+    "chat.pin": "Épingler",
+    "chat.unpin": "Désépingler",
+    "header.pins": "Messages épinglés",
+    "header.pins-none": " Rien d’épinglé pour l’instant. La modération épingle un message depuis sa barre d’outils. ",
+    "chat.replying": "Réponse à {$START_TAG_STRONG}{$INTERPOLATION}{$CLOSE_TAG_STRONG}",
+    "chat.reply-cancel": "Annuler la réponse"
   }
 }

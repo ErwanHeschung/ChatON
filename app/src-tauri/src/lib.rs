@@ -785,6 +785,54 @@ async fn send_dm_file(state: State<'_, App>, request: tauri::ipc::Request<'_>) -
         .await?)
 }
 
+/// `text` in answer to message `parent` (spec § 9, Messages).
+#[tauri::command]
+async fn reply_channel(
+    state: State<'_, App>,
+    community: String,
+    channel: String,
+    text: String,
+    parent: EventId,
+) -> Res<ChannelMessage> {
+    Ok(session(&state)
+        .await?
+        .reply(&community, &channel, &text, parent)
+        .await?)
+}
+
+/// Adds (`on`) or takes back my `emoji` on message `id`.
+#[tauri::command]
+async fn react(
+    state: State<'_, App>,
+    community: String,
+    channel: String,
+    id: EventId,
+    emoji: String,
+    on: bool,
+) -> Res<()> {
+    let session = session(&state).await?;
+    if on {
+        session.react(&community, &channel, id, &emoji).await?;
+    } else {
+        session.unreact(&community, &channel, id, &emoji).await?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_pinned(
+    state: State<'_, App>,
+    community: String,
+    channel: String,
+    id: EventId,
+    pinned: bool,
+) -> Res<()> {
+    Ok(session(&state)
+        .await?
+        .set_pinned(&community, &channel, id, pinned)
+        .await?)
+}
+
 #[tauri::command]
 async fn send_channel_file(
     state: State<'_, App>,
@@ -973,6 +1021,9 @@ pub fn run() {
             set_roles,
             remove_member,
             invites,
+            reply_channel,
+            react,
+            set_pinned,
             moderate_voice,
             revoke_invite,
             ban,

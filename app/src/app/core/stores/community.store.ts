@@ -37,6 +37,8 @@ export const CommunityStore = signalStore(
     selected: null as string | null,
     channel: null as string | null,
     messages: [] as ChannelMessage[],
+    /** The message my next one answers (spec § 9, Messages). */
+    replyTo: null as string | null,
     members: [] as Member[],
     error: null as CmdError['code'] | null,
     sendError: null as CmdError['code'] | null,
@@ -86,7 +88,7 @@ export const CommunityStore = signalStore(
     };
 
     const selectChannel = async (channel: string | null) => {
-      patchState(store, { channel, messages: [] });
+      patchState(store, { channel, messages: [], replyTo: null });
       if (!channel) {
         return;
       }
@@ -112,6 +114,13 @@ export const CommunityStore = signalStore(
             : s.messages,
       }));
       void dm.resolve(message.author);
+    };
+
+    /** Reactions or pins changed: the open channel, read again in place. */
+    const refresh = async (channel: string) => {
+      if (store.channel() !== channel) return;
+      const messages = await invoke<ChannelMessage[]>('channel_messages', { channel });
+      if (store.channel() === channel) patchState(store, { messages });
     };
 
     const forget = (ids: string[]) =>
@@ -142,6 +151,8 @@ export const CommunityStore = signalStore(
             return receive(update.message);
           case 'deleted':
             return forget(update.ids);
+          case 'channel_changed':
+            return void refresh(update.channel);
           case 'communities':
             return void load().then(loadMembers);
           case 'blocks':
@@ -238,8 +249,12 @@ export const CommunityStore = signalStore(
         if (!community || !channel || !text.trim()) {
           return;
         }
-        const res = await run<ChannelMessage>('send_channel', { community, channel, text });
+        const parent = store.replyTo();
+        const res = parent
+          ? await run<ChannelMessage>('reply_channel', { community, channel, text, parent })
+          : await run<ChannelMessage>('send_channel', { community, channel, text });
         patchState(store, { sendError: res.ok ? null : store.error() });
+        if (res.ok) patchState(store, { replyTo: null });
         if (res.ok) receive(res.result);
       },
 
@@ -324,6 +339,26 @@ export const CommunityStore = signalStore(
         ).ok;
         if (ok) await loadMembers();
         return ok;
+      },
+
+      /** The message the next one answers; null: none. */
+      replyingTo(id: string | null) {
+        patchState(store, { replyTo: id });
+      },
+
+      /** Adds (`on`) or takes back my `emoji` on message `id` of the open channel. */
+      async react(id: string, emoji: string, on: boolean) {
+        const [community, channel] = [store.selected(), store.channel()];
+        if ((await run('react', { community, channel, id, emoji, on })).ok && channel) {
+          await refresh(channel);
+        }
+      },
+
+      async setPinned(id: string, pinned: boolean) {
+        const [community, channel] = [store.selected(), store.channel()];
+        if ((await run('set_pinned', { community, channel, id, pinned })).ok && channel) {
+          await refresh(channel);
+        }
       },
 
       /** In voice `channel` (spec § 11): mute, deafen, disconnect, or move `target` to `to`. */

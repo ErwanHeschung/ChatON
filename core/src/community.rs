@@ -22,13 +22,20 @@ use crate::{Error, Result, event, link};
 pub const ROLE_ADMIN: &str = "admin";
 pub const ROLE_MODERATOR: &str = "moderator";
 
-const STATE_KINDS: [Kind; 5] = [
+const STATE_KINDS: [Kind; 6] = [
     Kind::GroupMetadata,
     Kind::GroupAdmins,
     Kind::GroupMembers,
     Kind::GroupRoles,
     Kind::GroupLivekitParticipants,
+    PINS,
 ];
+/// ChatON's pins (spec § 9, Messages): the list a moderator sends, and the
+/// relay's copy.
+const SET_PINS: Kind = Kind::Custom(9010);
+const PINS: Kind = Kind::Custom(39005);
+/// What a channel's history holds.
+const CHAT_KINDS: [Kind; 3] = [Kind::ChatMessage, Kind::GroupDeleteEvent, Kind::Reaction];
 const ID_LEN: usize = 12;
 /// Lines of the audit log fetched at once.
 // ponytail: the last 500 only; page with `until` if a community needs more history.
@@ -285,6 +292,25 @@ pub struct ChannelMessage {
     pub text: String,
     pub created_at: Timestamp,
     pub attachment: Option<Attachment>,
+    /// The message this one answers (NIP-C7 `q`).
+    pub reply_to: Option<ReplyTo>,
+    /// By emoji, in the order they first came.
+    pub reactions: Vec<Reaction>,
+    pub pinned: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ReplyTo {
+    pub id: EventId,
+    pub author: PublicKey,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Reaction {
+    pub emoji: String,
+    pub count: u32,
+    /// One of them is mine.
+    pub mine: bool,
 }
 
 /// `<host>'<community>/<code>` (spec § 9, invitations).
@@ -350,6 +376,10 @@ pub enum Update {
     Deleted {
         channel: String,
         ids: Vec<EventId>,
+    },
+    /// Reactions or pins of `channel` changed: read its messages again.
+    ChannelChanged {
+        channel: String,
     },
     /// My communities, their channels or members changed: read them again.
     Communities,
@@ -871,10 +901,40 @@ impl Session {
         let in_channel = Filter::new().custom_tag(SingleLetterTag::LOWERCASE_H, channel);
         let db = self.client.database();
         let messages = db.query(in_channel.clone().kind(Kind::ChatMessage)).await?;
-        let deletions = db.query(in_channel.kind(Kind::GroupDeleteEvent)).await?;
+        let deletions = db
+            .query(in_channel.clone().kind(Kind::GroupDeleteEvent))
+            .await?;
+        let reactions = db.query(in_channel.kind(Kind::Reaction)).await?;
+        let pins = db
+            .query(Filter::new().kind(PINS).identifier(channel))
+            .await?;
         let blocked = self.blocks().await?.keys;
         let shown = messages.iter().filter(|m| !blocked.contains(&m.pubkey));
-        Ok(visible(shown, deletions.iter()))
+        let mut all = visible(shown, deletions.iter());
+        let gone: HashSet<&str> = deletions.iter().flat_map(|d| tag_values(d, "e")).collect();
+        let reactions: Vec<&Event> = reactions
+            .iter()
+            .filter(|r| !gone.contains(r.id.to_hex().as_str()) && !blocked.contains(&r.pubkey))
+            .collect();
+        let pinned: HashSet<&str> = pins
+            .iter()
+            .filter(|p| self.is_relay_key(p.pubkey))
+            .max_by_key(|p| p.created_at)
+            .map(|p| tag_values(p, "e").collect())
+            .unwrap_or_default();
+        let me = self.account().pubkey;
+        for m in &mut all {
+            let id = m.id.to_hex();
+            m.pinned = pinned.contains(id.as_str());
+            m.reactions = count_reactions(
+                reactions
+                    .iter()
+                    .copied()
+                    .filter(|r| tag_values(r, "e").any(|e| e == id)),
+                me,
+            );
+        }
+        Ok(all)
     }
 
     pub async fn send(&self, community: &str, channel: &str, text: &str) -> Result<ChannelMessage> {
@@ -883,6 +943,115 @@ impl Session {
             .group_event(&relay, Kind::ChatMessage, channel, [], text)
             .await?;
         message(&ev).ok_or_else(|| Error::Invalid("empty message".into()))
+    }
+
+    /// `text` in answer to message `parent` of `channel` (NIP-C7, spec § 9, Messages).
+    pub async fn reply(
+        &self,
+        community: &str,
+        channel: &str,
+        text: &str,
+        parent: EventId,
+    ) -> Result<ChannelMessage> {
+        let relay = self.relay_of(community).await?;
+        let author = self.author_of(parent).await?;
+        let tags = [
+            Tag::parse(["q", &parent.to_hex(), &relay, &author.to_hex()])?,
+            Tag::public_key(author),
+        ];
+        let ev = self
+            .group_event(&relay, Kind::ChatMessage, channel, tags, text)
+            .await?;
+        message(&ev).ok_or_else(|| Error::Invalid("empty message".into()))
+    }
+
+    /// Reacts to message `id` of `channel` with `emoji` (NIP-25).
+    pub async fn react(
+        &self,
+        community: &str,
+        channel: &str,
+        id: EventId,
+        emoji: &str,
+    ) -> Result<()> {
+        let relay = self.relay_of(community).await?;
+        let author = self.author_of(id).await?;
+        let tags = [
+            Tag::event(id),
+            Tag::public_key(author),
+            Tag::parse(["k", "9"])?,
+        ];
+        self.group_event(&relay, Kind::Reaction, channel, tags, emoji)
+            .await
+            .map(drop)
+    }
+
+    /// Takes back my `emoji` on message `id`.
+    pub async fn unreact(
+        &self,
+        community: &str,
+        channel: &str,
+        id: EventId,
+        emoji: &str,
+    ) -> Result<()> {
+        let relay = self.relay_of(community).await?;
+        let mine = Filter::new()
+            .kind(Kind::Reaction)
+            .author(self.account().pubkey)
+            .event(id);
+        let events = self.client.database().query(mine).await?;
+        for r in events.iter().filter(|r| r.content == emoji) {
+            let tags = [Tag::event(r.id), Tag::parse(["k", "7"])?];
+            self.group_event(&relay, Kind::GroupDeleteEvent, channel, tags, "")
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// `manage_messages`: pins or unpins message `id`; the newest pin first.
+    pub async fn set_pinned(
+        &self,
+        community: &str,
+        channel: &str,
+        id: EventId,
+        pinned: bool,
+    ) -> Result<()> {
+        let relay = self.relay_of(community).await?;
+        let key = self.relay_key(&relay).await?;
+        // The relay's list as it is now: the last one sent wins.
+        let current = self
+            .client
+            .fetch_events(ReqTarget::single(
+                &relay,
+                [Filter::new().author(key).kind(PINS).identifier(channel)],
+            ))
+            .timeout(TIMEOUT)
+            .await?;
+        let mut ids: Vec<EventId> = current
+            .iter()
+            .max_by_key(|p| p.created_at)
+            .map(|p| {
+                tag_values(p, "e")
+                    .filter_map(|e| EventId::from_hex(e).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        ids.retain(|p| *p != id);
+        if pinned {
+            ids.insert(0, id);
+        }
+        let tags: Vec<Tag> = ids.into_iter().map(Tag::event).collect();
+        self.group_event(&relay, SET_PINS, channel, tags, "")
+            .await
+            .map(drop)
+    }
+
+    async fn author_of(&self, id: EventId) -> Result<PublicKey> {
+        self.client
+            .database()
+            .event_by_id(&id)
+            .await?
+            .map(|e| e.pubkey)
+            .ok_or(Error::NotFound)
     }
 
     /// Encrypts `bytes`, uploads them to my instance and posts them in `channel`.
@@ -1023,7 +1192,7 @@ impl Session {
         let mut filters = vec![state];
         if !channels.is_empty() {
             let live = Filter::new()
-                .kinds([Kind::ChatMessage, Kind::GroupDeleteEvent])
+                .kinds(CHAT_KINDS)
                 .custom_tags(SingleLetterTag::LOWERCASE_H, channels);
             filters.push(live.since(Timestamp::now()));
         }
@@ -1058,7 +1227,7 @@ impl Session {
         // ponytail: one REQ per channel; batch the ones with history if communities grow big.
         for channel in channels.iter().filter(|c| seen.contains(*c)) {
             let chat = Filter::new()
-                .kinds([Kind::ChatMessage, Kind::GroupDeleteEvent])
+                .kinds(CHAT_KINDS)
                 .custom_tag(SingleLetterTag::LOWERCASE_H, channel);
             let stored = self.client.database().query(chat.clone().limit(1)).await?;
             let history = match stored.iter().map(|e| e.created_at).max() {
@@ -1106,6 +1275,19 @@ impl Session {
                 return None;
             }
             return message(ev).map(|message| Update::ChannelMessage { message });
+        }
+        let channel = || Some(tag_values(ev, "h").next()?.to_string());
+        if ev.kind == Kind::Reaction
+            || (ev.kind == Kind::GroupDeleteEvent && tag_values(ev, "k").any(|k| k == "7"))
+        {
+            return Some(Update::ChannelChanged {
+                channel: channel()?,
+            });
+        }
+        if ev.kind == PINS && self.is_relay_key(ev.pubkey) {
+            return Some(Update::ChannelChanged {
+                channel: ev.tags.identifier()?.to_string(),
+            });
         }
         if ev.kind == Kind::GroupDeleteEvent {
             return Some(Update::Deleted {
@@ -1587,7 +1769,37 @@ fn message(ev: &Event) -> Option<ChannelMessage> {
         text: ev.content.clone(),
         created_at: ev.created_at,
         attachment: ev.tags.iter().find_map(Attachment::from_imeta),
+        reply_to: ev.tags.iter().find_map(|t| match t.as_slice() {
+            [q, id, _, author, ..] if q == "q" => Some(ReplyTo {
+                id: EventId::from_hex(id).ok()?,
+                author: PublicKey::from_hex(author).ok()?,
+            }),
+            _ => None,
+        }),
+        reactions: Vec::new(),
+        pinned: false,
     })
+}
+
+/// Reactions to one message, by emoji in the order they first came.
+fn count_reactions<'a>(reactions: impl Iterator<Item = &'a Event>, me: PublicKey) -> Vec<Reaction> {
+    let mut sorted: Vec<&Event> = reactions.collect();
+    sorted.sort_by_key(|r| (r.created_at, r.id));
+    let mut out: Vec<Reaction> = Vec::new();
+    for r in sorted {
+        match out.iter_mut().find(|x| x.emoji == r.content) {
+            Some(x) => {
+                x.count += 1;
+                x.mine |= r.pubkey == me;
+            }
+            None => out.push(Reaction {
+                emoji: r.content.clone(),
+                count: 1,
+                mine: r.pubkey == me,
+            }),
+        }
+    }
+    out
 }
 
 /// Messages not targeted by a deletion, oldest first (same second: id order).

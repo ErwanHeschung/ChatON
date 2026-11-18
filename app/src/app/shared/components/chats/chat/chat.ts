@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { DatePipe, NgOptimizedImage } from '@angular/common';
-import { LucideDynamicIcon, LucideUsers } from '@lucide/angular';
+import { LucideDynamicIcon, LucideUsers, LucideX } from '@lucide/angular';
 import { Avatar } from '@components/avatar/avatar';
 import { ChatBar } from '@components/chats/chat-bar/chat-bar';
 import { ChatBubble } from '@components/chats/chat-bubble/chat-bubble';
@@ -31,7 +31,7 @@ function dayLabel(date: Date): 'today' | 'yesterday' | Date {
 })
 export class Chat {
   protected readonly shell = inject(ShellService);
-  protected readonly icons = { group: LucideUsers };
+  protected readonly icons = { group: LucideUsers, close: LucideX };
   /** Newest first: the list is rendered bottom-up (`column-reverse`). */
   public readonly messages = input<Message[]>([]);
   public readonly disabled = input(false);
@@ -42,6 +42,12 @@ export class Chat {
   public readonly remove = output<string>();
   /** Join the call a note announces (its message). */
   public readonly join = output<Message>();
+  /** Whom the next message answers (their name), if any. */
+  public readonly replying = input<string | null>(null);
+  /** Answer a message (its id); null: not anymore. */
+  public readonly reply = output<string | null>();
+  public readonly react = output<{ id: string; emoji: string; on: boolean }>();
+  public readonly pin = output<{ id: string; pinned: boolean }>();
 
   /** Each message, whether it continues its author's run, and the day it opens (if any). */
   protected readonly rows = computed(() => {
@@ -57,6 +63,8 @@ export class Chat {
         !message.subject &&
         !older.call &&
         !message.call &&
+        !message.reply &&
+        !message.pinned &&
         message.timestamp.getTime() - older.timestamp.getTime() < GROUP_GAP_MS;
       return { message, continued, day: newDay ? dayLabel(message.timestamp) : null };
     });
