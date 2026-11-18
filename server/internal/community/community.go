@@ -96,6 +96,8 @@ type Groups struct {
 	// 9001, and each running timeout's end.
 	bans     map[string]map[nostr.PubKey]nostr.ID
 	timeouts map[string]map[nostr.PubKey]nostr.Timestamp
+	// Invite codes of each community, with their limits and uses (spec § 9, Invitations).
+	invites map[string]map[string]*invite
 }
 
 // Moderation limits (spec § 9, Modération).
@@ -141,6 +143,7 @@ func New(key nostr.SecretKey, relayURL string, store eventstore.Store, dir Direc
 		spoke:    map[string]nostr.Timestamp{},
 		bans:     map[string]map[nostr.PubKey]nostr.ID{},
 		timeouts: map[string]map[nostr.PubKey]nostr.Timestamp{},
+		invites:  map[string]map[string]*invite{},
 	}
 	owners, roles := map[string]nostr.PubKey{}, map[string][]Role{}
 	// Metadata first: it creates the group the other state events merge into.
@@ -200,8 +203,15 @@ func New(key nostr.SecretKey, relayURL string, store eventstore.Store, dir Direc
 		}
 		g.policies[id] = p
 	}
+	// Invites (a revoked one was deleted), then their uses: the joins accepted with them.
+	for ev := range g.query(nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupCreateInvite}}, loadLimit) {
+		g.addInvite(ev)
+	}
 	// Joins were verified when accepted: their nip05 says where members come from.
 	for ev := range g.query(nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupJoinRequest}}, loadLimit) {
+		if inv := g.invites[groupID(ev)][tagValue(ev, "code")]; inv != nil {
+			inv.Uses++
+		}
 		if t := ev.Tags.Find("nip05"); t != nil {
 			if _, domain, ok := strings.Cut(t[1], "@"); ok {
 				g.origins[ev.PubKey] = rules.Domain(domain)
@@ -220,13 +230,6 @@ func New(key nostr.SecretKey, relayURL string, store eventstore.Store, dir Direc
 	}
 	for ev := range g.query(nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupDeleteEvent}, Tags: nostr.TagMap{"k": {"9001"}}}, loadLimit) {
 		g.unban(groupID(ev), ev)
-	}
-	for ev := range g.query(nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupCreateInvite}}, loadLimit) {
-		if group := g.groups[groupID(ev)]; group != nil {
-			if action, err := nip29.PrepareModerationAction(ev); err == nil {
-				action.Apply(group)
-			}
-		}
 	}
 	return g, nil
 }
@@ -609,6 +612,15 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 		if group != c || !can.Has("create_invite") {
 			return reject("restricted: inviting needs create_invite, on the community")
 		}
+		code, inv, err := parseInvite(ev)
+		switch {
+		case err != nil:
+			return reject("%s", err)
+		case inv.Expires != 0 && inv.Expires <= nostr.Now():
+			return reject("invalid: this invite has already expired")
+		case g.invites[id][code] != nil:
+			return reject("duplicate: this code is taken")
+		}
 	case nostr.KindSimpleGroupJoinRequest:
 		code := ev.Tags.Find("code")
 		switch {
@@ -618,8 +630,8 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 			return reject("duplicate: already a member")
 		case g.bans[c.Address.ID][author] != nostr.ZeroID:
 			return reject("blocked: you're banned from this community")
-		case code == nil || !slices.Contains(c.InviteCodes, code[1]):
-			return reject("restricted: invalid invite code")
+		case code == nil || g.invites[id][code[1]] == nil || !g.invites[id][code[1]].usable(nostr.Now()):
+			return reject("restricted: invalid invite code (unknown, expired, used up or revoked)")
 		}
 	case nostr.KindSimpleGroupLeaveRequest:
 		switch {
@@ -727,6 +739,10 @@ func (g *Groups) checkDelete(ev nostr.Event, c *nip29.Group) (bool, string) {
 				}
 				if tagValue(ev, "p") != tagValue(target, "p") {
 					return reject("invalid: an unban names who it lets back (p)")
+				}
+			case target.Kind == nostr.KindSimpleGroupCreateInvite:
+				if target.PubKey != ev.PubKey && !g.perms(c, ev.PubKey, nil).Has("manage_invites") {
+					return reject("restricted: revoking others' invites needs manage_invites")
 				}
 			default:
 				return reject("restricted: the audit log can't be erased")
@@ -838,8 +854,8 @@ func (g *Groups) Readable(readers []nostr.PubKey, ev nostr.Event) bool {
 		}
 		switch ev.Kind {
 		case nostr.KindSimpleGroupChatMessage, nostr.KindSimpleGroupDeleteEvent:
-			if ev.Kind == nostr.KindSimpleGroupDeleteEvent && tagValue(ev, "k") == "9001" {
-				if g.perms(c, pk, nil).Has("view_audit_log") {
+			if k := tagValue(ev, "k"); ev.Kind == nostr.KindSimpleGroupDeleteEvent && (k == "9001" || k == "9009") {
+				if can := g.perms(c, pk, nil); can.Has("view_audit_log") || (k == "9009" && can.Has("manage_invites")) {
 					return true
 				}
 			} else if g.perms(c, pk, g.groups[groupID(ev)]).Has("view_channel") {
@@ -898,6 +914,9 @@ func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
 				g.origins[ev.PubKey] = rules.Domain(domain)
 			}
 		}
+		if inv := g.invites[id][tagValue(ev, "code")]; inv != nil {
+			inv.Uses++
+		}
 		g.put(ctx, id, ev.PubKey)
 		g.publish(ctx, id)
 		return
@@ -913,9 +932,13 @@ func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
 		}
 		for t := range ev.Tags.FindAll("e") {
 			if target, err := nostr.IDFromHex(t[1]); err == nil {
+				g.revokeInvite(id, target)
 				_ = g.relay.DeleteEvent(ctx, target)
 			}
 		}
+		return
+	case nostr.KindSimpleGroupCreateInvite:
+		g.addInvite(ev) // codes stay secret: no state to publish
 		return
 	case nostr.KindSimpleGroupPutUser:
 		if t := ev.Tags.Find("timeout"); t != nil {
@@ -965,7 +988,7 @@ func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
 		}
 	case ev.Kind == nostr.KindSimpleGroupDeleteGroup && group.Parent == "":
 		// A deleted community takes its channels and invites with it.
-		group.InviteCodes = nil
+		delete(g.invites, id)
 		for _, child := range group.Children {
 			if ch := g.groups[child]; ch != nil {
 				action.Apply(ch)
@@ -973,9 +996,7 @@ func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
 			}
 		}
 	}
-	if ev.Kind != nostr.KindSimpleGroupCreateInvite { // codes stay secret
-		g.publish(ctx, id)
-	}
+	g.publish(ctx, id)
 }
 
 // createChannel sets up channel id from its 9007 and adds it at the end of

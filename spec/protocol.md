@@ -299,7 +299,7 @@ Pour lire les événements d'une communauté, il faut s'être authentifié (NIP-
 |---|---|
 | messages (`9`), leurs suppressions (`9005`) | `view_channel` dans leur salon |
 | débannissements (`9005` `["k", "9001"]`) | `view_audit_log` |
-| invitations (`9009`), entrées (`9021`) | `view_audit_log` ou `manage_invites` |
+| invitations (`9009`), entrées (`9021`), révocations (`9005` `["k", "9009"]`) | `view_audit_log` ou `manage_invites` |
 | autres demandes (`9000`, `9001`, `9002`, `9007`, `9008`, `9022`) | `view_audit_log` |
 
 On lit toujours ses propres événements. L'état signé par le relais (`39000`–`39004`) reste lisible par tous, sauf celui d'un salon privé (« Salons privés »).
@@ -376,13 +376,20 @@ Un rôle supprimé est retiré de ses membres (`39001`). Changer `owner` est ré
 |---|---|
 | un message (`9`) | son auteur, ou `manage_messages` dans le salon |
 | un ban (`9001` + `ban`) | `ban_members` ; le `9005` porte `["p", clé du banni]`, et le ban reste stocké |
+| une invitation (`9009`) | son auteur, ou `manage_invites` (« Invitations ») |
 | autre chose | personne : le journal ne s'efface pas |
 
 - **Journal** : avec `view_audit_log`, un client lit les `9000`, `9001`, `9002`, `9005`, `9007`, `9008` et `9022` de la communauté et de ses salons (« Lecture ») et les présente comme un journal. Ceux que le relais signe lui-même (un membre qui entre ou part) n'y figurent pas.
 
 ### Invitations
 
-- Un membre qui a `create_invite` publie `9009` `["h", C], ["code", X]`, X = 8 caractères en base32 de Crockford. Le code est réutilisable et n'expire pas en v0.
+- Un membre qui a `create_invite` publie `9009` `["h", C], ["code", X]`, X = 8 caractères en base32 de Crockford, unique dans la communauté. En option :
+  - `["expiration", <unix>]` (NIP-40) : le code ne sert plus après, et l'expiration doit être à venir ;
+  - `["max_uses", n]`, 1 à 1000 : le code ne sert plus après n entrées.
+  Sans eux, le code sert sans limite (vecteur `group_create_invite_limited`).
+- Les utilisations se comptent sur les `9021` acceptés ; le relais les recompte au démarrage.
+- **Révoquer** : `9005` `["h", C], ["e", <id du 9009>], ["k", "9009"]`, par son auteur ou avec `manage_invites`. Le relais efface le `9009` ; le code ne sert plus (vecteur `group_revoke_invite`).
+- **Lister** : un client lit les `9009` et `9021` de la communauté. Avec `manage_invites` ou `view_audit_log`, il les voit tous ; sinon, seulement les siens (on lit toujours ses propres événements), sans leurs utilisations.
 - Texte partagé : `<hôte>'<C>/<X>`, par exemple `chaton.example'k3j9x2m8q0aa/AB12CD34`. Le relais est `wss://<hôte>` (`ws://` pour `localhost`).
 - Pour entrer : `9021` `["h", C], ["code", X]`, plus `["nip05", "pseudo@instance"]` (ChatON l'ajoute toujours, vecteur `group_join_request_nip05`). Pour une clé d'une autre instance, l'hôte le vérifie (NIP-05) et retient l'instance du membre, pour appliquer ses règles (`federation.md` § 6). Si le code est bon, le relais ajoute la clé en publiant un `9000` `["h", C], ["p", clé]`. Un membre retiré (`9001`) a besoin d'une nouvelle invitation ; un banni ne peut pas rentrer (« Modération »).
 - Après être entré, le client ajoute `["group", C, "<url du relais>"]` à sa liste `10009`, que tous ses appareils lisent.

@@ -122,6 +122,21 @@ export interface Member {
   timeout: number;
 }
 
+/** An invite that still works (spec § 9, Invitations). */
+export interface InviteInfo {
+  code: string;
+  /** What to share. */
+  text: string;
+  author: string;
+  created_at: number;
+  /** Unix seconds, 0: never. */
+  expires: number;
+  /** 0: no limit. */
+  max_uses: number;
+  /** Joins with it (0 when I can't see them). */
+  uses: number;
+}
+
 /** A running ban (spec § 9, Modération). */
 export interface Ban {
   pubkey: string;

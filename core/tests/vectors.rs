@@ -23,7 +23,7 @@ fn valid_vectors_reproduce_serialization_id_and_sig() {
     let aux: [u8; 32] = hex(str_of(&vs, "aux_rand")).try_into().unwrap();
     let secp = Secp256k1::new();
     let valid = vs["valid"].as_array().unwrap();
-    assert_eq!(valid.len(), 49);
+    assert_eq!(valid.len(), 51);
 
     for v in valid {
         let name = str_of(v, "name");

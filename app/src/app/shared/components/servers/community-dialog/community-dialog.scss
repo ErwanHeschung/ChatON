@@ -30,3 +30,16 @@ input {
   flex: 1;
   min-width: 0;
 }
+
+// Invite: expiry and uses side by side, the button on their baseline.
+.limits {
+  flex-wrap: wrap;
+  align-items: flex-end;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+
+  .field {
+    flex: 1;
+    min-width: 8rem;
+  }
+}

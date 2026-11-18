@@ -389,13 +389,21 @@ async fn a_community_with_channels_invites_and_moderation() {
         .set_roles(&community.id, bob.account().pubkey, &["gardien"])
         .await
         .unwrap();
-    let bob_as_member = alice
-        .members(&community.id)
-        .await
-        .unwrap()
-        .into_iter()
-        .find(|m| m.pubkey == bob.account().pubkey)
-        .unwrap();
+    // The relay's 39001 comes after the OK: wait for it.
+    let bob_pk = bob.account().pubkey;
+    let bob_as_member = eventually("bob is gardien", || {
+        let (alice, id) = (&alice, community.id.clone());
+        async move {
+            let m = alice
+                .members(&id)
+                .await
+                .ok()?
+                .into_iter()
+                .find(|m| m.pubkey == bob_pk)?;
+            (m.hoist.as_deref() == Some("gardien")).then_some(m)
+        }
+    })
+    .await;
     assert_eq!(bob_as_member.hoist.as_deref(), Some("gardien"));
     assert_eq!(bob_as_member.color.as_deref(), Some("#e5a50a"));
 
@@ -1331,4 +1339,45 @@ async fn bans_timeouts_and_the_audit_log() {
         hers.iter().all(|e| e.action == "delete_message"),
         "{hers:?}"
     );
+}
+
+/// Step 12g (spec § 9, Invitations): limited invites, listed, revoked.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a running server, see the module docs"]
+async fn invites_listed_used_up_and_revoked() {
+    use chaton_core::nostr::prelude::Timestamp;
+    let (server, _) = setup();
+    let alice = Session::register(&temp_dir("alice"), &server, &unique("alice"))
+        .await
+        .unwrap();
+    let bob = Session::register(&temp_dir("bob"), &server, &unique("bob"))
+        .await
+        .unwrap();
+    let carol = Session::register(&temp_dir("carol"), &server, &unique("carol"))
+        .await
+        .unwrap();
+    let community = alice.create_community("Les chats").await.unwrap();
+    let week = Timestamp::now().as_secs() + 7 * 86400;
+    let once = alice.invite_with(&community.id, week, 1).await.unwrap();
+    let open = alice.invite(&community.id).await.unwrap();
+
+    let listed = alice.invites(&community.id).await.unwrap();
+    assert_eq!(listed.len(), 2, "{listed:?}");
+    let limited = listed.iter().find(|i| i.text == once).unwrap();
+    assert_eq!(
+        (limited.expires, limited.max_uses, limited.uses),
+        (week, 1, 0)
+    );
+
+    // One use: Bob gets in, Carol doesn't, and it leaves the list.
+    bob.join(&once).await.unwrap();
+    assert!(matches!(carol.join(&once).await, Err(Error::InvalidInvite)));
+    let listed = alice.invites(&community.id).await.unwrap();
+    assert_eq!(listed.iter().map(|i| &i.text).collect::<Vec<_>>(), [&open]);
+
+    // Revoked: gone, and refused.
+    let code = listed[0].code.clone();
+    alice.revoke_invite(&community.id, &code).await.unwrap();
+    assert!(alice.invites(&community.id).await.unwrap().is_empty());
+    assert!(matches!(carol.join(&open).await, Err(Error::InvalidInvite)));
 }

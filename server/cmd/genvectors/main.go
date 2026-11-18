@@ -183,6 +183,8 @@ func generate() []byte {
 		valid("group_unban", alice, 9005, nostr.Tags{v0, {"h", community}, {"e", strings.Repeat("ab", 32)}, {"k", "9001"}, {"p", carol.pk}}, ""),
 		valid("group_timeout", alice, 9000, nostr.Tags{v0, {"h", community}, {"p", carol.pk}, {"timeout", "1767225600"}}, "On se calme"),
 		valid("group_create_invite", alice, 9009, nostr.Tags{v0, {"h", community}, {"code", "AB12CD34"}}, ""),
+		valid("group_create_invite_limited", alice, 9009, nostr.Tags{v0, {"h", community}, {"code", "EF34GH56"}, {"expiration", "1767225600"}, {"max_uses", "10"}}, ""),
+		valid("group_revoke_invite", alice, 9005, nostr.Tags{v0, {"h", community}, {"e", strings.Repeat("cd", 32)}, {"k", "9009"}}, ""),
 		valid("group_join_request", bob, 9021, nostr.Tags{v0, {"h", community}, {"code", "AB12CD34"}}, ""),
 		valid("group_join_request_nip05", bob, 9021, nostr.Tags{v0, {"h", community}, {"code", "AB12CD34"}, {"nip05", "bob@ronron.example"}}, ""),
 		valid("group_chat_message", bob, 9, nostr.Tags{v0, {"h", channel1}}, "Bonjour tout le monde"),

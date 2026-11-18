@@ -21,6 +21,7 @@ import {
   LucideDynamicIcon,
   LucideIconInput,
   LucideImage,
+  LucideLink,
   LucidePlus,
   LucideShieldCheck,
   LucideSlidersHorizontal,
@@ -35,6 +36,7 @@ import {
   AuditEntry,
   Ban,
   EVERYONE,
+  InviteInfo,
   Member,
   Permission,
   ROLE_COLORS,
@@ -50,7 +52,7 @@ import { CommunityStore } from '@stores/community.store';
 import { DmStore } from '@stores/dm.store';
 import { ConnectedUserStore } from '@stores/connected-user.store';
 
-type Section = 'overview' | 'roles' | 'members' | 'bans' | 'audit' | 'ownership';
+type Section = 'overview' | 'roles' | 'members' | 'invites' | 'bans' | 'audit' | 'ownership';
 type State = 'idle' | 'saving' | 'done' | CmdError['code'];
 
 /** A new role's id: short, random, in the spec's alphabet. */
@@ -132,6 +134,12 @@ export class ServerSettings {
         shown: can('manage_roles') || can('kick_members'),
       },
       {
+        id: 'invites',
+        label: $localize`:@@server-settings.invites:Invites`,
+        icon: LucideLink,
+        shown: can('create_invite') || can('manage_invites'),
+      },
+      {
         id: 'bans',
         label: $localize`:@@server-settings.bans:Bans`,
         icon: LucideBan,
@@ -170,6 +178,7 @@ export class ServerSettings {
     // Bans and the log come from the relay, fetched when opened.
     effect(() => {
       const section = this.section();
+      if (section === 'invites') void this.loadInvites();
       if (section === 'bans') void this.loadBans();
       if (section === 'audit') void this.loadLog();
     });
@@ -336,6 +345,27 @@ export class ServerSettings {
   protected removeMember(member: Member): void {
     this.shell.moderating.set({ action: 'kick', pubkey: member.pubkey });
     this.modal.open(ModerateDialog);
+  }
+
+  /* --- INVITES (spec § 9, Invitations) --- */
+  protected readonly invites = signal<InviteInfo[] | null>(null);
+  protected readonly copiedInvite = signal('');
+
+  private async loadInvites() {
+    this.invites.set(await this.store.invites());
+  }
+
+  /** Mine, or anyone's with manage_invites. */
+  protected canRevoke(i: InviteInfo): boolean {
+    return i.author === this.me() || this.store.can('manage_invites');
+  }
+
+  protected copyInvite(i: InviteInfo): void {
+    void navigator.clipboard.writeText(i.text).then(() => this.copiedInvite.set(i.code));
+  }
+
+  protected async revokeInvite(i: InviteInfo) {
+    if (await this.store.revokeInvite(i.code)) await this.loadInvites();
   }
 
   /* --- BANS AND THE AUDIT LOG (spec § 9, Modération) --- */

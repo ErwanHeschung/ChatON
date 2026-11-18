@@ -17,6 +17,7 @@ import {
   ChannelEdit,
   ChannelMessage,
   Community,
+  InviteInfo,
   CommunityEdit,
   CommunityUpdate,
   Member,
@@ -211,9 +212,24 @@ export const CommunityStore = signalStore(
         return ok;
       },
 
-      async invite() {
-        const res = await run<string>('create_invite', { community: store.selected() });
+      /** A new invite: stops at `expires` (unix seconds) or after `maxUses` joins; 0: no limit. */
+      async invite(expires = 0, maxUses = 0) {
+        const res = await run<string>('create_invite', {
+          community: store.selected(),
+          expires,
+          maxUses,
+        });
         return res.ok ? res.result : null;
+      },
+
+      async invites() {
+        const r = await run<InviteInfo[]>('invites', { community: store.selected() });
+        if (r.ok) r.result.forEach((i) => void dm.resolve(i.author));
+        return r.ok ? r.result : [];
+      },
+
+      async revokeInvite(code: string) {
+        return (await run('revoke_invite', { community: store.selected(), code })).ok;
       },
 
       async send(text: string) {

@@ -172,6 +172,22 @@ pub struct Member {
     pub timeout: u64,
 }
 
+/// An invite that still works (spec § 9, Invitations).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InviteInfo {
+    pub code: String,
+    /// What to share: `<host>'<community>/<code>`.
+    pub text: String,
+    pub author: PublicKey,
+    pub created_at: u64,
+    /// Unix seconds, 0: never.
+    pub expires: u64,
+    /// 0: no limit.
+    pub max_uses: u32,
+    /// Joins with it, as far as I may see them (0 without `manage_invites`).
+    pub uses: u32,
+}
+
 /// A banned key, from its `9001` (spec § 9, Modération).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Ban {
@@ -461,22 +477,111 @@ impl Session {
 
     /// A reusable invite (admins and moderators), to share as text.
     pub async fn invite(&self, community: &str) -> Result<String> {
+        self.invite_with(community, 0, 0).await
+    }
+
+    /// An invite that stops at `expires` (unix seconds) or after `max_uses`
+    /// joins; 0: no limit (spec § 9, Invitations).
+    pub async fn invite_with(
+        &self,
+        community: &str,
+        expires: u64,
+        max_uses: u32,
+    ) -> Result<String> {
         let relay = self.relay_of(community).await?;
         let code = link::random(link::ALPHABET, INVITE_LEN)?;
-        self.group_event(
-            &relay,
-            Kind::GroupCreateInvite,
-            community,
-            [Tag::parse(["code", &code])?],
-            "",
-        )
-        .await?;
+        let mut tags = vec![Tag::parse(["code", &code])?];
+        if expires > 0 {
+            tags.push(Tag::parse(["expiration", &expires.to_string()])?);
+        }
+        if max_uses > 0 {
+            tags.push(Tag::parse(["max_uses", &max_uses.to_string()])?);
+        }
+        self.group_event(&relay, Kind::GroupCreateInvite, community, tags, "")
+            .await?;
         Ok(Invite {
             host: host_of(&relay).into(),
             community: community.into(),
             code,
         }
         .to_string())
+    }
+
+    /// The invites I may see that still work, newest first: all of them with
+    /// `manage_invites` or `view_audit_log`, else mine (without their uses).
+    pub async fn invites(&self, community: &str) -> Result<Vec<InviteInfo>> {
+        let relay = self.relay_of(community).await?;
+        let filter = Filter::new()
+            .kinds([Kind::GroupCreateInvite, Kind::GroupJoinRequest])
+            .custom_tag(SingleLetterTag::LOWERCASE_H, community);
+        let events = self
+            .client
+            .fetch_events(ReqTarget::single(&relay, [filter]))
+            .timeout(TIMEOUT)
+            .await?;
+        let now = Timestamp::now().as_secs();
+        let uses = |code: &str| {
+            events
+                .iter()
+                .filter(|e| e.kind == Kind::GroupJoinRequest)
+                .filter(|e| tag_values(e, "code").any(|c| c == code))
+                .count() as u32
+        };
+        let number = |e: &Event, name: &str| -> u64 {
+            tag_values(e, name)
+                .next()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or_default()
+        };
+        let mut out: Vec<InviteInfo> = events
+            .iter()
+            .filter(|e| e.kind == Kind::GroupCreateInvite)
+            .filter_map(|e| {
+                let code = tag_values(e, "code").next()?.to_string();
+                let info = InviteInfo {
+                    text: Invite {
+                        host: host_of(&relay).into(),
+                        community: community.into(),
+                        code: code.clone(),
+                    }
+                    .to_string(),
+                    uses: uses(&code),
+                    code,
+                    author: e.pubkey,
+                    created_at: e.created_at.as_secs(),
+                    expires: number(e, "expiration"),
+                    max_uses: number(e, "max_uses") as u32,
+                };
+                let live = (info.expires == 0 || info.expires > now)
+                    && (info.max_uses == 0 || info.uses < info.max_uses);
+                live.then_some(info)
+            })
+            .collect();
+        out.sort_by_key(|i| std::cmp::Reverse(i.created_at));
+        Ok(out)
+    }
+
+    /// Revokes the invite `code`: mine, or anyone's with `manage_invites`.
+    pub async fn revoke_invite(&self, community: &str, code: &str) -> Result<()> {
+        let relay = self.relay_of(community).await?;
+        let filter = Filter::new()
+            .kind(Kind::GroupCreateInvite)
+            .custom_tag(SingleLetterTag::LOWERCASE_H, community);
+        let events = self
+            .client
+            .fetch_events(ReqTarget::single(&relay, [filter]))
+            .timeout(TIMEOUT)
+            .await?;
+        let Some(invite) = events
+            .iter()
+            .find(|e| tag_values(e, "code").any(|c| c == code))
+        else {
+            return Ok(()); // gone already
+        };
+        let tags = [Tag::event(invite.id), Tag::parse(["k", "9009"])?];
+        self.group_event(&relay, Kind::GroupDeleteEvent, community, tags, "")
+            .await
+            .map(drop)
     }
 
     /// Joins with an invite, then lists the community for my other devices (10009).

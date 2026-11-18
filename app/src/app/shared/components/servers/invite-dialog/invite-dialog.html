@@ -20,4 +20,35 @@
       <ng-container i18n="@@invite.creating">Creating the invite…</ng-container>
     </p>
   }
+  <form class="limits" (submit)="$event.preventDefault(); create(+expiry.value, +max.value)">
+    <div class="field">
+      <label for="invite-expiry" i18n="@@invite.expiry">Expires after</label>
+      <select #expiry id="invite-expiry">
+        @for (s of expiries; track s) {
+          <option [value]="'' + s" [selected]="s === 604800">
+            @if (s) {
+              {{ s | duration }}
+            } @else {
+              <ng-container i18n="@@invite.never">Never</ng-container>
+            }
+          </option>
+        }
+      </select>
+    </div>
+    <div class="field">
+      <label for="invite-uses" i18n="@@invite.max-uses">Max uses</label>
+      <select #max id="invite-uses">
+        @for (n of uses; track n) {
+          <option [value]="'' + n">
+            @if (n) {
+              {{ n }}
+            } @else {
+              <ng-container i18n="@@invite.no-limit">No limit</ng-container>
+            }
+          </option>
+        }
+      </select>
+    </div>
+    <button type="submit" class="btn" [disabled]="!invite()" i18n="@@invite.new">New link</button>
+  </form>
 </section>

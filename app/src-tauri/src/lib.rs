@@ -567,8 +567,32 @@ async fn stop_watching(state: State<'_, App>) -> Res<VoiceState> {
 }
 
 #[tauri::command]
-async fn create_invite(state: State<'_, App>, community: String) -> Res<String> {
-    Ok(session(&state).await?.invite(&community).await?)
+async fn create_invite(
+    state: State<'_, App>,
+    community: String,
+    expires: u64,
+    max_uses: u32,
+) -> Res<String> {
+    Ok(session(&state)
+        .await?
+        .invite_with(&community, expires, max_uses)
+        .await?)
+}
+
+#[tauri::command]
+async fn invites(
+    state: State<'_, App>,
+    community: String,
+) -> Res<Vec<chaton_core::community::InviteInfo>> {
+    Ok(session(&state).await?.invites(&community).await?)
+}
+
+#[tauri::command]
+async fn revoke_invite(state: State<'_, App>, community: String, code: String) -> Res<()> {
+    Ok(session(&state)
+        .await?
+        .revoke_invite(&community, &code)
+        .await?)
 }
 
 #[tauri::command]
@@ -930,6 +954,8 @@ pub fn run() {
             members,
             set_roles,
             remove_member,
+            invites,
+            revoke_invite,
             ban,
             unban,
             timeout,

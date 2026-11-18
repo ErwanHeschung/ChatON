@@ -467,6 +467,68 @@
           </ng-template>
         }
 
+        @case ('invites') {
+          @if (invites(); as list) {
+            <div class="group">
+              @for (i of list; track i.code) {
+                <div class="row invite">
+                  <span class="text">
+                    <code>{{ i.code }}</code>
+                    <span class="hint">
+                      <ng-container i18n="@@invites.by">By {{ dm.label(i.author) }}</ng-container>
+                      ·
+                      @if (i.max_uses) {
+                        <ng-container i18n="@@invites.uses-of"
+                          >{{ i.uses }}/{{ i.max_uses }} uses</ng-container
+                        >
+                      } @else {
+                        <ng-container i18n="@@invites.uses">{i.uses, plural,
+                          =0 {never used}
+                          =1 {used once}
+                          other {used {{ i.uses }} times}
+                        }</ng-container>
+                      }
+                      ·
+                      @if (i.expires) {
+                        <ng-container i18n="@@invites.expires"
+                          >until {{ when(i.expires) }}</ng-container
+                        >
+                      } @else {
+                        <ng-container i18n="@@invites.forever">no expiry</ng-container>
+                      }
+                    </span>
+                  </span>
+                  <span class="actions">
+                    <button type="button" class="btn btn-sm" (click)="copyInvite(i)">
+                      @if (copiedInvite() === i.code) {
+                        <ng-container i18n="@@community.copied">Copied</ng-container>
+                      } @else {
+                        <ng-container i18n="@@invites.copy">Copy</ng-container>
+                      }
+                    </button>
+                    @if (canRevoke(i)) {
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-danger"
+                        (click)="revokeInvite(i)"
+                        i18n="@@invites.revoke"
+                      >
+                        Revoke
+                      </button>
+                    }
+                  </span>
+                </div>
+              } @empty {
+                <div class="row">
+                  <span class="hint" i18n="@@invites.none"
+                    >No invites running. Create one from the community menu.</span
+                  >
+                </div>
+              }
+            </div>
+          }
+        }
+
         @case ('bans') {
           @if (bans(); as list) {
             <div class="group">

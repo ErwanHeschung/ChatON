@@ -656,3 +656,81 @@ func TestModeration(t *testing.T) {
 	e := connect(t, url, &eve)
 	mustReject(t, e, join(e, eve, 9), "join while banned, after restart")
 }
+
+// Step 12g: invites that expire, run out, are revoked (spec § 9, Invitations).
+func TestInvites(t *testing.T) {
+	alice, bob, carol, dave, eve, fred := newUser(), newUser(), newUser(), newUser(), newUser(), newUser()
+	path, key := filepath.Join(t.TempDir(), "r.bolt"), nostr.Generate()
+	everyone := []user{alice, bob, carol, dave, eve, fred}
+	url, stop := serve(t, path, key, everyone...)
+	a, b := connect(t, url, &alice), connect(t, url, &bob)
+	at := func(s int) time.Time { return time.Now().Add(time.Duration(s) * time.Second) }
+	invite := func(by user, code string, s int, extra ...nostr.Tag) nostr.Event {
+		return event(by, nostr.KindSimpleGroupCreateInvite, append(nostr.Tags{h(communityID), {"code", code}}, extra...), at(s))
+	}
+	join := func(url string, u user, code string, s int) error {
+		return publish(t, connect(t, url, &u), event(u, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", code}}, at(s)))
+	}
+	unix := func(d time.Duration) string { return strconv.FormatInt(time.Now().Add(d).Unix(), 10) }
+
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateGroup, nostr.Tags{h(communityID)}, at(0)))
+	mustPublish(t, a, invite(alice, "OPEN0000", 0))
+	if err := join(url, bob, "OPEN0000", 0); err != nil {
+		t.Fatal(err)
+	}
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", bob.pk.Hex(), "moderator"}}, at(0)))
+
+	// Limits are checked when the invite is made.
+	mustReject(t, a, invite(alice, "OPEN0000", 1), "a code taken")
+	mustReject(t, a, invite(alice, "PAST0000", 1, nostr.Tag{"expiration", unix(-time.Minute)}), "an invite already expired")
+	mustReject(t, a, invite(alice, "MANY0000", 1, nostr.Tag{"max_uses", "1001"}), "max_uses over 1000")
+
+	// Expired: refused.
+	mustPublish(t, a, invite(alice, "SOON0000", 1, nostr.Tag{"expiration", unix(time.Second)}))
+	time.Sleep(1100 * time.Millisecond)
+	if join(url, carol, "SOON0000", 2) == nil {
+		t.Error("joined with an expired invite")
+	}
+
+	// Two uses: the third is refused, also after a restart.
+	mustPublish(t, b, invite(bob, "TWO00000", 2, nostr.Tag{"max_uses", "2"}))
+	if err := join(url, carol, "TWO00000", 3); err != nil {
+		t.Fatal(err)
+	}
+
+	// Revoking: the author or manage_invites; carol (member) can't.
+	revoke := func(by user, inv nostr.Event, s int) nostr.Event {
+		return event(by, nostr.KindSimpleGroupDeleteEvent, nostr.Tags{h(communityID), {"e", inv.ID.Hex()}, {"k", "9009"}}, at(s))
+	}
+	gone := invite(bob, "GONE0000", 3)
+	mustPublish(t, b, gone)
+	mustReject(t, connect(t, url, &carol), revoke(carol, gone, 4), "revoking without manage_invites")
+	mustPublish(t, a, revoke(alice, gone, 4))
+	if join(url, dave, "GONE0000", 5) == nil {
+		t.Error("joined with a revoked invite")
+	}
+
+	// Who lists what: moderators all of them; carol nothing (no create_invite, none of hers).
+	invites := nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupCreateInvite}, Tags: nostr.TagMap{"h": {communityID}}}
+	if evs, _ := query(t, b, invites); len(evs) != 3 {
+		t.Errorf("bob lists %d invites, want 3 (OPEN, SOON, TWO)", len(evs))
+	}
+	if evs, _ := query(t, connect(t, url, &carol), invites); len(evs) != 0 {
+		t.Errorf("carol lists %d invites", len(evs))
+	}
+
+	stop()
+	url, _ = serve(t, path, key, everyone...)
+	if err := join(url, dave, "TWO00000", 6); err != nil {
+		t.Fatalf("second use after restart: %v", err)
+	}
+	if join(url, eve, "TWO00000", 6) == nil {
+		t.Error("third use of a two-use invite, after restart")
+	}
+	if join(url, fred, "GONE0000", 6) == nil {
+		t.Error("revoked invite works again after restart")
+	}
+	if err := join(url, fred, "OPEN0000", 6); err != nil {
+		t.Fatalf("unlimited invite after restart: %v", err)
+	}
+}
