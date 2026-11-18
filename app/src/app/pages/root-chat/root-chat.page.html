@@ -15,7 +15,7 @@
     <app-chat
       chat
       [messages]="messages()"
-      [disabled]="inChannel() ? false : !dm.selected()"
+      [disabled]="inChannel() ? !!timedOut() : !dm.selected()"
       [error]="inChannel() ? community.sendError() : dm.sendError()"
       (send)="send($event)"
       (file)="sendFile($event)"
@@ -24,6 +24,14 @@
     >
       @if (!inChannel() && dm.request()) {
         <app-request-banner banner />
+      }
+      @if (timedOut(); as until) {
+        <p banner class="timeout" role="status">
+          <svg [lucideIcon]="clock" size="16"></svg>
+          <span i18n="@@chat.timed-out"
+            >You're timed out until {{ until | date: 'short' }}: you can read, not write.</span
+          >
+        </p>
       }
     </app-chat>
   }

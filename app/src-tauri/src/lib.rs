@@ -58,6 +58,7 @@ impl From<Error> for CmdError {
             Error::ScreenCapture => "screen_capture",
             Error::Invalid(_) | Error::Nostr(_) => "invalid",
             Error::NotDelivered(ref reason) if reason.contains("slow-mode:") => "slow_mode",
+            Error::NotDelivered(ref reason) if reason.contains("banned") => "banned",
             // The relay answered no (permissions, unknown account): not a network problem.
             Error::NotDelivered(ref reason)
                 if ["restricted:", "invalid:", "duplicate:", "blocked:"]
@@ -607,11 +608,61 @@ async fn delete_community(state: State<'_, App>, community: String) -> Res<()> {
 }
 
 #[tauri::command]
-async fn remove_member(state: State<'_, App>, community: String, pubkey: PublicKey) -> Res<()> {
+async fn remove_member(
+    state: State<'_, App>,
+    community: String,
+    pubkey: PublicKey,
+    reason: String,
+) -> Res<()> {
     Ok(session(&state)
         .await?
-        .remove_member(&community, pubkey)
+        .remove_member(&community, pubkey, &reason)
         .await?)
+}
+
+#[tauri::command]
+async fn ban(
+    state: State<'_, App>,
+    community: String,
+    pubkey: PublicKey,
+    reason: String,
+) -> Res<()> {
+    Ok(session(&state)
+        .await?
+        .ban(&community, pubkey, &reason)
+        .await?)
+}
+
+#[tauri::command]
+async fn unban(state: State<'_, App>, community: String, pubkey: PublicKey) -> Res<()> {
+    Ok(session(&state).await?.unban(&community, pubkey).await?)
+}
+
+#[tauri::command]
+async fn timeout(
+    state: State<'_, App>,
+    community: String,
+    pubkey: PublicKey,
+    until: u64,
+    reason: String,
+) -> Res<()> {
+    Ok(session(&state)
+        .await?
+        .timeout(&community, pubkey, until, &reason)
+        .await?)
+}
+
+#[tauri::command]
+async fn bans(state: State<'_, App>, community: String) -> Res<Vec<chaton_core::community::Ban>> {
+    Ok(session(&state).await?.bans(&community).await?)
+}
+
+#[tauri::command]
+async fn audit_log(
+    state: State<'_, App>,
+    community: String,
+) -> Res<Vec<chaton_core::community::AuditEntry>> {
+    Ok(session(&state).await?.audit_log(&community).await?)
 }
 
 #[tauri::command]
@@ -879,6 +930,11 @@ pub fn run() {
             members,
             set_roles,
             remove_member,
+            ban,
+            unban,
+            timeout,
+            bans,
+            audit_log,
             update_community,
             delete_community,
             channel_messages,

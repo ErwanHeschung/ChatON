@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
+import { LucideClock, LucideDynamicIcon } from '@lucide/angular';
+import { DatePipe } from '@angular/common';
 import { RouterOutlet } from '@angular/router';
 import { Chat } from '@components/chats/chat/chat';
 import { ChatHeader } from '@components/chats/chat-header/chat-header';
@@ -25,6 +34,8 @@ import { VoiceStore } from '@stores/voice.store';
 @Component({
   selector: 'app-root-chat',
   imports: [
+    DatePipe,
+    LucideDynamicIcon,
     ChatLayout,
     CommunityRail,
     ChatHeader,
@@ -52,6 +63,24 @@ export class RootChat {
   protected readonly voice = inject(VoiceStore);
 
   public readonly inChannel = computed(() => this.community.channel() !== null);
+
+  /** The end of my timeout in the open community, while it runs (spec § 9, Modération). */
+  private readonly now = signal(Date.now());
+  protected readonly timedOut = computed(() => {
+    const until = (this.community.current()?.timeout ?? 0) * 1000;
+    return this.inChannel() && until > this.now() ? until : 0;
+  });
+  protected readonly clock = LucideClock;
+
+  constructor() {
+    // Lift the banner when the timeout ends: the relay doesn't announce it.
+    effect((cleanup) => {
+      const until = this.timedOut();
+      if (!until) return;
+      const timer = setTimeout(() => this.now.set(Date.now()), until - Date.now() + 500);
+      cleanup(() => clearTimeout(timer));
+    });
+  }
 
   // Newest first for the bottom-up chat list.
   public readonly messages = computed<Message[]>(() => {

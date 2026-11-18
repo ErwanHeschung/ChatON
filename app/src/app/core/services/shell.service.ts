@@ -1,5 +1,6 @@
 import { computed, effect, inject, Injectable, signal, untracked } from '@angular/core';
 import { splitHandle } from '@models/Dm.model';
+import { Moderation } from '@models/Community.model';
 import { CommunityStore } from '@stores/community.store';
 import { DmStore } from '@stores/dm.store';
 
@@ -29,6 +30,8 @@ export class ShellService {
   public readonly serverSettings = signal(false);
   /** The channel or category whose dialog is open ('' : a new category). */
   public readonly editing = signal<{ channel: string } | { category: string } | null>(null);
+  /** The member a moderator is about to remove, ban or time out (`ModerateDialog`). */
+  public readonly moderating = signal<{ action: Moderation; pubkey: string } | null>(null);
   /** The network map in the sheet, until a conversation or channel is opened. */
   public readonly network = signal(false);
   /** Members panel: shown by default wherever it sits beside the conversation (not over it). */

@@ -402,7 +402,7 @@ async fn a_community_with_channels_invites_and_moderation() {
     // Bob, Gardien, can't remove the owner nor give himself more, but removes Carol:
     // her posts are refused, the community leaves her list.
     let res = bob
-        .remove_member(&community.id, alice.account().pubkey)
+        .remove_member(&community.id, alice.account().pubkey, "")
         .await;
     assert!(matches!(res, Err(Error::NotDelivered(_))), "{res:?}");
     let grab = chaton_core::community::CommunityEdit {
@@ -411,7 +411,7 @@ async fn a_community_with_channels_invites_and_moderation() {
     };
     let res = bob.update_community(&community.id, grab).await;
     assert!(matches!(res, Err(Error::NotDelivered(_))), "{res:?}");
-    bob.remove_member(&community.id, carol.account().pubkey)
+    bob.remove_member(&community.id, carol.account().pubkey, "")
         .await
         .unwrap();
     let res = carol
@@ -1221,4 +1221,114 @@ async fn a_private_channel() {
         (visible(bob.clone(), staff.id.clone()).await == Some(false)).then_some(())
     })
     .await;
+}
+
+/// Step 12f (spec § 9, Modération): timeouts, bans, the audit log.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a running server, see the module docs"]
+async fn bans_timeouts_and_the_audit_log() {
+    use chaton_core::nostr::prelude::Timestamp;
+    let (server, _) = setup();
+    let alice = Session::register(&temp_dir("alice"), &server, &unique("alice"))
+        .await
+        .unwrap();
+    let bob = Session::register(&temp_dir("bob"), &server, &unique("bob"))
+        .await
+        .unwrap();
+    let carol = Arc::new(
+        Session::register(&temp_dir("carol"), &server, &unique("carol"))
+            .await
+            .unwrap(),
+    );
+    let listener = carol.clone();
+    tokio::spawn(async move { listener.listen(|_| {}).await });
+    let community = alice.create_community("Les chats").await.unwrap();
+    let general = alice.communities().await.unwrap()[0].channels[0].clone();
+    let invite = alice.invite(&community.id).await.unwrap();
+    bob.join(&invite).await.unwrap();
+    carol.join(&invite).await.unwrap();
+    let carol_pk = carol.account().pubkey;
+    alice
+        .set_roles(&community.id, bob.account().pubkey, &["moderator"])
+        .await
+        .unwrap();
+
+    // Bob times Carol out: she reads, she doesn't write.
+    let hour = Timestamp::now().as_secs() + 3600;
+    bob.timeout(&community.id, carol_pk, hour, "On se calme")
+        .await
+        .unwrap();
+    let mine = eventually("carol sees her timeout", || async {
+        let c = carol.communities().await.ok()?.pop()?;
+        (c.timeout == hour).then_some(c)
+    })
+    .await;
+    assert!(
+        !mine.perms.contains(&"send_messages".to_string()),
+        "{:?}",
+        mine.perms
+    );
+    let member = alice
+        .members(&community.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|m| m.pubkey == carol_pk)
+        .unwrap();
+    assert_eq!(member.timeout, hour);
+    let res = carol.send(&community.id, &general.id, "chut").await;
+    assert!(matches!(res, Err(Error::NotDelivered(_))), "{res:?}");
+    bob.timeout(&community.id, carol_pk, 0, "").await.unwrap();
+    eventually("timeout lifted", || async {
+        (carol.communities().await.ok()?.pop()?.timeout == 0).then_some(())
+    })
+    .await;
+    let message = carol
+        .send(&community.id, &general.id, "pardon")
+        .await
+        .unwrap();
+    alice
+        .delete_message(&community.id, &general.id, message.id)
+        .await
+        .unwrap();
+
+    // Banned, Carol can't come back; unbanned, she can.
+    bob.ban(&community.id, carol_pk, "Spam").await.unwrap();
+    assert!(carol.join(&invite).await.is_err());
+    let bans = alice.bans(&community.id).await.unwrap();
+    assert_eq!(
+        bans.iter()
+            .map(|b| (b.pubkey, b.reason.as_deref()))
+            .collect::<Vec<_>>(),
+        [(carol_pk, Some("Spam"))]
+    );
+    bob.unban(&community.id, carol_pk).await.unwrap();
+    assert!(alice.bans(&community.id).await.unwrap().is_empty());
+    // A second identical 9021 within the same second is the same event (same id): wait.
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    carol.join(&invite).await.unwrap();
+
+    // The log (same-second actions come in any order).
+    let log = alice.audit_log(&community.id).await.unwrap();
+    let entry = |action: &str, until: u64| {
+        log.iter()
+            .find(|e| e.action == action && e.until == until)
+            .unwrap_or_else(|| panic!("no {action} in {log:?}"))
+    };
+    assert_eq!(entry("ban", 0).reason.as_deref(), Some("Spam"));
+    assert_eq!(entry("unban", 0).target, Some(carol_pk));
+    assert_eq!(entry("delete_message", 0).target, Some(carol_pk));
+    assert_eq!(
+        entry("timeout", hour).reason.as_deref(),
+        Some("On se calme")
+    );
+    assert_eq!(entry("timeout", 0).target, Some(carol_pk));
+    assert_eq!(entry("roles", 0).roles, ["moderator"]);
+    assert!(log.windows(2).all(|w| w[0].at >= w[1].at), "newest first");
+    // Message deletions stay readable in their channel (to hide the messages); the rest isn't.
+    let hers = carol.audit_log(&community.id).await.unwrap();
+    assert!(
+        hers.iter().all(|e| e.action == "delete_message"),
+        "{hers:?}"
+    );
 }

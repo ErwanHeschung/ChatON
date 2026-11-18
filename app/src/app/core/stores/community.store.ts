@@ -11,13 +11,16 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { CmdError } from '@models/Auth.model';
 import {
+  AuditEntry,
+  Ban,
   Channel,
+  ChannelEdit,
   ChannelMessage,
   Community,
-  CommunityUpdate,
   CommunityEdit,
-  ChannelEdit,
+  CommunityUpdate,
   Member,
+  Moderation,
   Permission,
 } from '@models/Community.model';
 import { ConnectedUserStore } from '@stores/connected-user.store';
@@ -111,6 +114,12 @@ export const CommunityStore = signalStore(
 
     const forget = (ids: string[]) =>
       patchState(store, (s) => ({ messages: s.messages.filter((m) => !ids.includes(m.id)) }));
+
+    const removeMember = async (pubkey: string, reason = '') => {
+      const ok = (await run('remove_member', { community: store.selected(), pubkey, reason })).ok;
+      if (ok) await loadMembers();
+      return ok;
+    };
 
     const joined = async (community: Community) => {
       await load();
@@ -285,10 +294,39 @@ export const CommunityStore = signalStore(
         }
       },
 
-      async removeMember(pubkey: string) {
-        if ((await run('remove_member', { community: store.selected(), pubkey })).ok) {
-          await loadMembers();
+      removeMember,
+
+      /** Bans or times out (`until`, unix seconds; 0 lifts it) a member (spec § 9, Modération). */
+      async moderate(action: Moderation, pubkey: string, reason: string, until = 0) {
+        if (action === 'kick') return removeMember(pubkey, reason);
+        const community = store.selected();
+        const ok = (
+          action === 'ban'
+            ? await run('ban', { community, pubkey, reason })
+            : await run('timeout', { community, pubkey, until, reason })
+        ).ok;
+        if (ok) await loadMembers();
+        return ok;
+      },
+
+      async unban(pubkey: string) {
+        return (await run('unban', { community: store.selected(), pubkey })).ok;
+      },
+
+      async bans() {
+        const r = await run<Ban[]>('bans', { community: store.selected() });
+        if (r.ok) r.result.forEach((b) => void dm.resolve(b.pubkey));
+        return r.ok ? r.result : [];
+      },
+
+      async auditLog() {
+        const r = await run<AuditEntry[]>('audit_log', { community: store.selected() });
+        if (r.ok) {
+          new Set(r.result.flatMap((e) => [e.actor, e.target ?? []].flat())).forEach(
+            (pk) => void dm.resolve(pk),
+          );
         }
+        return r.ok ? r.result : [];
       },
     };
   }),

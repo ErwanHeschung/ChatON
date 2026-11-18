@@ -207,7 +207,7 @@ Une **communauté** (un « serveur » façon Discord) est un groupe NIP-29 hébe
 - Identifiant d'un groupe : 12 caractères `[a-z0-9]`, tirés au hasard par le client qui le crée. Adresse NIP-29 : `<hôte>'<id>`.
 - Une communauté ChatON est toujours `private` (seuls les membres lisent), `closed` (on entre avec un code d'invitation) et `restricted` (seuls les membres écrivent). Le relais impose ces trois drapeaux, quoi que dise un `9002`.
 - Les membres et les rôles sont ceux de la **communauté** ; ses salons en héritent.
-- L'état publié par le relais : `39000` (`d`, `name`, `picture`, `about`, `banner`, drapeaux ; pour une communauté `owner`, `category` et `child` ; pour un salon `parent`, `slowmode`, `user_limit`), `39001` (`p` + identifiants de rôles), `39002` (`p` des membres), `39003` (les rôles, ci-dessous). Un client n'accepte ces événements que signés par la clé `self` du relais qui héberge le groupe.
+- L'état publié par le relais : `39000` (`d`, `name`, `picture`, `about`, `banner`, drapeaux ; pour une communauté `owner`, `category` et `child` ; pour un salon `parent`, `slowmode`, `user_limit`), `39001` (`p` + identifiants de rôles), `39002` (`p` des membres, puis `["timeout", <clé>, <unix>]` des exclusions temporaires en cours), `39003` (les rôles, ci-dessous). Un client n'accepte ces événements que signés par la clé `self` du relais qui héberge le groupe.
 
 ### Rôles et permissions
 
@@ -278,6 +278,8 @@ Seuls les noms de la table ci-dessus sortent du calcul : `hoist`, `mentionable` 
 | Supprimer un message (`9005`) | le sien, ou `manage_messages` dans le salon |
 | Créer une invitation (`9009`) | `create_invite` |
 | Retirer un membre (`9001`) | `kick_members`, et la cible plus bas que soi |
+| Bannir (`9001` + `ban`), débannir (`9005` du ban) | `ban_members`, et la cible plus bas que soi (pour bannir) |
+| Exclure temporairement (`9000` + `timeout`) | `moderate_members`, et la cible plus bas que soi |
 | Donner des rôles (`9000`) | `manage_roles`, rôles et cible plus bas que soi |
 | Modifier nom, image, description, bannière (`9002`) | `manage_community` |
 | Réordonner les salons, gérer les catégories (`9002`) | `manage_channels` |
@@ -295,7 +297,8 @@ Pour lire les événements d'une communauté, il faut s'être authentifié (NIP-
 
 | Événements | Lisibles avec |
 |---|---|
-| messages (`9`), suppressions (`9005`) | `view_channel` dans leur salon |
+| messages (`9`), leurs suppressions (`9005`) | `view_channel` dans leur salon |
+| débannissements (`9005` `["k", "9001"]`) | `view_audit_log` |
 | invitations (`9009`), entrées (`9021`) | `view_audit_log` ou `manage_invites` |
 | autres demandes (`9000`, `9001`, `9002`, `9007`, `9008`, `9022`) | `view_audit_log` |
 
@@ -361,17 +364,33 @@ Le relais compare chaque réglage à l'état et exige la permission de ce qui ch
 
 Un rôle supprimé est retiré de ses membres (`39001`). Changer `owner` est réservé au propriétaire, et le nouveau doit être membre ; l'ancien garde ses rôles. Un `9008` de la communauté (propriétaire seulement) la vide de ses membres, supprime ses salons et invalide ses invitations.
 
+### Modération
+
+- **Retirer** : `9001` `["h", C], ["p", clé]`, la raison (facultative, 512 octets au plus) dans `content`. La personne peut revenir avec une invitation.
+- **Bannir** : le même `9001` avec `["ban"]`. La clé n'a pas besoin d'être membre (on bannit avant qu'elle n'arrive). Tant que le ban court, son `9021` est refusé (`blocked:`) (vecteur `group_ban`).
+- **Débannir** : `9005` `["h", C], ["e", <id du ban>], ["k", "9001"], ["p", clé]`. Le relais lève le ban sans effacer le `9001` : l'un et l'autre restent au journal. Un ban court tant qu'aucun `9005` `["k", "9001"]` ne le vise ; le relais le recalcule au démarrage.
+- **Exclure temporairement** : `9000` `["h", C], ["p", clé], ["timeout", <unix>]`, la raison dans `content`. Ce `9000` ne touche pas aux rôles (le `p` n'en porte pas). Au plus 28 jours plus tard ; `0` lève l'exclusion. Le relais la publie dans `39002`, `["timeout", clé, unix]`, tant qu'elle court (vecteur `group_timeout`). Pendant ce temps, la personne n'a que `view_channel` (« Permissions effectives », étape 5) : elle lit, mais n'écrit, ne réagit ni ne parle plus.
+- **Suppressions** (`9005`) : `["k", <kind visé>]` dit ce qui est supprimé. Selon la cible :
+
+| Cible | Qui peut |
+|---|---|
+| un message (`9`) | son auteur, ou `manage_messages` dans le salon |
+| un ban (`9001` + `ban`) | `ban_members` ; le `9005` porte `["p", clé du banni]`, et le ban reste stocké |
+| autre chose | personne : le journal ne s'efface pas |
+
+- **Journal** : avec `view_audit_log`, un client lit les `9000`, `9001`, `9002`, `9005`, `9007`, `9008` et `9022` de la communauté et de ses salons (« Lecture ») et les présente comme un journal. Ceux que le relais signe lui-même (un membre qui entre ou part) n'y figurent pas.
+
 ### Invitations
 
 - Un membre qui a `create_invite` publie `9009` `["h", C], ["code", X]`, X = 8 caractères en base32 de Crockford. Le code est réutilisable et n'expire pas en v0.
 - Texte partagé : `<hôte>'<C>/<X>`, par exemple `chaton.example'k3j9x2m8q0aa/AB12CD34`. Le relais est `wss://<hôte>` (`ws://` pour `localhost`).
-- Pour entrer : `9021` `["h", C], ["code", X]`, plus `["nip05", "pseudo@instance"]` (ChatON l'ajoute toujours, vecteur `group_join_request_nip05`). Pour une clé d'une autre instance, l'hôte le vérifie (NIP-05) et retient l'instance du membre, pour appliquer ses règles (`federation.md` § 6). Si le code est bon, le relais ajoute la clé en publiant un `9000` `["h", C], ["p", clé]`. Un membre retiré (`9001`) a besoin d'une nouvelle invitation (pas de liste de bannis en v0).
+- Pour entrer : `9021` `["h", C], ["code", X]`, plus `["nip05", "pseudo@instance"]` (ChatON l'ajoute toujours, vecteur `group_join_request_nip05`). Pour une clé d'une autre instance, l'hôte le vérifie (NIP-05) et retient l'instance du membre, pour appliquer ses règles (`federation.md` § 6). Si le code est bon, le relais ajoute la clé en publiant un `9000` `["h", C], ["p", clé]`. Un membre retiré (`9001`) a besoin d'une nouvelle invitation ; un banni ne peut pas rentrer (« Modération »).
 - Après être entré, le client ajoute `["group", C, "<url du relais>"]` à sa liste `10009`, que tous ses appareils lisent.
 
 ### Messages
 
 - `9` `["h", S]` + `["v","0"]`, contenu en clair, signé par l'auteur. Les communautés ne sont **pas** chiffrées de bout en bout (étape 7 pour les groupes privés).
-- Suppression : `9005` `["h", S], ["e", id]`. Le relais efface l'événement visé et diffuse le `9005` ; un client masque tout message visé par un `9005` accepté.
+- Suppression : `9005` `["h", S], ["e", id], ["k", "9"]`. Le relais efface l'événement visé et diffuse le `9005` ; un client masque tout message visé par un `9005` accepté.
 
 ## 10. Fichiers et médias (Blossom)
 

@@ -4,6 +4,7 @@ import {
   computed,
   effect,
   inject,
+  LOCALE_ID,
   linkedSignal,
   signal,
 } from '@angular/core';
@@ -13,6 +14,8 @@ import {
   LucideArrowDown,
   LucideArrowLeft,
   LucideArrowUp,
+  LucideBan,
+  LucideScrollText,
   LucideChevronDown,
   LucideCrown,
   LucideDynamicIcon,
@@ -28,7 +31,17 @@ import {
 import { Avatar } from '@components/avatar/avatar';
 import { UserCard } from '@components/users/user-card/user-card';
 import { CmdError } from '@models/Auth.model';
-import { EVERYONE, Member, Permission, ROLE_COLORS, Role } from '@models/Community.model';
+import {
+  AuditEntry,
+  Ban,
+  EVERYONE,
+  Member,
+  Permission,
+  ROLE_COLORS,
+  Role,
+} from '@models/Community.model';
+import { ModerateDialog } from '@components/servers/moderate-dialog/moderate-dialog';
+import { ModalService } from '@services/modal.service';
 import { PERMISSION_GROUPS } from '@components/servers/permissions';
 import { UserShort } from '@models/User.model';
 import { MediaService } from '@services/media.service';
@@ -37,7 +50,7 @@ import { CommunityStore } from '@stores/community.store';
 import { DmStore } from '@stores/dm.store';
 import { ConnectedUserStore } from '@stores/connected-user.store';
 
-type Section = 'overview' | 'roles' | 'members' | 'ownership';
+type Section = 'overview' | 'roles' | 'members' | 'bans' | 'audit' | 'ownership';
 type State = 'idle' | 'saving' | 'done' | CmdError['code'];
 
 /** A new role's id: short, random, in the spec's alphabet. */
@@ -119,6 +132,18 @@ export class ServerSettings {
         shown: can('manage_roles') || can('kick_members'),
       },
       {
+        id: 'bans',
+        label: $localize`:@@server-settings.bans:Bans`,
+        icon: LucideBan,
+        shown: can('ban_members') && can('view_audit_log'),
+      },
+      {
+        id: 'audit',
+        label: $localize`:@@server-settings.audit:Audit log`,
+        icon: LucideScrollText,
+        shown: can('view_audit_log'),
+      },
+      {
         id: 'ownership',
         label: $localize`:@@server-settings.ownership:Ownership`,
         icon: LucideCrown,
@@ -141,6 +166,12 @@ export class ServerSettings {
     // Nothing left to set (left, removed, lost the permissions): close.
     effect(() => {
       if (!this.community() || !this.sections().length) this.close();
+    });
+    // Bans and the log come from the relay, fetched when opened.
+    effect(() => {
+      const section = this.section();
+      if (section === 'bans') void this.loadBans();
+      if (section === 'audit') void this.loadLog();
     });
   }
 
@@ -303,7 +334,77 @@ export class ServerSettings {
   }
 
   protected removeMember(member: Member): void {
-    void this.store.removeMember(member.pubkey);
+    this.shell.moderating.set({ action: 'kick', pubkey: member.pubkey });
+    this.modal.open(ModerateDialog);
+  }
+
+  /* --- BANS AND THE AUDIT LOG (spec § 9, Modération) --- */
+  private readonly modal = inject(ModalService);
+  protected readonly bans = signal<Ban[] | null>(null);
+  protected readonly log = signal<AuditEntry[] | null>(null);
+  private readonly time = new Intl.DateTimeFormat(inject(LOCALE_ID), {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
+
+  private async loadBans() {
+    this.bans.set(await this.store.bans());
+  }
+
+  private async loadLog() {
+    this.log.set(await this.store.auditLog());
+  }
+
+  protected async unban(ban: Ban) {
+    if (await this.store.unban(ban.pubkey)) await this.loadBans();
+  }
+
+  protected iso(at: number): string {
+    return new Date(at * 1000).toISOString();
+  }
+
+  protected when(at: number): string {
+    return this.time.format(at * 1000);
+  }
+
+  /** One line of the log, as a sentence. */
+  protected describe(e: AuditEntry): string {
+    const actor = this.dm.label(e.actor);
+    const target = e.target ? this.dm.label(e.target) : '';
+    const name = this.community()?.channels.find((c) => c.id === e.channel)?.name;
+    const channel = name ? `#${name}` : $localize`:@@audit.gone-channel:a deleted channel`;
+    switch (e.action) {
+      case 'roles': {
+        if (!e.roles.length)
+          return $localize`:@@audit.roles-none:${actor}:actor: took the roles of ${target}:target:`;
+        const roles = e.roles.map((r) => this.roleName(r)).join(', ');
+        return $localize`:@@audit.roles:${actor}:actor: gave ${target}:target: the roles ${roles}:roles:`;
+      }
+      case 'timeout': {
+        if (!e.until)
+          return $localize`:@@audit.timeout-lift:${actor}:actor: ended the timeout of ${target}:target:`;
+        const until = this.when(e.until);
+        return $localize`:@@audit.timeout:${actor}:actor: timed out ${target}:target: until ${until}:until:`;
+      }
+      case 'kick':
+        return $localize`:@@audit.kick:${actor}:actor: removed ${target}:target:`;
+      case 'ban':
+        return $localize`:@@audit.ban:${actor}:actor: banned ${target}:target:`;
+      case 'unban':
+        return $localize`:@@audit.unban:${actor}:actor: unbanned ${target}:target:`;
+      case 'delete_message':
+        return $localize`:@@audit.delete-message:${actor}:actor: deleted a message from ${target}:target: in ${channel}:channel:`;
+      case 'edit':
+        return e.channel
+          ? $localize`:@@audit.edit-channel:${actor}:actor: edited ${channel}:channel:`
+          : $localize`:@@audit.edit:${actor}:actor: edited the community settings`;
+      case 'create_channel':
+        return $localize`:@@audit.create-channel:${actor}:actor: created ${channel}:channel:`;
+      case 'delete_channel':
+        return $localize`:@@audit.delete-channel:${actor}:actor: deleted ${channel}:channel:`;
+      case 'leave':
+        return $localize`:@@audit.leave:${actor}:actor: left`;
+    }
   }
 
   /* --- OWNERSHIP --- */

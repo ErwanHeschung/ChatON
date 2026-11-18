@@ -46,33 +46,87 @@
   </h3>
   <ul>
     @for (member of section.members; track member.pubkey) {
-      <li class="member">
+      @let actions = moderable(member);
+      <li
+        class="member"
+        [cdkContextMenuTriggerFor]="actions ? menu : null"
+        [cdkContextMenuTriggerData]="{ $implicit: member }"
+      >
         <button type="button" class="list-row" [appProfile]="member.pubkey">
           <app-user-card
             [user]="card(member)"
             [ears]="isMe(member)"
             [color]="member.color"
           ></app-user-card>
+          @if (timedOut(member)) {
+            <svg
+              class="timeout"
+              [lucideIcon]="icons.timeout"
+              size="14"
+              role="img"
+              [attr.aria-label]="timeoutLabel(member)"
+            >
+              <title>{{ timeoutLabel(member) }}</title>
+            </svg>
+          }
         </button>
-        @if (canPromote(member) || canRemove(member)) {
-          <div class="actions">
-            @if (canPromote(member)) {
-              <button class="link" (click)="toggleModerator(member)">
-                @if (isModerator(member)) {
-                  <ng-container i18n="@@role.unmake-moderator">Remove moderator</ng-container>
-                } @else {
-                  <ng-container i18n="@@role.make-moderator">Make moderator</ng-container>
-                }
-              </button>
-            }
-            @if (canRemove(member)) {
-              <button class="link danger" (click)="remove(member)" i18n="@@role.remove">
-                Remove
-              </button>
-            }
-          </div>
+        @if (actions) {
+          <button
+            type="button"
+            class="btn btn-ghost btn-icon btn-sm hover-action"
+            [cdkMenuTriggerFor]="menu"
+            [cdkMenuTriggerData]="{ $implicit: member }"
+            i18n-title="@@moderate.menu"
+            title="Moderate"
+          >
+            <svg [lucideIcon]="icons.more" size="16"></svg>
+          </button>
         }
       </li>
     }
   </ul>
 }
+
+<ng-template #menu let-member>
+  <div class="menu" cdkMenu>
+    @if (canPromote(member)) {
+      <button class="menu-item" cdkMenuItem (cdkMenuItemTriggered)="toggleModerator(member)">
+        <svg [lucideIcon]="icons.moderator" size="16"></svg>
+        @if (isModerator(member)) {
+          <ng-container i18n="@@role.unmake-moderator">Remove moderator</ng-container>
+        } @else {
+          <ng-container i18n="@@role.make-moderator">Make moderator</ng-container>
+        }
+      </button>
+    }
+    @if (can(member, 'moderate_members')) {
+      @if (timedOut(member)) {
+        <button class="menu-item" cdkMenuItem (cdkMenuItemTriggered)="liftTimeout(member)">
+          <svg [lucideIcon]="icons.timeout" size="16"></svg>
+          <ng-container i18n="@@moderate.lift">End the timeout</ng-container>
+        </button>
+      } @else {
+        <button class="menu-item" cdkMenuItem (cdkMenuItemTriggered)="moderate('timeout', member)">
+          <svg [lucideIcon]="icons.timeout" size="16"></svg>
+          <ng-container i18n="@@moderate.timeout-menu">Time out…</ng-container>
+        </button>
+      }
+    }
+    @if (can(member, 'kick_members')) {
+      <button
+        class="menu-item danger"
+        cdkMenuItem
+        (cdkMenuItemTriggered)="moderate('kick', member)"
+      >
+        <svg [lucideIcon]="icons.kick" size="16"></svg>
+        <ng-container i18n="@@moderate.kick-menu">Remove…</ng-container>
+      </button>
+    }
+    @if (can(member, 'ban_members')) {
+      <button class="menu-item danger" cdkMenuItem (cdkMenuItemTriggered)="moderate('ban', member)">
+        <svg [lucideIcon]="icons.ban" size="16"></svg>
+        <ng-container i18n="@@moderate.ban-menu">Ban…</ng-container>
+      </button>
+    }
+  </div>
+</ng-template>

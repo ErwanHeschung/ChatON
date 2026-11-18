@@ -66,6 +66,8 @@ export interface Community {
   all_roles: Role[];
   /** Roles strictly below mine: those I may edit, move, delete and give. */
   manageable_roles: string[];
+  /** End of my timeout (unix seconds), 0: none. */
+  timeout: number;
 }
 
 /** `["role", id, name, color, attr…]`: attrs are permissions, `hoist`, `mentionable` (spec § 9). */
@@ -116,7 +118,46 @@ export interface Member {
   color: string | null;
   /** Their highest `hoist` role: the section they're listed under. */
   hoist: string | null;
+  /** End of their timeout (unix seconds), 0: none. */
+  timeout: number;
 }
+
+/** A running ban (spec § 9, Modération). */
+export interface Ban {
+  pubkey: string;
+  by: string;
+  reason: string | null;
+  at: number;
+}
+
+/** One line of the audit log, newest first. */
+export interface AuditEntry {
+  id: string;
+  at: number;
+  actor: string;
+  action:
+    | 'roles'
+    | 'timeout'
+    | 'kick'
+    | 'ban'
+    | 'unban'
+    | 'delete_message'
+    | 'edit'
+    | 'create_channel'
+    | 'delete_channel'
+    | 'leave';
+  target: string | null;
+  /** Where it happened, when it's a channel. */
+  channel: string | null;
+  reason: string | null;
+  /** `roles`: those given. */
+  roles: string[];
+  /** `timeout`: its end, 0: lifted. */
+  until: number;
+}
+
+/** What a moderator does to a member from the list. */
+export type Moderation = 'kick' | 'ban' | 'timeout';
 
 /** Permission names (spec § 9); core computes who has which. */
 export type Permission =

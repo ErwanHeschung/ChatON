@@ -34,6 +34,7 @@ export interface CmdError {
     | 'refused'
     | 'too_large'
     | 'slow_mode'
+    | 'banned'
     | 'not_allowed'
     | 'voice_disabled'
     | 'voice'

@@ -467,6 +467,60 @@
           </ng-template>
         }
 
+        @case ('bans') {
+          @if (bans(); as list) {
+            <div class="group">
+              @for (b of list; track b.pubkey) {
+                <div class="row member">
+                  <app-user-card [user]="card(b.pubkey)"></app-user-card>
+                  <span class="text">
+                    @if (b.reason) {
+                      <span class="hint">« {{ b.reason }} »</span>
+                    }
+                    <span class="hint" i18n="@@bans.by"
+                      >By {{ dm.label(b.by) }}, {{ when(b.at) }}</span
+                    >
+                  </span>
+                  <button
+                    type="button"
+                    class="btn btn-sm actions"
+                    (click)="unban(b)"
+                    i18n="@@bans.unban"
+                  >
+                    Unban
+                  </button>
+                </div>
+              } @empty {
+                <div class="row">
+                  <span class="hint" i18n="@@bans.none">Nobody is banned.</span>
+                </div>
+              }
+            </div>
+          }
+        }
+
+        @case ('audit') {
+          @if (log(); as entries) {
+            <ol class="group log">
+              @for (e of entries; track e.id) {
+                <li class="row">
+                  <span class="text">
+                    <span>{{ describe(e) }}</span>
+                    @if (e.reason) {
+                      <span class="hint">« {{ e.reason }} »</span>
+                    }
+                  </span>
+                  <time class="hint" [attr.datetime]="iso(e.at)">{{ when(e.at) }}</time>
+                </li>
+              } @empty {
+                <li class="row">
+                  <span class="hint" i18n="@@audit.none">Nothing yet.</span>
+                </li>
+              }
+            </ol>
+          }
+        }
+
         @case ('ownership') {
           <div class="sections">
             <div class="group">

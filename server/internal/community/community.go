@@ -13,6 +13,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -91,7 +92,17 @@ type Groups struct {
 	// When each member last wrote in each slow-mode channel, by channel id + key.
 	// ponytail: in memory, lost on restart (spec § 9 says so); grows with slow-mode writers only.
 	spoke map[string]nostr.Timestamp
+	// Moderation (spec § 9, Modération), by community id: each banned key's
+	// 9001, and each running timeout's end.
+	bans     map[string]map[nostr.PubKey]nostr.ID
+	timeouts map[string]map[nostr.PubKey]nostr.Timestamp
 }
+
+// Moderation limits (spec § 9, Modération).
+const (
+	maxReason  = 512
+	maxTimeout = 28 * 24 * 3600
+)
 
 // unlock releases mu, then broadcasts what was published under it.
 func (g *Groups) unlock() {
@@ -128,6 +139,8 @@ func New(key nostr.SecretKey, relayURL string, store eventstore.Store, dir Direc
 		policies: map[string]*Policy{},
 		layouts:  map[string]*layout{},
 		spoke:    map[string]nostr.Timestamp{},
+		bans:     map[string]map[nostr.PubKey]nostr.ID{},
+		timeouts: map[string]map[nostr.PubKey]nostr.Timestamp{},
 	}
 	owners, roles := map[string]nostr.PubKey{}, map[string][]Role{}
 	// Metadata first: it creates the group the other state events merge into.
@@ -154,6 +167,12 @@ func New(key nostr.SecretKey, relayURL string, store eventstore.Store, dir Direc
 				err = group.MergeInAdminsEvent(&ev)
 			case nostr.KindSimpleGroupMembers:
 				err = group.MergeInMembersEvent(&ev)
+				for t := range ev.Tags.FindAll("timeout") {
+					if pk, perr := nostr.PubKeyFromHex(t[1]); perr == nil && len(t) > 2 {
+						until, _ := strconv.ParseInt(t[2], 10, 64)
+						g.timeout(id, pk, nostr.Timestamp(until))
+					}
+				}
 			case nostr.KindSimpleGroupRoles:
 				err = group.MergeInRolesEvent(&ev)
 				roles[id] = ParseRoles(ev.Tags)
@@ -188,6 +207,19 @@ func New(key nostr.SecretKey, relayURL string, store eventstore.Store, dir Direc
 				g.origins[ev.PubKey] = rules.Domain(domain)
 			}
 		}
+	}
+	// Bans: every 9001 ["ban"], minus those an unban (9005 ["k", "9001"]) lifted.
+	for ev := range g.query(nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupRemoveUser}}, loadLimit) {
+		if ev.Tags.Has("ban") {
+			for t := range ev.Tags.FindAll("p") {
+				if pk, err := nostr.PubKeyFromHex(t[1]); err == nil {
+					g.ban(groupID(ev), pk, ev.ID)
+				}
+			}
+		}
+	}
+	for ev := range g.query(nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupDeleteEvent}, Tags: nostr.TagMap{"k": {"9001"}}}, loadLimit) {
+		g.unban(groupID(ev), ev)
 	}
 	for ev := range g.query(nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupCreateInvite}}, loadLimit) {
 		if group := g.groups[groupID(ev)]; group != nil {
@@ -287,9 +319,42 @@ func (g *Groups) policy(c *nip29.Group) *Policy {
 	return p
 }
 
+// unban lifts the bans of community that ev (a 9005) names; true if it named one.
+func (g *Groups) unban(community string, ev nostr.Event) bool {
+	lifted := false
+	for t := range ev.Tags.FindAll("e") {
+		if id, err := nostr.IDFromHex(t[1]); err == nil {
+			maps.DeleteFunc(g.bans[community], func(_ nostr.PubKey, ban nostr.ID) bool {
+				lifted = lifted || ban == id
+				return ban == id
+			})
+		}
+	}
+	return lifted
+}
+
+func (g *Groups) ban(community string, pk nostr.PubKey, id nostr.ID) {
+	if g.bans[community] == nil {
+		g.bans[community] = map[nostr.PubKey]nostr.ID{}
+	}
+	g.bans[community][pk] = id
+}
+
+// timeout sets (until > now) or lifts pk's timeout in community.
+func (g *Groups) timeout(community string, pk nostr.PubKey, until nostr.Timestamp) {
+	if until <= nostr.Now() {
+		delete(g.timeouts[community], pk)
+		return
+	}
+	if g.timeouts[community] == nil {
+		g.timeouts[community] = map[nostr.PubKey]nostr.Timestamp{}
+	}
+	g.timeouts[community][pk] = until
+}
+
 // member: pk as the permission rules see it.
-func member(c *nip29.Group, pk nostr.PubKey) Member {
-	m := Member{PubKey: pk}
+func (g *Groups) member(c *nip29.Group, pk nostr.PubKey) Member {
+	m := Member{PubKey: pk, Timeout: g.timeouts[c.Address.ID][pk]}
 	for _, r := range c.Members[pk] {
 		m.Roles = append(m.Roles, r.Name)
 	}
@@ -306,7 +371,7 @@ func (g *Groups) perms(c *nip29.Group, pk nostr.PubKey, ch *nip29.Group) Perms {
 	if ch != nil && ch != c {
 		channel = g.layout(ch.Address.ID).overrides()
 	}
-	return p.Effective(member(c, pk), channel, nostr.Now())
+	return p.Effective(g.member(c, pk), channel, nostr.Now())
 }
 
 // private: a member without roles can't see channel ch of c (spec § 9, Salons privés).
@@ -323,7 +388,7 @@ func (g *Groups) checkOverrides(c *nip29.Group, author nostr.PubKey, can Perms, 
 	if !can.Has("manage_roles") {
 		return errors.New("restricted: channel permissions need manage_roles")
 	}
-	policy, actor := g.policy(c), member(c, author)
+	policy, actor := g.policy(c), g.member(c, author)
 	for target, perms := range changed {
 		pk, err := nostr.PubKeyFromHex(target)
 		switch {
@@ -331,7 +396,7 @@ func (g *Groups) checkOverrides(c *nip29.Group, author nostr.PubKey, can Perms, 
 			return fmt.Errorf("restricted: you don't have %v here", (perms &^ can).Names())
 		case target == Everyone:
 		case err == nil:
-			if !policy.Outranks(actor, member(c, pk)) {
+			if !policy.Outranks(actor, g.member(c, pk)) {
 				return fmt.Errorf("restricted: %s isn't below you", target)
 			}
 		default:
@@ -475,10 +540,13 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 	case nostr.KindSimpleGroupEditMetadata:
 		return g.checkEdit(ev, group)
 	case nostr.KindSimpleGroupPutUser:
+		if t := ev.Tags.Find("timeout"); t != nil {
+			return g.checkTimeout(ev, c, group, t[1])
+		}
 		if group != c || !can.Has("manage_roles") {
 			return reject("restricted: giving roles needs manage_roles, on the community")
 		}
-		actor := member(c, author)
+		actor := g.member(c, author)
 		for t := range ev.Tags.FindAll("p") {
 			pk, err := nostr.PubKeyFromHex(t[1])
 			switch {
@@ -486,7 +554,7 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 				return reject("invalid: bad p tag")
 			case !isMember(c, pk):
 				return reject("invalid: not a member")
-			case pk != author && !policy.Outranks(actor, member(c, pk)):
+			case pk != author && !policy.Outranks(actor, g.member(c, pk)):
 				return reject("restricted: they're not below you")
 			}
 			for _, id := range t[2:] {
@@ -495,24 +563,34 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 				}
 			}
 			// Roles given or taken: below the actor's own.
-			for _, id := range symmetricDiff(member(c, pk).Roles, t[2:]) {
+			for _, id := range symmetricDiff(g.member(c, pk).Roles, t[2:]) {
 				if !policy.RoleBelow(actor, id) {
 					return reject("restricted: role %q isn't below yours", id)
 				}
 			}
 		}
 	case nostr.KindSimpleGroupRemoveUser:
-		if group != c || !can.Has("kick_members") {
-			return reject("restricted: removing members needs kick_members, on the community")
+		banning := ev.Tags.Has("ban")
+		switch {
+		case group != c:
+			return reject("invalid: remove members from the community")
+		case banning && !can.Has("ban_members"):
+			return reject("restricted: banning needs ban_members")
+		case !banning && !can.Has("kick_members"):
+			return reject("restricted: removing members needs kick_members")
+		case len(ev.Content) > maxReason:
+			return reject("invalid: a reason is %d bytes at most", maxReason)
 		}
-		actor := member(c, author)
+		actor := g.member(c, author)
 		for t := range ev.Tags.FindAll("p") {
 			pk, err := nostr.PubKeyFromHex(t[1])
-			if err != nil {
+			switch {
+			case err != nil:
 				return reject("invalid: bad p tag")
-			}
-			if !policy.Outranks(actor, member(c, pk)) {
+			case !policy.Outranks(actor, g.member(c, pk)):
 				return reject("restricted: they're not below you")
+			case banning && g.bans[c.Address.ID][pk] != nostr.ZeroID:
+				return reject("duplicate: already banned")
 			}
 		}
 	case nostr.KindSimpleGroupDeleteEvent:
@@ -538,6 +616,8 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 			return reject("invalid: join the community, not a channel")
 		case isMember(c, author):
 			return reject("duplicate: already a member")
+		case g.bans[c.Address.ID][author] != nostr.ZeroID:
+			return reject("blocked: you're banned from this community")
 		case code == nil || !slices.Contains(c.InviteCodes, code[1]):
 			return reject("restricted: invalid invite code")
 		}
@@ -617,7 +697,7 @@ func (g *Groups) checkEdit(ev nostr.Event, group *nip29.Group) (bool, string) {
 			}
 		}
 		if !slices.EqualFunc(roles, policy.Roles, Role.equal) {
-			if err := policy.CheckRoles(member(group, ev.PubKey), roles); err != nil {
+			if err := policy.CheckRoles(g.member(group, ev.PubKey), roles); err != nil {
 				return reject("%s", err)
 			}
 		}
@@ -625,8 +705,8 @@ func (g *Groups) checkEdit(ev nostr.Event, group *nip29.Group) (bool, string) {
 	return false, ""
 }
 
-// checkDelete: anyone deletes their own messages; manage_messages in the
-// target's channel deletes the others'.
+// checkDelete (spec § 9, Modération): a message by its author or with
+// manage_messages in its channel; a ban with ban_members; nothing else.
 func (g *Groups) checkDelete(ev nostr.Event, c *nip29.Group) (bool, string) {
 	for t := range ev.Tags.FindAll("e") {
 		id, err := nostr.IDFromHex(t[1])
@@ -634,12 +714,53 @@ func (g *Groups) checkDelete(ev nostr.Event, c *nip29.Group) (bool, string) {
 			return reject("invalid: bad e tag")
 		}
 		for target := range g.query(nostr.Filter{IDs: []nostr.ID{id}}, 1) {
-			if g.community(groupID(target)) != c {
+			switch {
+			case g.community(groupID(target)) != c:
 				return reject("restricted: not in this community")
+			case target.Kind == nostr.KindSimpleGroupChatMessage:
+				if target.PubKey != ev.PubKey && !g.perms(c, ev.PubKey, g.groups[groupID(target)]).Has("manage_messages") {
+					return reject("restricted: you can only delete your own messages")
+				}
+			case target.Kind == nostr.KindSimpleGroupRemoveUser && target.Tags.Has("ban"):
+				if !g.perms(c, ev.PubKey, nil).Has("ban_members") {
+					return reject("restricted: unbanning needs ban_members")
+				}
+				if tagValue(ev, "p") != tagValue(target, "p") {
+					return reject("invalid: an unban names who it lets back (p)")
+				}
+			default:
+				return reject("restricted: the audit log can't be erased")
 			}
-			if target.PubKey != ev.PubKey && !g.perms(c, ev.PubKey, g.groups[groupID(target)]).Has("manage_messages") {
-				return reject("restricted: you can only delete your own messages")
-			}
+		}
+	}
+	return false, ""
+}
+
+// checkTimeout: a 9000 ["timeout", until] (spec § 9, Modération). g.mu held.
+func (g *Groups) checkTimeout(ev nostr.Event, c, group *nip29.Group, until string) (bool, string) {
+	t, err := strconv.ParseInt(until, 10, 64)
+	switch {
+	case group != c:
+		return reject("invalid: time out on the community")
+	case !g.perms(c, ev.PubKey, nil).Has("moderate_members"):
+		return reject("restricted: timeouts need moderate_members")
+	case err != nil || t < 0 || t > int64(nostr.Now())+maxTimeout:
+		return reject("invalid: a timeout ends within 28 days (0 lifts it)")
+	case len(ev.Content) > maxReason:
+		return reject("invalid: a reason is %d bytes at most", maxReason)
+	}
+	actor := g.member(c, ev.PubKey)
+	for p := range ev.Tags.FindAll("p") {
+		pk, err := nostr.PubKeyFromHex(p[1])
+		switch {
+		case err != nil:
+			return reject("invalid: bad p tag")
+		case len(p) > 2:
+			return reject("invalid: a timeout doesn't give roles")
+		case !isMember(c, pk):
+			return reject("invalid: not a member")
+		case !g.policy(c).Outranks(actor, g.member(c, pk)):
+			return reject("restricted: they're not below you")
 		}
 	}
 	return false, ""
@@ -717,7 +838,11 @@ func (g *Groups) Readable(readers []nostr.PubKey, ev nostr.Event) bool {
 		}
 		switch ev.Kind {
 		case nostr.KindSimpleGroupChatMessage, nostr.KindSimpleGroupDeleteEvent:
-			if g.perms(c, pk, g.groups[groupID(ev)]).Has("view_channel") {
+			if ev.Kind == nostr.KindSimpleGroupDeleteEvent && tagValue(ev, "k") == "9001" {
+				if g.perms(c, pk, nil).Has("view_audit_log") {
+					return true
+				}
+			} else if g.perms(c, pk, g.groups[groupID(ev)]).Has("view_channel") {
 				return true
 			}
 		case nostr.KindSimpleGroupCreateInvite, nostr.KindSimpleGroupJoinRequest:
@@ -782,12 +907,36 @@ func (g *Groups) saved(ctx context.Context, ev nostr.Event) {
 		g.publish(ctx, id)
 		return
 	case nostr.KindSimpleGroupDeleteEvent:
+		// An unban lifts the ban and keeps it for the log; a message goes.
+		if g.unban(id, ev) {
+			return
+		}
 		for t := range ev.Tags.FindAll("e") {
 			if target, err := nostr.IDFromHex(t[1]); err == nil {
 				_ = g.relay.DeleteEvent(ctx, target)
 			}
 		}
 		return
+	case nostr.KindSimpleGroupPutUser:
+		if t := ev.Tags.Find("timeout"); t != nil {
+			until, _ := strconv.ParseInt(t[1], 10, 64)
+			for p := range ev.Tags.FindAll("p") {
+				if pk, err := nostr.PubKeyFromHex(p[1]); err == nil {
+					g.timeout(id, pk, nostr.Timestamp(until))
+				}
+			}
+			g.publish(ctx, id)
+			return
+		}
+	case nostr.KindSimpleGroupRemoveUser:
+		for p := range ev.Tags.FindAll("p") {
+			if pk, err := nostr.PubKeyFromHex(p[1]); err == nil {
+				delete(g.timeouts[id], pk)
+				if ev.Tags.Has("ban") {
+					g.ban(id, pk, ev.ID)
+				}
+			}
+		}
 	}
 
 	group := g.groups[id]
@@ -899,7 +1048,13 @@ func (g *Groups) publish(ctx context.Context, id string) {
 	p := g.policy(group)
 	meta.Tags = append(meta.Tags, nostr.Tag{"owner", p.Owner.Hex()})
 	roles := nostr.Event{Kind: nostr.KindSimpleGroupRoles, Tags: append(nostr.Tags{{"d", id}}, RoleTags(p.Roles)...)}
-	g.emit(ctx, id, meta, group.ToAdminsEvent(), group.ToMembersEvent(), roles)
+	members := group.ToMembersEvent()
+	for _, pk := range slices.SortedFunc(maps.Keys(g.timeouts[id]), func(a, b nostr.PubKey) int { return strings.Compare(a.Hex(), b.Hex()) }) {
+		if until := g.timeouts[id][pk]; until > nostr.Now() && isMember(group, pk) {
+			members.Tags = append(members.Tags, nostr.Tag{"timeout", pk.Hex(), strconv.FormatInt(int64(until), 10)})
+		}
+	}
+	g.emit(ctx, id, meta, group.ToAdminsEvent(), members, roles)
 }
 
 // emit signs, stores and broadcasts state events of group id (g.mu held).

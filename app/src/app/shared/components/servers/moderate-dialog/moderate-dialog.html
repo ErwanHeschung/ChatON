@@ -1,0 +1,91 @@
+@if (target(); as t) {
+  <section>
+    <h2>
+      @switch (t.action) {
+        @case ('kick') {
+          <ng-container i18n="@@moderate.kick-title">Remove {{ name() }}</ng-container>
+        }
+        @case ('ban') {
+          <ng-container i18n="@@moderate.ban-title">Ban {{ name() }}</ng-container>
+        }
+        @case ('timeout') {
+          <ng-container i18n="@@moderate.timeout-title">Time out {{ name() }}</ng-container>
+        }
+      }
+    </h2>
+    <p class="hint">
+      @switch (t.action) {
+        @case ('kick') {
+          <ng-container i18n="@@moderate.kick-hint"
+            >They can come back with an invite.</ng-container
+          >
+        }
+        @case ('ban') {
+          <ng-container i18n="@@moderate.ban-hint"
+            >They can't come back, even with an invite, until someone unbans them.</ng-container
+          >
+        }
+        @case ('timeout') {
+          <ng-container i18n="@@moderate.timeout-hint"
+            >They still read, but can't write, react or talk.</ng-container
+          >
+        }
+      }
+    </p>
+    <form class="column" (submit)="$event.preventDefault(); confirm(reason.value, length.value)">
+      <div class="field" [hidden]="t.action !== 'timeout'">
+        <label for="moderate-length" i18n="@@moderate.length">For</label>
+        <select #length id="moderate-length">
+          @for (s of timeouts; track s) {
+            <option [value]="'' + s" [selected]="s === 3600">{{ s | duration }}</option>
+          }
+        </select>
+      </div>
+      <div class="field">
+        <label for="moderate-reason" i18n="@@moderate.reason">Reason</label>
+        <textarea
+          #reason
+          id="moderate-reason"
+          rows="2"
+          maxlength="512"
+          placeholder="Optional, kept in the audit log"
+          i18n-placeholder="@@moderate.reason-placeholder"
+        ></textarea>
+      </div>
+      <div class="actions">
+        <button
+          type="submit"
+          class="btn"
+          [class.btn-danger]="t.action !== 'timeout'"
+          [class.btn-primary]="t.action === 'timeout'"
+          [disabled]="state() === 'saving'"
+          [attr.aria-busy]="state() === 'saving'"
+        >
+          @switch (t.action) {
+            @case ('kick') {
+              <ng-container i18n="@@role.remove">Remove</ng-container>
+            }
+            @case ('ban') {
+              <ng-container i18n="@@moderate.ban">Ban</ng-container>
+            }
+            @case ('timeout') {
+              <ng-container i18n="@@moderate.timeout">Time out</ng-container>
+            }
+          }
+        </button>
+        <button type="button" class="btn btn-ghost" (click)="modal.close()" i18n="@@leave.cancel">
+          Cancel
+        </button>
+      </div>
+    </form>
+    @switch (state()) {
+      @case ('idle') {}
+      @case ('saving') {}
+      @default {
+        <p class="error" i18n="@@moderate.error">
+          It didn't go through: maybe they're above you now. Try again.
+        </p>
+      }
+    }
+  </section>
+}

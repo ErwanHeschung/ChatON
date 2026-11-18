@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { LucideCheck, LucideDynamicIcon, LucideSlash, LucideX } from '@lucide/angular';
 import { PERMISSION_GROUPS } from '@components/servers/permissions';
+import { DurationPipe } from '@pipes/duration.pipe';
 import { CmdError } from '@models/Auth.model';
 import { ChannelOverride, EVERYONE, Permission } from '@models/Community.model';
 import { DmStore } from '@stores/dm.store';
@@ -53,7 +54,7 @@ const categoryId = () =>
  */
 @Component({
   selector: 'app-channel-dialog',
-  imports: [LucideDynamicIcon],
+  imports: [DurationPipe, LucideDynamicIcon],
   templateUrl: './channel-dialog.html',
   styleUrls: ['../community-dialog/community-dialog.scss', './channel-dialog.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -170,15 +171,6 @@ export class ChannelDialog {
     this.state.set('saving');
     const ok = await this.store.editChannel(channel.id, { overrides: this.draft() });
     this.state.set(ok ? 'idle' : (this.store.error() ?? 'internal'));
-  }
-
-  /** "30 s", "5 min", "1 h": short, in the user's language. */
-  protected duration(s: number): string {
-    if (!s) return $localize`:@@channel.slowmode-off:Off`;
-    const [n, unit] = s < 60 ? [s, 'second'] : s < 3600 ? [s / 60, 'minute'] : [s / 3600, 'hour'];
-    return new Intl.NumberFormat(undefined, { style: 'unit', unit, unitDisplay: 'short' }).format(
-      n,
-    );
   }
 
   protected async saveChannel(name: string, topic: string, slowmode: string, limit: string) {

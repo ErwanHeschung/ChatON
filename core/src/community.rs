@@ -30,6 +30,9 @@ const STATE_KINDS: [Kind; 5] = [
     Kind::GroupLivekitParticipants,
 ];
 const ID_LEN: usize = 12;
+/// Lines of the audit log fetched at once.
+// ponytail: the last 500 only; page with `until` if a community needs more history.
+const AUDIT_LIMIT: usize = 500;
 const INVITE_LEN: usize = 8;
 /// Lowercase Crockford base32: a subset of the `[a-z0-9]` the spec allows for ids.
 const ID_ALPHABET: &[u8; 32] = b"0123456789abcdefghjkmnpqrstvwxyz";
@@ -55,6 +58,8 @@ pub struct Community {
     pub all_roles: Vec<Role>,
     /// The roles strictly below mine: those I may edit, move, delete and give.
     pub manageable_roles: Vec<String>,
+    /// End of my timeout (unix seconds), 0: none (spec § 9, Modération).
+    pub timeout: u64,
 }
 
 /// What `update_community` changes; `None` keeps it (spec § 9, Réglages).
@@ -163,6 +168,93 @@ pub struct Member {
     pub color: Option<String>,
     /// Their highest `hoist` role: the section they're listed under.
     pub hoist: Option<String>,
+    /// End of their timeout (unix seconds), 0: none (spec § 9, Modération).
+    pub timeout: u64,
+}
+
+/// A banned key, from its `9001` (spec § 9, Modération).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ban {
+    pub pubkey: PublicKey,
+    pub by: PublicKey,
+    pub reason: Option<String>,
+    pub at: u64,
+}
+
+/// One line of the audit log (spec § 9, Modération), newest first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AuditEntry {
+    pub id: EventId,
+    pub at: u64,
+    pub actor: PublicKey,
+    /// `roles`, `timeout`, `kick`, `ban`, `unban`, `delete_message`, `edit`,
+    /// `create_channel`, `delete_channel` or `leave`.
+    pub action: &'static str,
+    pub target: Option<PublicKey>,
+    /// Where it happened, when it's a channel.
+    pub channel: Option<String>,
+    pub reason: Option<String>,
+    /// `roles`: the roles given (none: plain member).
+    pub roles: Vec<String>,
+    /// `timeout`: its end, 0: lifted.
+    pub until: u64,
+}
+
+/// What an accepted moderation event means for the log; None: not part of it.
+fn audit_entry(ev: &Event, community: &str) -> Option<AuditEntry> {
+    let tag = |name: &str| tag_values(ev, name).next().map(str::to_string);
+    let target = tag("p").and_then(|p| PublicKey::from_hex(&p).ok());
+    let group = tag("h")?;
+    let mut entry = AuditEntry {
+        id: ev.id,
+        at: ev.created_at.as_secs(),
+        actor: ev.pubkey,
+        action: "edit",
+        target,
+        channel: (group != community).then_some(group),
+        reason: (!ev.content.is_empty()).then(|| ev.content.clone()),
+        roles: Vec::new(),
+        until: 0,
+    };
+    entry.action = match ev.kind {
+        Kind::GroupPutUser => match tag("timeout") {
+            Some(until) => {
+                entry.until = until.parse().unwrap_or_default();
+                "timeout"
+            }
+            None => {
+                entry.roles = admins(ev).into_values().next().unwrap_or_default();
+                "roles"
+            }
+        },
+        Kind::GroupRemoveUser if ev.tags.iter().any(|t| t.as_slice() == ["ban"]) => "ban",
+        Kind::GroupRemoveUser => "kick",
+        Kind::GroupDeleteEvent => match tag("k").as_deref() {
+            Some("9001") => "unban",
+            Some("9") if target.is_some_and(|t| t != ev.pubkey) => "delete_message",
+            _ => return None,
+        },
+        Kind::GroupEditMetadata => "edit",
+        Kind::GroupCreateGroup if entry.channel.is_some() => "create_channel",
+        Kind::GroupDeleteGroup if entry.channel.is_some() => "delete_channel",
+        Kind::GroupLeaveRequest => "leave",
+        _ => return None,
+    };
+    Some(entry)
+}
+
+/// Running timeouts of a `39002`: `["timeout", key, unix]`.
+fn timeouts(ev: &Event, now: u64) -> HashMap<PublicKey, u64> {
+    ev.tags
+        .iter()
+        .filter_map(|tag| match tag.as_slice() {
+            [k, pk, until, ..] if k == "timeout" => Some((
+                PublicKey::from_hex(pk).ok()?,
+                until.parse::<u64>().ok().filter(|u| *u > now)?,
+            )),
+            _ => None,
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -455,6 +547,7 @@ impl Session {
             .unwrap_or_default();
         let policy = self.policy(key, community).await?;
         let me = self.account().pubkey;
+        let timeouts = timeouts(&members, Timestamp::now().as_secs());
         fn as_member<'a>(
             roles: &'a HashMap<PublicKey, Vec<String>>,
             pk: &PublicKey,
@@ -483,6 +576,7 @@ impl Session {
                     hoist: highest(&|r| r.attrs.iter().any(|a| a == "hoist")).map(|r| r.id.clone()),
                     roles: mine.to_vec(),
                     owner: hex == policy.owner,
+                    timeout: timeouts.get(&pubkey).copied().unwrap_or_default(),
                     manageable: policy.outranks(
                         &as_member(&roles, &me, &me_hex),
                         &as_member(&roles, &pubkey, &hex),
@@ -511,12 +605,151 @@ impl Session {
     }
 
     /// Admins and moderators; a moderator can't remove an admin.
-    pub async fn remove_member(&self, community: &str, pubkey: PublicKey) -> Result<()> {
+    pub async fn remove_member(
+        &self,
+        community: &str,
+        pubkey: PublicKey,
+        reason: &str,
+    ) -> Result<()> {
         let relay = self.relay_of(community).await?;
         let tag = Tag::parse(["p", &pubkey.to_hex()])?;
-        self.group_event(&relay, Kind::GroupRemoveUser, community, [tag], "")
+        self.group_event(&relay, Kind::GroupRemoveUser, community, [tag], reason)
             .await
             .map(drop)
+    }
+
+    /// Removes `pubkey` for good, member or not (spec § 9, Modération). `ban_members`.
+    pub async fn ban(&self, community: &str, pubkey: PublicKey, reason: &str) -> Result<()> {
+        let relay = self.relay_of(community).await?;
+        let tags = [Tag::parse(["p", &pubkey.to_hex()])?, Tag::parse(["ban"])?];
+        self.group_event(&relay, Kind::GroupRemoveUser, community, tags, reason)
+            .await
+            .map(drop)
+    }
+
+    /// Lets `pubkey` back in: deletes its ban. `ban_members`.
+    pub async fn unban(&self, community: &str, pubkey: PublicKey) -> Result<()> {
+        let relay = self.relay_of(community).await?;
+        let bans = self.ban_events(community, &relay).await?;
+        let Some(ban) = bans
+            .iter()
+            .find(|ev| tag_values(ev, "p").any(|p| p == pubkey.to_hex()))
+        else {
+            return Ok(()); // not banned (any more)
+        };
+        let tags = [
+            Tag::event(ban.id),
+            Tag::parse(["k", "9001"])?,
+            Tag::parse(["p", &pubkey.to_hex()])?,
+        ];
+        self.group_event(&relay, Kind::GroupDeleteEvent, community, tags, "")
+            .await
+            .map(drop)
+    }
+
+    /// Keeps `pubkey` from writing and talking until `until` (unix seconds,
+    /// 28 days at most), 0 lifts it. `moderate_members`.
+    pub async fn timeout(
+        &self,
+        community: &str,
+        pubkey: PublicKey,
+        until: u64,
+        reason: &str,
+    ) -> Result<()> {
+        let relay = self.relay_of(community).await?;
+        let tags = [
+            Tag::parse(["p", &pubkey.to_hex()])?,
+            Tag::parse(["timeout", &until.to_string()])?,
+        ];
+        self.group_event(&relay, Kind::GroupPutUser, community, tags, reason)
+            .await
+            .map(drop)
+    }
+
+    /// Who is banned, newest first. `view_audit_log` (the relay serves the bans only then).
+    pub async fn bans(&self, community: &str) -> Result<Vec<Ban>> {
+        let relay = self.relay_of(community).await?;
+        let mut bans: Vec<Ban> = self
+            .ban_events(community, &relay)
+            .await?
+            .into_iter()
+            .filter_map(|ev| {
+                let pubkey = PublicKey::from_hex(tag_values(&ev, "p").next()?).ok()?;
+                Some(Ban {
+                    pubkey,
+                    by: ev.pubkey,
+                    reason: (!ev.content.is_empty()).then_some(ev.content),
+                    at: ev.created_at.as_secs(),
+                })
+            })
+            .collect();
+        bans.sort_by_key(|b| std::cmp::Reverse(b.at));
+        Ok(bans)
+    }
+
+    /// The running bans: `9001` `["ban"]` that no unban (`9005` `["k", "9001"]`) names.
+    async fn ban_events(&self, community: &str, relay: &str) -> Result<Vec<Event>> {
+        let bans = Filter::new()
+            .kind(Kind::GroupRemoveUser)
+            .custom_tag(SingleLetterTag::LOWERCASE_H, community);
+        let unbans = Filter::new()
+            .kind(Kind::GroupDeleteEvent)
+            .custom_tag(SingleLetterTag::LOWERCASE_H, community)
+            .custom_tag(SingleLetterTag::LOWERCASE_K, "9001");
+        let events = self
+            .client
+            .fetch_events(ReqTarget::single(relay, [bans, unbans]))
+            .timeout(TIMEOUT)
+            .await?;
+        let lifted: Vec<&str> = events
+            .iter()
+            .filter(|ev| ev.kind == Kind::GroupDeleteEvent)
+            .flat_map(|ev| tag_values(ev, "e"))
+            .collect();
+        Ok(events
+            .iter()
+            .filter(|ev| ev.kind == Kind::GroupRemoveUser)
+            .filter(|ev| ev.tags.iter().any(|t| t.as_slice() == ["ban"]))
+            .filter(|ev| !lifted.contains(&ev.id.to_hex().as_str()))
+            .cloned()
+            .collect())
+    }
+
+    /// The last moderation actions in the community and its channels, newest first. `view_audit_log`.
+    pub async fn audit_log(&self, community: &str) -> Result<Vec<AuditEntry>> {
+        let relay = self.relay_of(community).await?;
+        let key = self.relay_key(&relay).await?;
+        let mut groups = self
+            .metadata(key, community)
+            .await?
+            .map(|m| m.children)
+            .unwrap_or_default();
+        groups.push(community.to_string());
+        let filter = Filter::new()
+            .kinds([
+                Kind::GroupPutUser,
+                Kind::GroupRemoveUser,
+                Kind::GroupEditMetadata,
+                Kind::GroupDeleteEvent,
+                Kind::GroupCreateGroup,
+                Kind::GroupDeleteGroup,
+                Kind::GroupLeaveRequest,
+            ])
+            .custom_tags(SingleLetterTag::LOWERCASE_H, groups)
+            .limit(AUDIT_LIMIT);
+        let events = self
+            .client
+            .fetch_events(ReqTarget::single(&relay, [filter]))
+            .timeout(TIMEOUT)
+            .await?;
+        // The relay's own (joins, departures it records) aren't anyone's action.
+        let mut log: Vec<AuditEntry> = events
+            .iter()
+            .filter(|ev| ev.pubkey != key)
+            .filter_map(|ev| audit_entry(ev, community))
+            .collect();
+        log.sort_by_key(|e| std::cmp::Reverse(e.at));
+        Ok(log)
     }
 
     /// Messages of `channel`, oldest first, without the deleted ones.
@@ -622,15 +855,20 @@ impl Session {
     /// My own messages; any message for admins and moderators.
     pub async fn delete_message(&self, community: &str, channel: &str, id: EventId) -> Result<()> {
         let relay = self.relay_of(community).await?;
-        self.group_event(
-            &relay,
-            Kind::GroupDeleteEvent,
-            channel,
-            [Tag::event(id)],
-            "",
-        )
-        .await
-        .map(drop)
+        // k and p say what went, and whose, for the audit log (spec § 9, Modération).
+        let mut tags = vec![Tag::event(id), Tag::parse(["k", "9"])?];
+        if let Some(author) = self
+            .client
+            .database()
+            .event_by_id(&id)
+            .await?
+            .map(|e| e.pubkey)
+        {
+            tags.push(Tag::parse(["p", &author.to_hex()])?);
+        }
+        self.group_event(&relay, Kind::GroupDeleteEvent, channel, tags, "")
+            .await
+            .map(drop)
     }
 
     /// My list (10009) from my relay, then every community in it. One
@@ -831,12 +1069,17 @@ impl Session {
             .unwrap_or_default();
         let policy = self.policy(key, id).await?;
         let me_hex = me.to_hex();
+        let now = Timestamp::now().as_secs();
+        let timeout = self
+            .state(key, Kind::GroupMembers, id)
+            .await?
+            .and_then(|ev| timeouts(&ev, now).remove(&me))
+            .unwrap_or_default();
         let mine = perms::Member {
             pubkey: &me_hex,
             roles: &roles,
-            timeout: 0,
+            timeout,
         };
-        let now = Timestamp::now().as_secs();
         let nobody = perms::Member::default();
         let mut channels = Vec::new();
         for child in meta.children {
@@ -892,6 +1135,7 @@ impl Session {
             channels,
             categories: meta.categories,
             manageable_roles: policy.roles_below(&mine),
+            timeout,
             all_roles: policy.roles.clone(),
             perms: policy.effective(&mine, None, now).names(),
             owner: meta.owner.and_then(|pk| PublicKey::from_hex(&pk).ok()),

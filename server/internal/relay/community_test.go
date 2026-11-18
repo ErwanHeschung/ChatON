@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -549,4 +550,109 @@ func TestPrivateChannels(t *testing.T) {
 	}) {
 		t.Fatalf("overrides after restart: %v", evs)
 	}
+}
+
+// Step 12f: bans, timeouts, the audit log (spec § 9, Modération).
+func TestModeration(t *testing.T) {
+	alice, bob, carol, dave, eve := newUser(), newUser(), newUser(), newUser(), newUser()
+	path, key := filepath.Join(t.TempDir(), "r.bolt"), nostr.Generate()
+	url, stop := serve(t, path, key, alice, bob, carol, dave)
+	a, b, c, d := connect(t, url, &alice), connect(t, url, &bob), connect(t, url, &carol), connect(t, url, &dave)
+	at := func(s int) time.Time { return time.Now().Add(time.Duration(s) * time.Second) }
+	const general = "g0000000000g"
+	join := func(r *nostr.Relay, u user, s int) nostr.Event {
+		return event(u, nostr.KindSimpleGroupJoinRequest, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(s))
+	}
+	say := func(u user, s int) nostr.Event {
+		return event(u, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(general)}, at(s))
+	}
+	timeout := func(by user, who user, until int64, s int, extra ...string) nostr.Event {
+		return event(by, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), append(nostr.Tag{"p", who.pk.Hex()}, extra...), {"timeout", strconv.FormatInt(until, 10)}}, at(s))
+	}
+	remove := func(by, who user, s int, ban bool) nostr.Event {
+		tags := nostr.Tags{h(communityID), {"p", who.pk.Hex()}}
+		if ban {
+			tags = append(tags, nostr.Tag{"ban"})
+		}
+		return event(by, nostr.KindSimpleGroupRemoveUser, tags, at(s))
+	}
+
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateGroup, nostr.Tags{h(communityID)}, at(0)))
+	mustPublish(t, a, channel(alice, general, "général", at(0)))
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupCreateInvite, nostr.Tags{h(communityID), {"code", "AB12CD34"}}, at(0)))
+	for _, m := range []struct {
+		r *nostr.Relay
+		u user
+	}{{b, bob}, {c, carol}, {d, dave}} {
+		mustPublish(t, m.r, join(m.r, m.u, 0))
+	}
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupPutUser, nostr.Tags{h(communityID), {"p", bob.pk.Hex(), "moderator"}}, at(0)))
+
+	// Timeouts: moderate_members, below oneself, 28 days at most, no roles given.
+	hour := time.Now().Add(time.Hour).Unix()
+	mustReject(t, c, timeout(carol, dave, hour, 1), "timeout without moderate_members")
+	mustReject(t, b, timeout(bob, alice, hour, 1), "timeout of the owner")
+	mustReject(t, b, timeout(bob, carol, time.Now().Add(29*24*time.Hour).Unix(), 1), "timeout past 28 days")
+	mustReject(t, b, timeout(bob, carol, hour, 1, "moderator"), "timeout giving roles")
+	mustPublish(t, b, timeout(bob, carol, hour, 1))
+	if !slices.ContainsFunc(state(t, url, nostr.KindSimpleGroupMembers, communityID).Tags, func(tag nostr.Tag) bool {
+		return len(tag) > 2 && tag[0] == "timeout" && tag[1] == carol.pk.Hex()
+	}) {
+		t.Fatal("39002 doesn't show carol's timeout")
+	}
+	if !hasP(state(t, url, nostr.KindSimpleGroupMembers, communityID), carol.pk) {
+		t.Fatal("a timeout removed carol")
+	}
+	mustReject(t, c, say(carol, 2), "message while timed out")
+	if _, closed := query(t, c, nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupChatMessage}, Tags: nostr.TagMap{"h": {general}}}); closed != "" {
+		t.Fatalf("timed out, carol can't read: %s", closed) // view_channel stays
+	}
+	mustPublish(t, b, timeout(bob, carol, 0, 2))
+	mustPublish(t, c, say(carol, 3))
+
+	// Bans: ban_members, also of someone not (yet) a member; a banned key can't come back.
+	mustReject(t, d, remove(dave, carol, 4, true), "ban without ban_members")
+	ban := remove(bob, carol, 4, true)
+	mustPublish(t, b, ban)
+	mustReject(t, b, remove(bob, carol, 5, true), "banning twice")
+	mustReject(t, c, join(c, carol, 5), "join while banned")
+	mustPublish(t, b, remove(bob, eve, 5, true))
+
+	// The log: moderators read it, members don't, nobody erases it.
+	audit := nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupRemoveUser}, Tags: nostr.TagMap{"h": {communityID}}}
+	if evs, _ := query(t, d, audit); len(evs) != 0 {
+		t.Fatalf("dave reads %d moderation events", len(evs))
+	}
+	if evs, _ := query(t, b, audit); !slices.ContainsFunc(evs, func(ev nostr.Event) bool { return ev.ID == ban.ID }) {
+		t.Fatalf("bob doesn't read the ban: %d events", len(evs))
+	}
+	putBob, _ := query(t, b, nostr.Filter{Kinds: []nostr.Kind{nostr.KindSimpleGroupPutUser}, Tags: nostr.TagMap{"h": {communityID}}, Authors: []nostr.PubKey{alice.pk}})
+	if len(putBob) == 0 {
+		t.Fatal("bob doesn't read alice's 9000")
+	}
+	unban := func(by user, s int, p ...nostr.Tag) nostr.Event {
+		return event(by, nostr.KindSimpleGroupDeleteEvent, append(nostr.Tags{h(communityID), {"e", ban.ID.Hex()}, {"k", "9001"}}, p...), at(s))
+	}
+	mustReject(t, a, event(alice, nostr.KindSimpleGroupDeleteEvent, nostr.Tags{h(communityID), {"e", putBob[0].ID.Hex()}}, at(6)), "erasing the log")
+	mustReject(t, d, unban(dave, 6, nostr.Tag{"p", carol.pk.Hex()}), "unban without ban_members")
+	mustReject(t, b, unban(bob, 6), "unban without p")
+	mustPublish(t, b, unban(bob, 6, nostr.Tag{"p", carol.pk.Hex()}))
+	mustPublish(t, c, join(c, carol, 7))
+
+	// Bans and timeouts survive a restart.
+	mustPublish(t, b, timeout(bob, dave, hour, 8))
+	stop()
+	url, _ = serve(t, path, key, alice, bob, carol, dave)
+	d = connect(t, url, &dave)
+	mustReject(t, d, say(dave, 9), "message while timed out, after restart")
+	// Both bans stay in the log; Carol's is lifted, Eve's runs.
+	if evs, _ := query(t, connect(t, url, &bob), audit); len(evs) != 2 {
+		t.Fatalf("after restart, bob reads %d bans", len(evs))
+	}
+	mustReject(t, connect(t, url, &carol), remove(carol, dave, 9, true), "carol, plain member, bans")
+	if err := publish(t, connect(t, url, &bob), remove(bob, carol, 10, true)); err != nil {
+		t.Fatalf("carol's lifted ban still counts after restart: %v", err)
+	}
+	e := connect(t, url, &eve)
+	mustReject(t, e, join(e, eve, 9), "join while banned, after restart")
 }

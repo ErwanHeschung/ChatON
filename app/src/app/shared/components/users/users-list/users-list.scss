@@ -21,21 +21,40 @@ ul {
   list-style: none;
 }
 
-// Moderation actions show on hover or keyboard focus, under the name.
-.actions {
-  height: 0;
-  padding-left: calc(var(--avatar-sm) + var(--space-4));
-  overflow: hidden;
-  opacity: 0;
-  gap: var(--space-3);
-  transition: opacity var(--duration-fast) var(--ease-out);
+// The moderation menu: a button on hover or focus (always on touch), or a right click.
+.member {
+  position: relative;
+
+  .list-row {
+    padding-right: var(--space-8);
+  }
+
+  .hover-action {
+    position: absolute;
+    top: 50%;
+    right: var(--space-1);
+    opacity: 0;
+    transform: translateY(-50%);
+    transition: opacity var(--duration-fast) var(--ease-out);
+  }
+
+  &:hover .hover-action,
+  &:focus-within .hover-action,
+  .hover-action[aria-expanded='true'] {
+    opacity: 1;
+  }
 }
 
-.member:hover .actions,
-.member:focus-within .actions {
-  height: auto;
-  padding-bottom: var(--space-1);
-  opacity: 1;
+@media (hover: none) {
+  .member .hover-action {
+    opacity: 1;
+  }
+}
+
+.timeout {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--content-secondary);
 }
 
 .group {

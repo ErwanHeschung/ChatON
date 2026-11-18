@@ -1,11 +1,28 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { LucideDynamicIcon, LucideUserPlus } from '@lucide/angular';
+import { ChangeDetectionStrategy, Component, computed, inject, LOCALE_ID } from '@angular/core';
+import { CdkContextMenuTrigger, CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
+import {
+  LucideBan,
+  LucideClock,
+  LucideDynamicIcon,
+  LucideEllipsis,
+  LucideShield,
+  LucideUserMinus,
+  LucideUserPlus,
+} from '@lucide/angular';
+import { ModerateDialog } from '@components/servers/moderate-dialog/moderate-dialog';
 import { UserCard } from '@components/users/user-card/user-card';
 import { ProfileDirective } from '@directives/profile';
 import { GroupDialog } from '@components/chats/group-dialog/group-dialog';
-import { Member, ROLE_ADMIN, ROLE_MODERATOR } from '@models/Community.model';
+import {
+  Member,
+  Moderation,
+  Permission,
+  ROLE_ADMIN,
+  ROLE_MODERATOR,
+} from '@models/Community.model';
 import { UserShort } from '@models/User.model';
 import { ModalService } from '@services/modal.service';
+import { ShellService } from '@services/shell.service';
 import { CommunityStore } from '@stores/community.store';
 import { ConnectedUserStore } from '@stores/connected-user.store';
 import { DmStore } from '@stores/dm.store';
@@ -13,7 +30,15 @@ import { DmStore } from '@stores/dm.store';
 /** Members panel: the open community's members by role, or the open conversation's people. */
 @Component({
   selector: 'app-users-list',
-  imports: [UserCard, LucideDynamicIcon, ProfileDirective],
+  imports: [
+    CdkContextMenuTrigger,
+    CdkMenu,
+    CdkMenuItem,
+    CdkMenuTrigger,
+    UserCard,
+    LucideDynamicIcon,
+    ProfileDirective,
+  ],
   templateUrl: './users-list.html',
   styleUrl: './users-list.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -23,7 +48,19 @@ export class UsersList {
   private readonly modalService = inject(ModalService);
   protected readonly dm = inject(DmStore);
   protected readonly community = inject(CommunityStore);
+  private readonly shell = inject(ShellService);
   protected readonly addPeopleIcon = LucideUserPlus;
+  protected readonly icons = {
+    more: LucideEllipsis,
+    moderator: LucideShield,
+    timeout: LucideClock,
+    kick: LucideUserMinus,
+    ban: LucideBan,
+  };
+  private readonly time = new Intl.DateTimeFormat(inject(LOCALE_ID), {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
 
   /** One section per role shown apart (`hoist`, in role order), then the rest. Server view only. */
   public readonly sections = computed(() => {
@@ -87,9 +124,37 @@ export class UsersList {
     return this.community.can('manage_roles') && member.manageable && !this.isAdmin(member);
   }
 
-  /** Removes members below me (the relay checks too). */
-  public canRemove(member: Member): boolean {
-    return this.community.can('kick_members') && member.manageable;
+  /** `perm` over a member below me (the relay checks too). */
+  protected can(member: Member, perm: Permission): boolean {
+    return this.community.can(perm) && member.manageable;
+  }
+
+  /** Something in the member's menu. */
+  protected moderable(member: Member): boolean {
+    return (
+      this.canPromote(member) ||
+      (['moderate_members', 'kick_members', 'ban_members'] as const).some((p) =>
+        this.can(member, p),
+      )
+    );
+  }
+
+  protected timedOut(member: Member): boolean {
+    return member.timeout * 1000 > Date.now();
+  }
+
+  protected timeoutLabel(member: Member): string {
+    const until = this.time.format(member.timeout * 1000);
+    return $localize`:@@moderate.timed-out:Timed out until ${until}:until:`;
+  }
+
+  protected moderate(action: Moderation, member: Member): void {
+    this.shell.moderating.set({ action, pubkey: member.pubkey });
+    this.modalService.open(ModerateDialog);
+  }
+
+  protected liftTimeout(member: Member): void {
+    void this.community.moderate('timeout', member.pubkey, '', 0);
   }
 
   /** Adds or takes `moderator`, keeping their other roles. */
@@ -99,9 +164,5 @@ export class UsersList {
       member.pubkey,
       this.isModerator(member) ? others : [...others, ROLE_MODERATOR],
     );
-  }
-
-  public remove(member: Member): void {
-    void this.community.removeMember(member.pubkey);
   }
 }

@@ -1,0 +1,14 @@
+// Layout from the community dialog; `.field` and inputs are global.
+form.column {
+  gap: var(--space-4);
+}
+
+.hint {
+  margin: 0;
+  color: var(--content-secondary);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+}
