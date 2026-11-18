@@ -222,3 +222,30 @@
   flex-shrink: 0;
   color: var(--content-secondary);
 }
+
+// Unread: brighter, bolder, with a small pill on the sidebar's edge.
+.list-row.unread {
+  position: relative;
+  color: var(--content-primary);
+  font-weight: var(--weight-semibold);
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: calc(-1 * var(--space-2));
+    width: 4px;
+    height: 8px;
+    border-radius: 0 var(--radius-full) var(--radius-full) 0;
+    background-color: var(--content-primary);
+    transform: translateY(-50%);
+  }
+}
+
+// Mentions of me: a coral count at the end of the row.
+.badge.mentions {
+  margin-left: auto;
+  background-color: var(--danger);
+  color: var(--surface-frame);
+  font-variant-numeric: tabular-nums;
+}

@@ -86,11 +86,17 @@
       <!-- Emoji as Twemoji images (alt = the emoji, so copying keeps it); ng-container keeps
            the text exact under pre-wrap. -->
       <p class="text">
-        @for (part of message().text | emojiText; track $index) {
-          @if (part.src) {
-            <img class="emoji" [src]="part.src" [alt]="part.text" draggable="false" />
+        @for (segment of segments(); track $index) {
+          @if (segment.mention) {
+            <span class="mention">{{ segment.text }}</span>
           } @else {
-            <ng-container>{{ part.text }}</ng-container>
+            @for (part of segment.text | emojiText; track $index) {
+              @if (part.src) {
+                <img class="emoji" [src]="part.src" [alt]="part.text" draggable="false" />
+              } @else {
+                <ng-container>{{ part.text }}</ng-container>
+              }
+            }
           }
         }
       </p>

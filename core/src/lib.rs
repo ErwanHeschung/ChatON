@@ -16,6 +16,7 @@ pub mod media;
 pub mod network;
 pub mod perms;
 pub mod push;
+pub mod reads;
 pub mod session;
 pub mod voice;
 

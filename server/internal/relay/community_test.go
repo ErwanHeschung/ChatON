@@ -756,6 +756,22 @@ func TestMessages(t *testing.T) {
 	// A reply is a message: the relay takes it as one.
 	mustPublish(t, b, event(bob, nostr.KindSimpleGroupChatMessage, nostr.Tags{h(channelID), {"q", hi.ID.Hex(), url, alice.pk.Hex()}, {"p", alice.pk.Hex()}}, at(2)))
 
+	// Mentions: a person freely; @everyone and unmentionable roles need mention_everyone.
+	say := func(u user, s int, tags ...nostr.Tag) nostr.Event {
+		return event(u, nostr.KindSimpleGroupChatMessage, append(nostr.Tags{h(channelID)}, tags...), at(s))
+	}
+	mustPublish(t, b, say(bob, 1, nostr.Tag{"p", alice.pk.Hex()}))
+	mustReject(t, b, say(bob, 1, nostr.Tag{"mention", "everyone"}), "a member mentions everyone")
+	mustReject(t, b, say(bob, 1, nostr.Tag{"mention", "moderator"}), "a member mentions an unmentionable role")
+	mustReject(t, a, say(alice, 1, nostr.Tag{"mention", "nope"}), "an unknown role")
+	mustPublish(t, a, say(alice, 1, nostr.Tag{"mention", "everyone"}))
+	roles := community.DefaultRoles()
+	roles[1].Attrs = append(roles[1].Attrs, "mentionable")
+	roles[2].Attrs = append(roles[2].Attrs, "mentionable") // still not @everyone
+	mustPublish(t, a, event(alice, nostr.KindSimpleGroupEditMetadata, append(nostr.Tags{h(communityID), {"name", "Les chatons"}, {"owner", alice.pk.Hex()}}, community.RoleTags(roles)...), at(1)))
+	mustPublish(t, b, say(bob, 2, nostr.Tag{"mention", "moderator"}))
+	mustReject(t, b, say(bob, 3, nostr.Tag{"mention", "everyone"}), "everyone, even mentionable")
+
 	// Reactions: to a message of the channel, once per emoji, with add_reactions.
 	react := func(u user, target nostr.ID, emoji string, s int) nostr.Event {
 		ev := nostr.Event{Kind: nostr.KindReaction, Tags: nostr.Tags{h(channelID), {"e", target.Hex()}, {"p", alice.pk.Hex()}, {"k", "9"}}, CreatedAt: nostr.Timestamp(at(s).Unix()), Content: emoji}

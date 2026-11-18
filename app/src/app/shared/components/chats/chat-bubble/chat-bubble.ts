@@ -46,7 +46,11 @@ import { ProfileDirective } from '@directives/profile';
   templateUrl: './chat-bubble.html',
   styleUrl: './chat-bubble.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { '[class.continued]': 'continued()', '(mouseleave)': 'confirming.set(false)' },
+  host: {
+    '[class.continued]': 'continued()',
+    '[class.mentioned]': 'message().mentionsMe',
+    '(mouseleave)': 'confirming.set(false)',
+  },
 })
 export class ChatBubble {
   protected readonly media = inject(MediaService);
@@ -95,6 +99,18 @@ export class ChatBubble {
       this.react.emit({ emoji, on: true });
     }
   }
+  /** The text cut around its mentions, which show as chips. */
+  protected readonly segments = computed(() => {
+    const { text, mentions } = this.message();
+    if (!mentions?.length) return [{ text, mention: false }];
+    const escaped = [...mentions]
+      .sort((a, b) => b.length - a.length)
+      .map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return text
+      .split(new RegExp(`(${escaped.join('|')})`))
+      .filter(Boolean)
+      .map((part) => ({ text: part, mention: mentions.includes(part) }));
+  });
   protected readonly author = computed(() => splitHandle(this.message().senderName));
   /** Their display name, with the handle quieter after it. */
   protected readonly nick = computed(

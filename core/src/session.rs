@@ -87,6 +87,8 @@ pub struct Session {
     pub(crate) resubscribing: tokio::sync::Mutex<()>,
     /// Updates not coming from a relay (voice), merged into `listen`.
     pub(crate) updates: tokio::sync::broadcast::Sender<Update>,
+    /// What I've read, how communities notify me (`reads.json`).
+    pub(crate) reads: Mutex<crate::reads::Reads>,
     /// The voice channel or call I'm in (one at a time).
     #[cfg(feature = "voice")]
     pub(crate) voice: crate::voice::Slot,
@@ -274,6 +276,7 @@ impl Session {
             relay_keys: Mutex::new(HashMap::new()),
             resubscribing: tokio::sync::Mutex::new(()),
             updates: tokio::sync::broadcast::channel(64).0,
+            reads: Mutex::new(crate::reads::Reads::load(dir)),
             #[cfg(feature = "voice")]
             voice: Default::default(),
         };

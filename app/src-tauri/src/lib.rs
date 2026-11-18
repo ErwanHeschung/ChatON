@@ -18,6 +18,7 @@ use chaton_core::link::{self, LinkOffer};
 use chaton_core::media::Attachment;
 use chaton_core::network::Instance;
 use chaton_core::nostr::prelude::{EventId, PublicKey};
+use chaton_core::reads::NotifyLevel;
 use chaton_core::session::{Account, Conversation, Peer, Session};
 use chaton_core::voice::{ScreenSource, VoiceState};
 use serde::Serialize;
@@ -131,6 +132,23 @@ async fn start(app: &AppHandle, state: &App, session: Session) -> Account {
                         handle.emit("voice", voice)
                     }
                     moved @ Update::VoiceMove { .. } => handle.emit("voice", moved),
+                    Update::ChannelMessage {
+                        ref message,
+                        notify: Some(ref place),
+                        ..
+                    } => {
+                        let text = match &message.attachment {
+                            Some(file) => format!("📎 {}", file.name),
+                            None => message.text.chars().take(200).collect(),
+                        };
+                        alert(
+                            &handle,
+                            &listener,
+                            message.author,
+                            format!("{place}\n{text}"),
+                        );
+                        handle.emit("community", update)
+                    }
                     other => handle.emit("community", other),
                 };
             })
@@ -713,16 +731,30 @@ async fn channel_messages(state: State<'_, App>, channel: String) -> Res<Vec<Cha
 }
 
 #[tauri::command]
+/// `text`, answering `parent` if any, mentioning `mentions` (keys, role ids,
+/// `everyone`; spec § 9, Messages).
 async fn send_channel(
     state: State<'_, App>,
     community: String,
     channel: String,
     text: String,
+    parent: Option<EventId>,
+    mentions: Vec<String>,
 ) -> Res<ChannelMessage> {
     Ok(session(&state)
         .await?
-        .send(&community, &channel, &text)
+        .post(&community, &channel, &text, parent, &mentions)
         .await?)
+}
+
+#[tauri::command]
+async fn mark_read(state: State<'_, App>, channel: String) -> Res<()> {
+    Ok(session(&state).await?.mark_read(&channel).await?)
+}
+
+#[tauri::command]
+async fn set_notify_level(state: State<'_, App>, community: String, level: NotifyLevel) -> Res<()> {
+    Ok(session(&state).await?.set_notify_level(&community, level)?)
 }
 
 #[tauri::command]
@@ -782,21 +814,6 @@ async fn send_dm_file(state: State<'_, App>, request: tauri::ipc::Request<'_>) -
     Ok(session(&state)
         .await?
         .send_dm_file(&room, &file.bytes, file.get("mime")?, file.get("name")?)
-        .await?)
-}
-
-/// `text` in answer to message `parent` (spec § 9, Messages).
-#[tauri::command]
-async fn reply_channel(
-    state: State<'_, App>,
-    community: String,
-    channel: String,
-    text: String,
-    parent: EventId,
-) -> Res<ChannelMessage> {
-    Ok(session(&state)
-        .await?
-        .reply(&community, &channel, &text, parent)
         .await?)
 }
 
@@ -1021,8 +1038,9 @@ pub fn run() {
             set_roles,
             remove_member,
             invites,
-            reply_channel,
             react,
+            mark_read,
+            set_notify_level,
             set_pinned,
             moderate_voice,
             revoke_invite,

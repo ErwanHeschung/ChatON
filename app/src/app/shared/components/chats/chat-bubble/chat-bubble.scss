@@ -254,3 +254,23 @@ img.attachment {
     color: var(--accent-text);
   }
 }
+
+// A mention: a green chip in the text (green means me and mine).
+.mention {
+  padding: 0 2px;
+  border-radius: var(--radius-sm);
+  background-color: var(--accent-subtle);
+  color: var(--accent-text);
+  font-weight: var(--weight-medium);
+}
+
+// A message that mentions me: tinted, with a green bar on the left.
+:host(.mentioned) {
+  background-color: var(--accent-subtle);
+  box-shadow: inset 2px 0 0 var(--accent);
+
+  &:hover,
+  &:focus-within {
+    background-color: rgb(var(--accent-rgb) / 0.2);
+  }
+}

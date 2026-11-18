@@ -1,6 +1,14 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import {
+  CdkMenu,
+  CdkMenuGroup,
+  CdkMenuItem,
+  CdkMenuItemRadio,
+  CdkMenuTrigger,
+} from '@angular/cdk/menu';
+import {
+  LucideBell,
+  LucideCheck,
   LucideChevronDown,
   LucideFolderPlus,
   LucideDynamicIcon,
@@ -14,11 +22,19 @@ import { LeaveDialog } from '@components/servers/leave-dialog/leave-dialog';
 import { ModalService } from '@services/modal.service';
 import { ShellService } from '@services/shell.service';
 import { CommunityStore } from '@stores/community.store';
+import { NotifyLevel } from '@models/Community.model';
 
 /** Sidebar header: the open community's name, and its menu (invite, settings, leave). */
 @Component({
   selector: 'app-server-banner',
-  imports: [CdkMenu, CdkMenuItem, CdkMenuTrigger, LucideDynamicIcon],
+  imports: [
+    CdkMenu,
+    CdkMenuGroup,
+    CdkMenuItem,
+    CdkMenuItemRadio,
+    CdkMenuTrigger,
+    LucideDynamicIcon,
+  ],
   templateUrl: './server-banner.html',
   styleUrl: './server-banner.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -33,7 +49,14 @@ export class ServerBanner {
     settings: LucideSettings,
     category: LucideFolderPlus,
     leave: LucideLogOut,
+    bell: LucideBell,
+    check: LucideCheck,
   };
+  protected readonly levels: { id: NotifyLevel; label: string }[] = [
+    { id: 'all', label: $localize`:@@notify.all:All messages` },
+    { id: 'mentions', label: $localize`:@@notify.mentions:Only mentions` },
+    { id: 'none', label: $localize`:@@notify.none:Nothing` },
+  ];
 
   /** Same test as the settings' sections: one of them is mine to open. */
   protected readonly canSettings = computed(

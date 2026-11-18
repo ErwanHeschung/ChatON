@@ -15,9 +15,11 @@
 <span class="separator" role="separator"></span>
 
 @for (community of store.communities(); track community.id) {
+  @let mentions = mentionsIn(community);
   <button
     type="button"
     class="rail-item"
+    [class.unread]="unread(community)"
     (click)="open(community.id)"
     [attr.aria-current]="!inDms() && community.id === store.selected() ? 'true' : null"
     [appTooltip]="community.name"
@@ -31,6 +33,15 @@
       size="lg"
       shape="square"
     ></app-avatar>
+    @if (mentions) {
+      <span class="badge mentions"
+        ><span aria-hidden="true">{{ mentions }}</span
+        ><span class="sr-only" i18n="@@channels.mentions">{mentions, plural,
+          =1 {1 mention}
+          other {{{ mentions }} mentions}
+        }</span></span
+      >
+    }
   </button>
 }
 

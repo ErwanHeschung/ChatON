@@ -543,6 +543,16 @@ func (g *Groups) Check(ctx context.Context, ev nostr.Event) (bool, string) {
 		case !can.Has("send_messages"):
 			return reject("restricted: you can't write here")
 		}
+		// Mentions (spec § 9, Messages): @everyone and unmentionable roles need mention_everyone.
+		for t := range ev.Tags.FindAll("mention") {
+			r, ok := policy.role(t[1])
+			switch {
+			case !ok:
+				return reject("invalid: unknown role %q", t[1])
+			case (r.ID == Everyone || !slices.Contains(r.Attrs, "mentionable")) && !can.Has("mention_everyone"):
+				return reject("restricted: mentioning %s needs mention_everyone", r.Name)
+			}
+		}
 		if s := g.layout(id).Slowmode; s > 0 && !can.Has("manage_messages") && !can.Has("manage_channels") {
 			now, key := nostr.Now(), id+author.Hex()
 			if wait := int64(g.spoke[key]) + int64(s) - int64(now); wait > 0 {

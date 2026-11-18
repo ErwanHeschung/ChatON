@@ -39,3 +39,29 @@
     color: var(--content-secondary);
   }
 }
+
+// Notifications: a labelled group of three choices, between two rules.
+.group {
+  display: flex;
+  flex-direction: column;
+  margin: var(--space-1) 0;
+  padding: var(--space-1) 0;
+  border-block: 1px solid var(--border-subtle);
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  color: var(--content-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.unchecked {
+  flex: none;
+  width: 16px;
+}

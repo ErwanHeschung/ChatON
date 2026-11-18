@@ -24,8 +24,9 @@ import { VoiceBar } from '@components/voice/voice-bar/voice-bar';
 import { ShellService } from '@services/shell.service';
 import { ChatLayout } from '@layouts/chat/chat.layout';
 import { Attachment } from '@models/Media.model';
-import { Permission } from '@models/Community.model';
-import { Message, MessageStatus } from '@models/Message.model';
+import { EVERYONE, Permission } from '@models/Community.model';
+import { handleText } from '@models/Dm.model';
+import { MentionCandidate, Message, MessageStatus } from '@models/Message.model';
 import { CommunityStore } from '@stores/community.store';
 import { ConnectedUserStore } from '@stores/connected-user.store';
 import { DmStore } from '@stores/dm.store';
@@ -108,6 +109,14 @@ export class RootChat {
       ?.channels.find((c) => c.id === this.community.channel());
     const has = (p: Permission) =>
       !!channel && this.community.canIn(channel, p) && !this.timedOut();
+    const roles = this.community.current()?.all_roles ?? [];
+    // What a mention looks like in the text: the handle, the role's name, @everyone.
+    const mentionText = (target: string) =>
+      target === EVERYONE
+        ? '@everyone'
+        : /^[0-9a-f]{64}$/.test(target)
+          ? handleText(this.dm.label(target))
+          : '@' + (roles.find((r) => r.id === target)?.name ?? target);
     const can = {
       reply: has('send_messages'),
       react: has('add_reactions'),
@@ -124,6 +133,8 @@ export class RootChat {
         },
         reactions: m.reactions,
         pinned: m.pinned,
+        mentions: m.mentions.map(mentionText),
+        mentionsMe: m.mention,
         can,
       };
     });
@@ -136,8 +147,49 @@ export class RootChat {
     return parent ? this.dm.label(parent.author) : null;
   });
 
-  public send(text: string): void {
-    void (this.inChannel() ? this.community.send(text) : this.dm.send(text));
+  /** Who `@` may mention in the open channel: members, roles I may ping, @everyone. */
+  protected readonly candidates = computed<MentionCandidate[]>(() => {
+    const channel = this.community
+      .current()
+      ?.channels.find((c) => c.id === this.community.channel());
+    if (!this.inChannel() || !channel) return [];
+    const me = this.user.user()?.pubkey;
+    const all = this.community.canIn(channel, 'mention_everyone');
+    const people = this.community
+      .members()
+      .filter((m) => m.pubkey !== me)
+      .map((m): MentionCandidate => {
+        const label = this.dm.label(m.pubkey);
+        const peer = this.dm.peers()[m.pubkey];
+        const text = handleText(label);
+        return {
+          id: m.pubkey,
+          kind: 'person',
+          name: peer?.display_name ?? text,
+          text,
+          picture: peer?.picture,
+        };
+      });
+    const roles = (this.community.current()?.all_roles ?? [])
+      .filter((r) => r.id !== EVERYONE && (all || r.attrs.includes('mentionable')))
+      .map((r): MentionCandidate => ({
+        id: r.id,
+        kind: 'role',
+        name: r.name,
+        text: `@${r.name}`,
+        color: r.color,
+      }));
+    const everyone: MentionCandidate = {
+      id: EVERYONE,
+      kind: 'everyone',
+      name: '@everyone',
+      text: '@everyone',
+    };
+    return [...people, ...roles, ...(all ? [everyone] : [])];
+  });
+
+  public send({ text, mentions }: { text: string; mentions: string[] }): void {
+    void (this.inChannel() ? this.community.send(text, mentions) : this.dm.send(text));
   }
 
   public sendFile(file: File): void {

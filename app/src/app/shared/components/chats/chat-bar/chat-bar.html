@@ -11,11 +11,58 @@
 
 <input
   #text
-  (keydown.enter)="submit(text)"
+  (keydown)="key($event, text)"
+  (input)="typed(text)"
+  (click)="typed(text)"
+  (blur)="query.set(null)"
   (paste)="paste($event)"
   [attr.placeholder]="placeholder()"
   [attr.aria-label]="placeholder()"
+  role="combobox"
+  aria-autocomplete="list"
+  aria-controls="mention-list"
+  [attr.aria-expanded]="matches().length > 0"
+  [attr.aria-activedescendant]="matches().length ? 'mention-' + active() : null"
 />
+
+@if (matches().length) {
+  <!-- Who `@` can mention here: mousedown keeps the focus in the field. -->
+  <ul
+    class="mentions"
+    id="mention-list"
+    role="listbox"
+    i18n-aria-label="@@chat.mention-list"
+    aria-label="Mention"
+  >
+    @for (c of matches(); track c.id; let i = $index) {
+      <li
+        [id]="'mention-' + i"
+        role="option"
+        [attr.aria-selected]="i === active()"
+        (mousedown)="$event.preventDefault(); choose(text, c)"
+        (mouseenter)="active.set(i)"
+      >
+        @switch (c.kind) {
+          @case ('person') {
+            <app-avatar [picture]="c.picture" [name]="c.name" [seed]="c.id" size="sm"></app-avatar>
+          }
+          @case ('role') {
+            <span class="role-dot" [style.background-color]="c.color || null"></span>
+          }
+          @default {
+            <svg [lucideIcon]="atIcon" size="18"></svg>
+          }
+        }
+        <span class="name">{{ c.name }}</span>
+        @if (c.kind === 'person' && c.name !== c.text) {
+          <span class="text">{{ c.text }}</span>
+        } @else if (c.kind === 'everyone') {
+          <span class="text" i18n="@@chat.mention-everyone">everyone here</span>
+        }
+      </li>
+    }
+  </ul>
+}
 
 <button
   type="button"

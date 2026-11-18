@@ -62,6 +62,11 @@ export function splitHandle(label: string): [string, string] {
   return label.startsWith('@') && at > 0 ? [label.slice(0, at), label.slice(at)] : [label, ''];
 }
 
+/** A label as typed in a message to mention them: `@lea@miaou.fr`, or `@npub1…`. */
+export function handleText(label: string): string {
+  return label.startsWith('@') ? label : `@${label}`;
+}
+
 /** Always the full handle (never a bare name, CLAUDE.md), else a shortened npub. */
 export function peerLabel(peer: Peer | undefined, pubkey: string): string {
   if (peer?.handle) {

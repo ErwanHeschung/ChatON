@@ -315,7 +315,7 @@ async fn a_community_with_channels_invites_and_moderation() {
         matches!(u, Update::ChannelMessage { .. })
     })
     .await;
-    let Update::ChannelMessage { message } = got else {
+    let Update::ChannelMessage { message, .. } = got else {
         unreachable!()
     };
     assert_eq!(
@@ -1628,4 +1628,88 @@ async fn replies_reactions_and_pins() {
         async move { seen.await.filter(|m| !m.pinned) }
     })
     .await;
+}
+
+/// Step 12j (spec § 9, Messages, « Non-lus et notifications »): a mention
+/// counts, marking read clears, my level decides what notifies.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a running server, see the module docs"]
+async fn mentions_unreads_and_notify() {
+    use chaton_core::reads::NotifyLevel;
+    let (server, _) = setup();
+    let new = |name: &'static str| {
+        let server = server.clone();
+        async move {
+            Arc::new(
+                Session::register(&temp_dir(name), &server, &unique(name))
+                    .await
+                    .unwrap(),
+            )
+        }
+    };
+    let (alice, bob) = (new("alice").await, new("bob").await);
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let listener = alice.clone();
+    tokio::spawn(async move { listener.listen(|u| drop(tx.send(u))).await });
+    let community = alice.create_community("Les chats").await.unwrap();
+    let general = alice.communities().await.unwrap()[0].channels[0].id.clone();
+    bob.join(&alice.invite(&community.id).await.unwrap())
+        .await
+        .unwrap();
+    // The history so far counts as read; read marks are to the second.
+    let state = || async {
+        let c = alice.communities().await.unwrap().remove(0);
+        let ch = c.channels.iter().find(|ch| ch.id == general).unwrap();
+        (ch.unread, ch.mentions, c.notify)
+    };
+    assert_eq!(state().await, (false, 0, NotifyLevel::Mentions));
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    // What Alice's listener says of message `id`: (mention, notify).
+    let mut heard = async |id| loop {
+        match tokio::time::timeout(Duration::from_secs(10), rx.recv()).await {
+            Ok(Some(Update::ChannelMessage { message, notify })) if message.id == id => {
+                return (message.mention, notify);
+            }
+            Ok(Some(_)) => {}
+            other => panic!("no update for {id}: {other:?}"),
+        }
+    };
+
+    let plain = bob.send(&community.id, &general, "Salut").await.unwrap();
+    assert_eq!(heard(plain.id).await, (false, None));
+    let me = vec![alice.account().pubkey.to_hex()];
+    let ping = bob
+        .post(&community.id, &general, "@alice regarde", None, &me)
+        .await
+        .unwrap();
+    assert_eq!(ping.mentions, me);
+    assert_eq!(
+        heard(ping.id).await,
+        (true, Some("#general · Les chats".to_string()))
+    );
+    assert_eq!(state().await, (true, 1, NotifyLevel::Mentions));
+    let shown = alice.channel_messages(&general).await.unwrap();
+    let flag = |id| shown.iter().find(|m| m.id == id).unwrap().mention;
+    assert!(flag(ping.id) && !flag(plain.id));
+    let everyone = ["everyone".to_string()];
+    assert!(
+        bob.post(&community.id, &general, "@everyone", None, &everyone)
+            .await
+            .is_err()
+    );
+
+    alice.mark_read(&general).await.unwrap();
+    assert_eq!(state().await, (false, 0, NotifyLevel::Mentions));
+
+    // Nothing notifies; a mention still counts.
+    alice
+        .set_notify_level(&community.id, NotifyLevel::None)
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let again = bob
+        .post(&community.id, &general, "@alice ?", None, &me)
+        .await
+        .unwrap();
+    assert_eq!(heard(again.id).await, (true, None));
+    assert_eq!(state().await, (true, 1, NotifyLevel::None));
 }

@@ -28,6 +28,28 @@
           <ng-container i18n="@@community.settings">Community settings</ng-container>
         </button>
       }
+      <!-- This device only (spec § 9, Non-lus et notifications). -->
+      <div class="group" cdkMenuGroup role="group" aria-labelledby="notify-label">
+        <span class="label" id="notify-label">
+          <svg [lucideIcon]="icons.bell" size="14"></svg>
+          <ng-container i18n="@@notify.title">Notifications</ng-container>
+        </span>
+        @for (level of levels; track level.id) {
+          <button
+            class="menu-item"
+            cdkMenuItemRadio
+            [cdkMenuItemChecked]="community.notify === level.id"
+            (cdkMenuItemTriggered)="store.setNotifyLevel(level.id)"
+          >
+            @if (community.notify === level.id) {
+              <svg [lucideIcon]="icons.check" size="16"></svg>
+            } @else {
+              <span class="unchecked"></span>
+            }
+            {{ level.label }}
+          </button>
+        }
+      </div>
       <!-- The owner can't leave (spec § 9): they transfer it first, in the settings. -->
       @if (!store.isOwner()) {
         <button class="menu-item danger" cdkMenuItem (cdkMenuItemTriggered)="leave()">

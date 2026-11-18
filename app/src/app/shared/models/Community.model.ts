@@ -24,6 +24,10 @@ export interface Channel {
   /** A member without roles can't see it (spec § 9, Salons privés). */
   private: boolean;
   overrides: ChannelOverride[];
+  /** A message from someone else since I last read it (text channels). */
+  unread: boolean;
+  /** Of those, the ones that mention me. */
+  mentions: number;
 }
 
 /** What a channel allows and denies one target: a role id, `everyone` or a key. */
@@ -71,7 +75,11 @@ export interface Community {
   manageable_roles: string[];
   /** End of my timeout (unix seconds), 0: none. */
   timeout: number;
+  /** What notifies me here (this device). */
+  notify: NotifyLevel;
 }
+
+export type NotifyLevel = 'all' | 'mentions' | 'none';
 
 /** `["role", id, name, color, attr…]`: attrs are permissions, `hoist`, `mentionable` (spec § 9). */
 export interface Role {
@@ -213,6 +221,10 @@ export interface ChannelMessage {
   /** By emoji, in the order they first came. */
   reactions: Reaction[];
   pinned: boolean;
+  /** Who it mentions: keys, role ids, `everyone` (spec § 9, Messages). */
+  mentions: string[];
+  /** It mentions me (and isn't mine). */
+  mention: boolean;
 }
 
 export interface Reaction {
@@ -224,7 +236,12 @@ export interface Reaction {
 
 /** `community` events from core's listener. */
 export type CommunityUpdate =
-  | { type: 'channel_message'; message: ChannelMessage }
+  | {
+      type: 'channel_message';
+      message: ChannelMessage;
+      /** Core notified (desktop): where, or null. */
+      notify: string | null;
+    }
   | { type: 'deleted'; channel: string; ids: string[] }
   /** Reactions or pins changed: read the channel again. */
   | { type: 'channel_changed'; channel: string }

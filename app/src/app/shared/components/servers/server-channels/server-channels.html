@@ -141,11 +141,15 @@
                 <button
                   type="button"
                   class="list-row"
+                  [class.unread]="channel.unread"
                   [attr.aria-current]="channel.id === store.channel() ? 'true' : null"
                   (click)="open(channel)"
                 >
                   <svg [lucideIcon]="icons.hash" size="18"></svg>
                   <span>{{ channel.name }}</span>
+                  @if (channel.unread && !channel.mentions) {
+                    <span class="sr-only" i18n="@@channels.unread">unread</span>
+                  }
                   @if (channel.private) {
                     <svg
                       class="lock"
@@ -154,6 +158,15 @@
                       role="img"
                       [attr.aria-label]="privateLabel"
                     ></svg>
+                  }
+                  @if (channel.mentions) {
+                    <span class="badge mentions"
+                      ><span aria-hidden="true">{{ channel.mentions }}</span
+                      ><span class="sr-only" i18n="@@channels.mentions">{channel.mentions, plural,
+                        =1 {1 mention}
+                        other {{{ channel.mentions }} mentions}
+                      }</span></span
+                    >
                   }
                 </button>
               }

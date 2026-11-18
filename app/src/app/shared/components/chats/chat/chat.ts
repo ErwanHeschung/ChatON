@@ -5,7 +5,7 @@ import { Avatar } from '@components/avatar/avatar';
 import { ChatBar } from '@components/chats/chat-bar/chat-bar';
 import { ChatBubble } from '@components/chats/chat-bubble/chat-bubble';
 import { PawTrail } from '@components/paw-trail/paw-trail';
-import { Message } from '@models/Message.model';
+import { MentionCandidate, Message } from '@models/Message.model';
 import { ShellService } from '@services/shell.service';
 
 /** A run of messages by one author stays grouped if each follows the previous within this. */
@@ -36,7 +36,9 @@ export class Chat {
   public readonly messages = input<Message[]>([]);
   public readonly disabled = input(false);
   public readonly error = input<string | null>(null);
-  public readonly send = output<string>();
+  public readonly send = output<{ text: string; mentions: string[] }>();
+  /** Who `@` may mention (channels). */
+  public readonly candidates = input<MentionCandidate[]>([]);
   public readonly file = output<File>();
   /** Id of a message to delete. */
   public readonly remove = output<string>();

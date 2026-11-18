@@ -62,7 +62,7 @@ Les vecteurs sont signés avec `aux_rand` = 32 octets nuls (BIP-340). En product
 | 22242 | Authentification au relais | 42 | oui | 3 |
 | 27235 | Authentification HTTP (annuaire, push, jetons de voix) | 98 | oui | 3 |
 | **24135** | **Liaison d'appareils** (éphémère, propre à ChatON, § 8) | — | oui (clé jetable) | 5 |
-| 9 | Message dans un salon (`h` = salon), réponse (`q`, NIP-C7) | 29, C7 | oui | 6, 12 |
+| 9 | Message dans un salon (`h` = salon), réponse (`q`, NIP-C7), mentions (`p`, `mention`) | 29, C7 | oui | 6, 12 |
 | 7 | Réaction à un message de salon (§ 9, « Messages ») | 25 | oui | 12 |
 | 9000, 9001, 9002, 9005, 9007, 9008, 9009 | Modération : rôles, retrait, métadonnées, suppression, création, invitation (§ 9) | 29 | oui | 6 |
 | 9021, 9022 | Demande pour rejoindre, quitter | 29 | oui | 6 |
@@ -407,7 +407,12 @@ Un rôle supprimé est retiré de ses membres (`39001`). Changer `owner` est ré
 - Suppression : `9005` `["h", S], ["e", id], ["k", "9"]`. Le relais efface l'événement visé et diffuse le `9005` ; un client masque tout message visé par un `9005` accepté.
 - **Réponse** : un `9` qui porte aussi `["q", <id du parent>, <url du relais>, <clé de son auteur>]` (NIP-C7) et `["p", <clé de son auteur>]` (vecteur `group_reply`). Le parent est un message du même salon ; s'il a disparu, le client l'affiche comme « message supprimé ».
 - **Réaction** : `7` `["h", S], ["e", <id du message>], ["p", <clé de son auteur>], ["k", "9"]`, l'emoji dans `content` (NIP-25), 64 octets au plus (vecteur `group_reaction`). Le message visé est un `9` de ce salon ; une même clé ne met pas deux fois le même emoji sur un message. Il faut `add_reactions` (une exclusion temporaire le retire). La retirer : `9005` `["h", S], ["e", <id de la réaction>], ["k", "7"]` (vecteur `group_unreact`). Un client compte, pour chaque message, les réactions par emoji, moins celles visées par un `9005`.
+- **Mentions** : un `9` porte `["p", <clé>]` pour chaque personne mentionnée et `["mention", <id de rôle>]` pour un rôle, `["mention", "everyone"]` pour tout le monde (vecteur `group_mention`). Le contenu garde le texte lisible (`@pseudo@instance`, `@Nom du rôle`, `@everyone`) : ce sont les tags qui comptent. Le relais refuse un rôle inconnu, et `everyone` ou un rôle sans `mentionable` sans `mention_everyone` dans le salon. Un message me mentionne s'il porte `["p", <ma clé>]` (une réponse à l'un de mes messages aussi), `everyone`, ou l'un de mes rôles.
 - **Épingles** : `9010` `["h", S]` puis un `["e", id]` par message épinglé, la liste **entière**, du plus récent épinglé au plus ancien, 50 au plus (vecteur `group_pins`). Chaque `e` est un `9` de ce salon. Il faut `manage_messages`. Le relais publie alors `39005` `["d", S]` avec les mêmes `e` (vecteur `group_pins_state`), qu'il garde comme le reste de l'état. Pour épingler ou désépingler, le client relit le `39005` et renvoie la liste modifiée ; deux modérateurs en même temps : le dernier gagne. Un message supprimé reste dans la liste jusqu'au prochain `9010` ; le client l'ignore.
+
+### Non-lus et notifications
+
+Rien ne passe par le relais : chaque appareil garde, pour chaque salon, l'heure du dernier message lu (le premier passage compte tout l'historique comme lu), et pour chaque communauté un niveau de notification : `all` (tout message des autres), `mentions` (par défaut), `none`. Un salon est non lu s'il a un message d'un autre plus récent, avec le nombre de ceux qui me mentionnent. Pas de synchronisation entre appareils pour l'instant.
 
 ## 10. Fichiers et médias (Blossom)
 

@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::media::{self, Attachment};
 use crate::perms::{self, Override, Policy, Role};
+use crate::reads::NotifyLevel;
 use crate::session::{Session, TIMEOUT, backfill, http, is_local_host};
 use crate::{Error, Result, event, link};
 
@@ -67,6 +68,8 @@ pub struct Community {
     pub manageable_roles: Vec<String>,
     /// End of my timeout (unix seconds), 0: none (spec § 9, Modération).
     pub timeout: u64,
+    /// What notifies me here (this device).
+    pub notify: NotifyLevel,
 }
 
 /// What `update_community` changes; `None` keeps it (spec § 9, Réglages).
@@ -164,6 +167,10 @@ pub struct Channel {
     /// A member without roles can't see it (spec § 9, Salons privés).
     pub private: bool,
     pub overrides: Vec<ChannelOverride>,
+    /// A message from someone else since I last read it (text channels).
+    pub unread: bool,
+    /// Of those, the ones that mention me.
+    pub mentions: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -297,6 +304,10 @@ pub struct ChannelMessage {
     /// By emoji, in the order they first came.
     pub reactions: Vec<Reaction>,
     pub pinned: bool,
+    /// Who it mentions: keys (hex), role ids, `everyone` (spec § 9, Messages).
+    pub mentions: Vec<String>,
+    /// It mentions me (and isn't mine).
+    pub mention: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -312,6 +323,9 @@ pub struct Reaction {
     /// One of them is mine.
     pub mine: bool,
 }
+
+/// Older messages arrive from catching up: they don't notify.
+const RECENT_SECS: u64 = 120;
 
 /// `<host>'<community>/<code>` (spec § 9, invitations).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -372,6 +386,8 @@ pub enum Update {
     Blocks,
     ChannelMessage {
         message: ChannelMessage,
+        /// Notify (my level for its community says so): `#channel · community`.
+        notify: Option<String>,
     },
     Deleted {
         channel: String,
@@ -923,8 +939,18 @@ impl Session {
             .map(|p| tag_values(p, "e").collect())
             .unwrap_or_default();
         let me = self.account().pubkey;
+        let roles = match self.home(channel).await {
+            Some((community, key, _)) => self.my_roles(key, &community).await,
+            None => Vec::new(),
+        };
+        let pinged: HashSet<EventId> = messages
+            .iter()
+            .filter(|ev| ev.pubkey != me && mentions_me(ev, me, &roles))
+            .map(|ev| ev.id)
+            .collect();
         for m in &mut all {
             let id = m.id.to_hex();
+            m.mention = pinged.contains(&m.id);
             m.pinned = pinned.contains(id.as_str());
             m.reactions = count_reactions(
                 reactions
@@ -938,11 +964,7 @@ impl Session {
     }
 
     pub async fn send(&self, community: &str, channel: &str, text: &str) -> Result<ChannelMessage> {
-        let relay = self.relay_of(community).await?;
-        let ev = self
-            .group_event(&relay, Kind::ChatMessage, channel, [], text)
-            .await?;
-        message(&ev).ok_or_else(|| Error::Invalid("empty message".into()))
+        self.post(community, channel, text, None, &[]).await
     }
 
     /// `text` in answer to message `parent` of `channel` (NIP-C7, spec § 9, Messages).
@@ -953,12 +975,41 @@ impl Session {
         text: &str,
         parent: EventId,
     ) -> Result<ChannelMessage> {
+        self.post(community, channel, text, Some(parent), &[]).await
+    }
+
+    /// `text` in `channel`, answering `parent` if any, mentioning `mentions`:
+    /// keys (hex), role ids or `everyone` (spec § 9, Messages).
+    pub async fn post(
+        &self,
+        community: &str,
+        channel: &str,
+        text: &str,
+        parent: Option<EventId>,
+        mentions: &[String],
+    ) -> Result<ChannelMessage> {
         let relay = self.relay_of(community).await?;
-        let author = self.author_of(parent).await?;
-        let tags = [
-            Tag::parse(["q", &parent.to_hex(), &relay, &author.to_hex()])?,
-            Tag::public_key(author),
-        ];
+        let mut tags = Vec::new();
+        let mut people = HashSet::new();
+        if let Some(parent) = parent {
+            let author = self.author_of(parent).await?;
+            tags.push(Tag::parse([
+                "q",
+                &parent.to_hex(),
+                &relay,
+                &author.to_hex(),
+            ])?);
+            people.insert(author);
+        }
+        for m in mentions {
+            match PublicKey::from_hex(m) {
+                Ok(pk) => {
+                    people.insert(pk);
+                }
+                Err(_) => tags.push(Tag::parse(["mention", m])?),
+            }
+        }
+        tags.extend(people.into_iter().map(Tag::public_key));
         let ev = self
             .group_event(&relay, Kind::ChatMessage, channel, tags, text)
             .await?;
@@ -1274,7 +1325,10 @@ impl Session {
             if self.blocks().await.ok()?.keys.contains(&ev.pubkey) {
                 return None;
             }
-            return message(ev).map(|message| Update::ChannelMessage { message });
+            let mut message = message(ev)?;
+            let (mention, notify) = self.alerting(ev, &message.channel).await;
+            message.mention = mention;
+            return Some(Update::ChannelMessage { message, notify });
         }
         let channel = || Some(tag_values(ev, "h").next()?.to_string());
         if ev.kind == Kind::Reaction
@@ -1402,7 +1456,13 @@ impl Session {
                     .get(&child)
                     .filter(|c| meta.categories.iter().any(|k| k.id == **c))
                     .cloned();
+                let (unread, mentions) = match m.voice {
+                    true => (false, 0),
+                    false => self.unread(&child, &roles).await?,
+                };
                 channels.push(Channel {
+                    unread,
+                    mentions,
                     id: child,
                     name: m.name,
                     voice: m.voice,
@@ -1443,7 +1503,79 @@ impl Session {
             perms: policy.effective(&mine, None, now).names(),
             owner: meta.owner.and_then(|pk| PublicKey::from_hex(&pk).ok()),
             roles,
+            notify: self.notify_level(id),
         }))
+    }
+
+    /// Whether `channel` has messages from others since I read it, and how
+    /// many of them mention me (with my `roles` in its community).
+    async fn unread(&self, channel: &str, roles: &[String]) -> Result<(bool, u32)> {
+        let since = Timestamp::from(self.last_read(channel)? + 1);
+        let in_channel = Filter::new().custom_tag(SingleLetterTag::LOWERCASE_H, channel);
+        let db = self.client.database();
+        let new = db
+            .query(in_channel.clone().kind(Kind::ChatMessage).since(since))
+            .await?;
+        if new.is_empty() {
+            return Ok((false, 0));
+        }
+        let deletions = db.query(in_channel.kind(Kind::GroupDeleteEvent)).await?;
+        let gone: HashSet<&str> = deletions.iter().flat_map(|d| tag_values(d, "e")).collect();
+        let blocked = self.blocks().await?.keys;
+        let shown = new
+            .iter()
+            .filter(|ev| !blocked.contains(&ev.pubkey) && !gone.contains(ev.id.to_hex().as_str()));
+        Ok(count_unread(shown, self.account().pubkey, roles))
+    }
+
+    /// A message just received: does it mention me, and should it notify
+    /// (my level for its community; not a late one from catching up)?
+    async fn alerting(&self, ev: &Event, channel: &str) -> (bool, Option<String>) {
+        let me = self.account().pubkey;
+        if ev.pubkey == me {
+            return (false, None);
+        }
+        let Some((community, key, meta)) = self.home(channel).await else {
+            return (false, None);
+        };
+        let mention = mentions_me(ev, me, &self.my_roles(key, &community).await);
+        let recent = ev.created_at.as_secs() + RECENT_SECS >= Timestamp::now().as_secs();
+        let notify = recent
+            && match self.notify_level(&community) {
+                NotifyLevel::All => true,
+                NotifyLevel::Mentions => mention,
+                NotifyLevel::None => false,
+            };
+        let name = match self.metadata(key, channel).await {
+            Ok(Some(m)) => m.name,
+            _ => String::new(),
+        };
+        (mention, notify.then(|| format!("#{name} · {}", meta.name)))
+    }
+
+    /// The community of `channel` among mine: its id, relay key and metadata.
+    async fn home(&self, channel: &str) -> Option<(String, PublicKey, Metadata)> {
+        for (community, relay) in self.group_list().await.ok()? {
+            let Some(key) = self.cached_relay_key(&relay) else {
+                continue;
+            };
+            if let Ok(Some(meta)) = self.metadata(key, &community).await
+                && meta.children.iter().any(|c| c == channel)
+            {
+                return Some((community, key, meta));
+            }
+        }
+        None
+    }
+
+    /// My role ids in `community`, by the relay's 39001.
+    async fn my_roles(&self, key: PublicKey, community: &str) -> Vec<String> {
+        match self.state(key, Kind::GroupAdmins, community).await {
+            Ok(Some(ev)) => admins(&ev)
+                .remove(&self.account().pubkey)
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        }
     }
 
     /// Builds, signs and publishes a group event to `relay`, and keeps it locally.
@@ -1778,7 +1910,39 @@ fn message(ev: &Event) -> Option<ChannelMessage> {
         }),
         reactions: Vec::new(),
         pinned: false,
+        mentions: ev
+            .tags
+            .iter()
+            .filter_map(|t| match t.as_slice() {
+                [k, v, ..] if k == "p" || k == "mention" => Some(v.clone()),
+                _ => None,
+            })
+            .collect(),
+        mention: false,
     })
+}
+
+/// `ev` mentions me: my key, `everyone`, or one of my roles (spec § 9, Messages).
+fn mentions_me(ev: &Event, me: PublicKey, roles: &[String]) -> bool {
+    let me = me.to_hex();
+    ev.tags.iter().any(|t| match t.as_slice() {
+        [k, v, ..] if k == "p" => *v == me,
+        [k, v, ..] if k == "mention" => v == "everyone" || roles.contains(v),
+        _ => false,
+    })
+}
+
+/// Unread (any message from someone else) and how many mention me.
+fn count_unread<'a>(
+    messages: impl Iterator<Item = &'a Event>,
+    me: PublicKey,
+    roles: &[String],
+) -> (bool, u32) {
+    messages
+        .filter(|ev| ev.pubkey != me)
+        .fold((false, 0), |(_, n), ev| {
+            (true, n + u32::from(mentions_me(ev, me, roles)))
+        })
 }
 
 /// Reactions to one message, by emoji in the order they first came.
@@ -1855,6 +2019,52 @@ mod tests {
             .custom_created_at(Timestamp::from_secs(at))
             .finalize(keys)
             .unwrap()
+    }
+
+    #[test]
+    fn unread_counts_others_and_mentions_of_me() {
+        let (me, bob) = (Keys::generate(), Keys::generate());
+        let mine = me.public_key().to_hex();
+        let roles = vec!["gardien".to_string()];
+        let msgs = [
+            ev(&bob, Kind::ChatMessage, &[&["h", "c"]], 1),
+            ev(&bob, Kind::ChatMessage, &[&["h", "c"], &["p", &mine]], 2),
+            ev(
+                &bob,
+                Kind::ChatMessage,
+                &[&["h", "c"], &["mention", "everyone"]],
+                3,
+            ),
+            ev(
+                &bob,
+                Kind::ChatMessage,
+                &[&["h", "c"], &["mention", "gardien"]],
+                4,
+            ),
+            ev(
+                &bob,
+                Kind::ChatMessage,
+                &[&["h", "c"], &["mention", "moderator"]],
+                5,
+            ),
+            ev(
+                &bob,
+                Kind::ChatMessage,
+                &[&["h", "c"], &["p", &bob.public_key().to_hex()]],
+                6,
+            ),
+            // Mine never count, even mentioning me.
+            ev(&me, Kind::ChatMessage, &[&["h", "c"], &["p", &mine]], 7),
+        ];
+        let pk = me.public_key();
+        assert_eq!(count_unread(msgs.iter(), pk, &roles), (true, 3));
+        assert_eq!(count_unread(msgs[4..].iter(), pk, &roles), (true, 0));
+        assert_eq!(count_unread(msgs[6..].iter(), pk, &roles), (false, 0));
+        assert_eq!(count_unread(msgs[..0].iter(), pk, &roles), (false, 0));
+        assert_eq!(
+            message(&msgs[3]).unwrap().mentions,
+            vec!["gardien".to_string()]
+        );
     }
 
     #[test]

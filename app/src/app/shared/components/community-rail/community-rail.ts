@@ -10,6 +10,7 @@ import { TooltipDirective } from '@directives/tooltip';
 import { ModalService } from '@services/modal.service';
 import { ShellService } from '@services/shell.service';
 import { CommunityStore } from '@stores/community.store';
+import { Community } from '@models/Community.model';
 
 /** Far left: private messages (the cat), then my communities, then "create or join". */
 @Component({
@@ -53,6 +54,15 @@ export class CommunityRail implements OnInit {
     if (this.inDms()) {
       void this.router.navigate([ROUTES.CHAT, ROUTES.SERVERS]);
     }
+  }
+
+  /** A channel of it has something new from someone else. */
+  protected unread(community: Community): boolean {
+    return community.channels.some((c) => c.unread);
+  }
+
+  protected mentionsIn(community: Community): number {
+    return community.channels.reduce((n, c) => n + c.mentions, 0);
   }
 
   public add(): void {

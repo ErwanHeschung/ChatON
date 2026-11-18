@@ -17,6 +17,7 @@
       [messages]="messages()"
       [disabled]="inChannel() ? !!timedOut() : !dm.selected()"
       [error]="inChannel() ? community.sendError() : dm.sendError()"
+      [candidates]="candidates()"
       (send)="send($event)"
       (file)="sendFile($event)"
       (remove)="remove($event)"

@@ -120,6 +120,7 @@
   <app-chat-bar
     [target]="shell.conversation()?.title ?? ''"
     [channel]="shell.conversation()?.kind === 'channel'"
+    [candidates]="candidates()"
     (send)="send.emit($event)"
     (file)="file.emit($event)"
   ></app-chat-bar>

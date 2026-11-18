@@ -458,6 +458,14 @@
     "header.pins": "Messages épinglés",
     "header.pins-none": " Rien d’épinglé pour l’instant. La modération épingle un message depuis sa barre d’outils. ",
     "chat.replying": "Réponse à {$START_TAG_STRONG}{$INTERPOLATION}{$CLOSE_TAG_STRONG}",
-    "chat.reply-cancel": "Annuler la réponse"
+    "chat.reply-cancel": "Annuler la réponse",
+    "chat.mention-list": "Mentionner",
+    "chat.mention-everyone": "tout le monde ici",
+    "channels.mentions": "{VAR_PLURAL, plural, =1 {1 mention} other {{INTERPOLATION} mentions}}",
+    "notify.title": "Notifications",
+    "notify.all": "Tous les messages",
+    "notify.mentions": "Mentions seulement",
+    "notify.none": "Rien",
+    "channels.unread": "non lu"
   }
 }

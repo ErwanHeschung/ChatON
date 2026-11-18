@@ -185,6 +185,7 @@ func generate() []byte {
 		valid("group_create_invite", alice, 9009, nostr.Tags{v0, {"h", community}, {"code", "AB12CD34"}}, ""),
 		valid("group_create_invite_limited", alice, 9009, nostr.Tags{v0, {"h", community}, {"code", "EF34GH56"}, {"expiration", "1767225600"}, {"max_uses", "10"}}, ""),
 		valid("group_revoke_invite", alice, 9005, nostr.Tags{v0, {"h", community}, {"e", strings.Repeat("cd", 32)}, {"k", "9009"}}, ""),
+		valid("group_mention", bob, 9, nostr.Tags{v0, {"h", channel1}, {"p", alice.pk}, {"mention", "moderator"}}, "@alice@chaton.example @Modérateur : regardez"),
 		valid("group_reply", bob, 9, nostr.Tags{v0, {"h", channel1}, {"q", strings.Repeat("ab", 32), "wss://chaton.example", alice.pk}, {"p", alice.pk}}, "Moi aussi !"),
 		valid("group_reaction", bob, 7, nostr.Tags{v0, {"h", channel1}, {"e", strings.Repeat("ab", 32)}, {"p", alice.pk}, {"k", "9"}}, "🐱"),
 		valid("group_unreact", bob, 9005, nostr.Tags{v0, {"h", channel1}, {"e", strings.Repeat("ef", 32)}, {"k", "7"}}, ""),

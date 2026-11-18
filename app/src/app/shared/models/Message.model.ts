@@ -23,8 +23,26 @@ export interface Message {
   reply?: { name: string; text: string | null } | null;
   reactions?: Reaction[];
   pinned?: boolean;
+  /** Text to highlight as mentions (`@lea@miaou.fr`, `@Gardien`, `@everyone`). */
+  mentions?: string[];
+  /** It mentions me: the row stands out. */
+  mentionsMe?: boolean;
   /** What I may do with it (channels): reply, react, pin. */
   can?: { reply: boolean; react: boolean; pin: boolean };
+}
+
+/** Someone or something `@` can mention: what goes in the tags (`id`) and in the text. */
+export interface MentionCandidate {
+  /** A key (hex), a role id, or `everyone`. */
+  id: string;
+  kind: 'person' | 'role' | 'everyone';
+  /** Shown in the list: a display name, a role's name. */
+  name: string;
+  /** Inserted in the message: `@lea@miaou.fr`, `@Gardien`, `@everyone`. */
+  text: string;
+  picture?: string | null;
+  /** A role's color. */
+  color?: string;
 }
 
 export enum MessageStatus {
