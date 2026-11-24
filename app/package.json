@@ -53,7 +53,7 @@
     "@angular/compiler-cli": "^22.2.6",
     "@angular/localize": "^22.2.6",
     "@eslint/js": "^10.0.1",
-    "@tauri-apps/cli": "^2.12.4",
+    "@tauri-apps/cli": "^2.12.6",
     "angular-eslint": "22.6.0",
     "eslint": "^10.15.0",
     "jsdom": "^31.0.1",
