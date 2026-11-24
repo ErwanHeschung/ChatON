@@ -14,7 +14,7 @@ keyring-core = "1"
 # glib-main-loop: the screen capturer on Wayland (the desktop portal).
 livekit = { version = "=0.11.0", default-features = false, features = ["native", "rustls-tls-webpki-roots", "glib-main-loop"], optional = true }
 # Screen share frames for the webview (voice).
-jpeg-encoder = { version = "0.6", features = ["simd"], optional = true }
+jpeg-encoder = { version = "0.7", features = ["simd"], optional = true }
 nostr = { version = "0.45", default-features = false, features = ["std", "nip44", "nip49", "nip59", "nip98", "os-rng"] }
 nostr-blossom = "0.45"
 nostr-sdk = "0.45"
