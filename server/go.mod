@@ -7,7 +7,7 @@ require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/btcsuite/btcd/btcec/v2 v2.5.1
 	github.com/go-playground/validator/v10 v10.30.6
-	github.com/golang-jwt/jwt/v5 v5.2.2
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/viper v1.21.0
 	go.etcd.io/bbolt v1.5.0
